@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   RefreshCw, Download, Filter, ChevronLeft, ChevronRight,
   ShieldCheck, LogIn, FileOutput, Key, AlertOctagon, ArrowLeftRight,
@@ -95,14 +95,21 @@ export const Screen10_AuditLog: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const totalLogs = 2847;
   const totalPages = Math.ceil(totalLogs / pageSize);
 
   return (
-    <div style={{ background: DS.colors.background, minHeight: "100vh", fontFamily: DS.font.family, padding: "24px" }}>
+    <div style={{ background: DS.colors.background, minHeight: "100vh", fontFamily: DS.font.family, padding: isMobile ? "16px" : "24px" }}>
       {/* Top Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "20px" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
             <div
@@ -114,33 +121,38 @@ export const Screen10_AuditLog: React.FC = () => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                flexShrink: 0,
               }}
             >
               <ShieldCheck size={20} color={DS.colors.primary} />
             </div>
-            <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: DS.colors.textPrimary }}>
+            <h1 style={{ margin: 0, fontSize: isMobile ? "16px" : "20px", fontWeight: 800, color: DS.colors.textPrimary }}>
               System Audit Log &amp; Compliance
             </h1>
           </div>
-          <p style={{ margin: 0, fontSize: "13px", color: DS.colors.textSecondary }}>
-            增值模組 A &amp; 安全條款 · PDPO Compliance · 2-Way Google Sheets Sync
-          </p>
+          {!isMobile && (
+            <p style={{ margin: 0, fontSize: "13px", color: DS.colors.textSecondary }}>
+              增值模組 A &amp; 安全條款 · PDPO Compliance · 2-Way Google Sheets Sync
+            </p>
+          )}
         </div>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <Btn variant="ghost" size="sm" icon={<Filter size={14} />} style={{ border: `1px solid ${DS.colors.border}` }}>
-            Filters
-          </Btn>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {!isMobile && (
+            <Btn variant="ghost" size="sm" icon={<Filter size={14} />} style={{ border: `1px solid ${DS.colors.border}` }}>
+              Filters
+            </Btn>
+          )}
           <Btn variant="secondary" size="sm" icon={<Download size={14} />}>
-            Export Logs
+            {isMobile ? "Export" : "Export Logs"}
           </Btn>
           <Btn variant="primary" size="sm" icon={<RefreshCw size={14} />}>
-            Force 2-Way Sync
+            {isMobile ? "Sync" : "Force 2-Way Sync"}
           </Btn>
         </div>
       </div>
 
       {/* Stats Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "20px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: "16px", marginBottom: "20px" }}>
         <StatCard
           label="Total Logs Today"
           value="2,847"
@@ -173,284 +185,213 @@ export const Screen10_AuditLog: React.FC = () => {
 
       {/* Filter Bar */}
       <Card style={{ padding: "14px 20px", marginBottom: "20px" }}>
-        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div>
+        {isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <DateRangePicker
               label="Date Range"
               startDate={dateStart}
               endDate={dateEnd}
               onChange={(s, e) => { setDateStart(s); setDateEnd(e); }}
             />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>Action</label>
+                <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.md, fontSize: "12px", fontFamily: DS.font.family, color: DS.colors.textPrimary, background: DS.colors.surface, outline: "none", cursor: "pointer", width: "100%" }}>
+                  {["All", "GSheet Sync", "API Request", "Login", "Data Export", "Permission Change", "Error"].map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>Status</label>
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.md, fontSize: "12px", fontFamily: DS.font.family, color: DS.colors.textPrimary, background: DS.colors.surface, outline: "none", cursor: "pointer", width: "100%" }}>
+                  {["All", "Success", "Failed", "Pending"].map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input value={userFilter} onChange={(e) => setUserFilter(e.target.value)} placeholder="Filter by user..." style={{ flex: 1, padding: "8px 12px", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.md, fontSize: "13px", fontFamily: DS.font.family, color: DS.colors.textPrimary, outline: "none" }} />
+              <Btn variant="primary" size="sm">Apply</Btn>
+            </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>Action Type</label>
-            <select
-              value={actionFilter}
-              onChange={(e) => setActionFilter(e.target.value)}
-              style={{
-                padding: "8px 12px",
-                border: `1px solid ${DS.colors.border}`,
-                borderRadius: DS.radius.md,
-                fontSize: "13px",
-                fontFamily: DS.font.family,
-                color: DS.colors.textPrimary,
-                background: DS.colors.surface,
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              {["All", "GSheet Sync", "API Request", "Login", "Data Export", "Permission Change", "Error"].map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
+        ) : (
+          <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div>
+              <DateRangePicker label="Date Range" startDate={dateStart} endDate={dateEnd} onChange={(s, e) => { setDateStart(s); setDateEnd(e); }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>Action Type</label>
+              <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} style={{ padding: "8px 12px", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.md, fontSize: "13px", fontFamily: DS.font.family, color: DS.colors.textPrimary, background: DS.colors.surface, outline: "none", cursor: "pointer" }}>
+                {["All", "GSheet Sync", "API Request", "Login", "Data Export", "Permission Change", "Error"].map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>User</label>
+              <input value={userFilter} onChange={(e) => setUserFilter(e.target.value)} placeholder="Filter by user..." style={{ padding: "8px 12px", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.md, fontSize: "13px", fontFamily: DS.font.family, color: DS.colors.textPrimary, outline: "none", width: "160px" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>Status</label>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: "8px 12px", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.md, fontSize: "13px", fontFamily: DS.font.family, color: DS.colors.textPrimary, background: DS.colors.surface, outline: "none", cursor: "pointer" }}>
+                {["All", "Success", "Failed", "Pending"].map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+            <Btn variant="primary" size="sm" style={{ alignSelf: "flex-end" }}>Apply Filters</Btn>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>User</label>
-            <input
-              value={userFilter}
-              onChange={(e) => setUserFilter(e.target.value)}
-              placeholder="Filter by user..."
-              style={{
-                padding: "8px 12px",
-                border: `1px solid ${DS.colors.border}`,
-                borderRadius: DS.radius.md,
-                fontSize: "13px",
-                fontFamily: DS.font.family,
-                color: DS.colors.textPrimary,
-                outline: "none",
-                width: "160px",
-              }}
-            />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textSecondary }}>Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                padding: "8px 12px",
-                border: `1px solid ${DS.colors.border}`,
-                borderRadius: DS.radius.md,
-                fontSize: "13px",
-                fontFamily: DS.font.family,
-                color: DS.colors.textPrimary,
-                background: DS.colors.surface,
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              {["All", "Success", "Failed", "Pending"].map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          </div>
-          <Btn variant="primary" size="sm" style={{ alignSelf: "flex-end" }}>
-            Apply Filters
-          </Btn>
-        </div>
+        )}
       </Card>
 
-      {/* Main Log Table */}
+      {/* Main Log Table / Card List */}
       <Card style={{ overflow: "hidden", marginBottom: "20px" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: DS.font.family, fontSize: "13px" }}>
-            <thead>
-              <tr style={{ background: DS.colors.background, borderBottom: `2px solid ${DS.colors.border}` }}>
-                {["#", "Timestamp", "Action", "Module", "Triggered By", "IP Address", "Details", "Status"].map((col) => (
-                  <th
-                    key={col}
-                    style={{
-                      padding: "10px 12px",
-                      textAlign: "left",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: DS.colors.textSecondary,
-                      letterSpacing: "0.05em",
-                      textTransform: "uppercase",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {LOG_DATA.map((entry, idx) => {
-                const isEven = idx % 2 === 0;
-                const isExpanded = expandedRow === entry.id;
-                let rowBg = isEven ? DS.colors.surface : DS.colors.background;
-                if (entry.highlight === "red") rowBg = "#FEF2F2";
-                else if (entry.highlight === "amber") rowBg = "#FFFBEB";
-
-                return (
-                  <React.Fragment key={entry.id}>
-                    <tr
-                      onClick={() => setExpandedRow(isExpanded ? null : entry.id)}
-                      style={{
-                        background: rowBg,
-                        borderBottom: `1px solid ${DS.colors.border}`,
-                        cursor: "pointer",
-                        transition: "background 0.1s",
-                      }}
-                    >
-                      {/* # */}
-                      <td style={{ padding: "8px 12px", color: DS.colors.textMuted, fontSize: "12px", fontWeight: 500 }}>
-                        {entry.id}
-                      </td>
-
-                      {/* Timestamp */}
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
-                        <span
-                          style={{
-                            fontFamily: "'Courier New', monospace",
-                            fontSize: "12px",
-                            color: DS.colors.textSecondary,
-                          }}
-                        >
-                          {entry.timestamp}
-                        </span>
-                      </td>
-
-                      {/* Action */}
-                      <td style={{ padding: "8px 12px" }}>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            padding: "3px 10px",
-                            background: ACTION_COLORS[entry.action],
-                            color: ACTION_TEXT_COLORS[entry.action],
-                            borderRadius: DS.radius.full,
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <ActionIcon action={entry.action} />
-                          {entry.direction && <span style={{ fontWeight: 800 }}>{entry.direction}</span>}
-                          {entry.action}
-                        </span>
-                      </td>
-
-                      {/* Module */}
-                      <td style={{ padding: "8px 12px" }}>
-                        <span style={{ fontSize: "13px", color: DS.colors.textPrimary, fontWeight: 500 }}>
-                          {entry.module}
-                        </span>
-                      </td>
-
-                      {/* Triggered By */}
-                      <td style={{ padding: "8px 12px" }}>
-                        <span
-                          style={{
-                            fontFamily: "'Courier New', monospace",
-                            fontSize: "12px",
-                            color: DS.colors.primary,
-                          }}
-                        >
-                          {entry.triggeredBy}
-                        </span>
-                      </td>
-
-                      {/* IP Address */}
-                      <td style={{ padding: "8px 12px" }}>
-                        <span
-                          style={{
-                            fontFamily: "'Courier New', monospace",
-                            fontSize: "12px",
-                            color: entry.highlight === "red" ? DS.colors.error : DS.colors.textSecondary,
-                            fontWeight: entry.highlight === "red" ? 700 : 400,
-                          }}
-                        >
-                          {entry.ip}
-                        </span>
-                      </td>
-
-                      {/* Details */}
-                      <td style={{ padding: "8px 12px", maxWidth: "280px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                          <span
-                            style={{
-                              fontSize: "13px",
-                              color: DS.colors.textPrimary,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              maxWidth: "220px",
-                            }}
-                            title={entry.details}
-                          >
-                            {entry.details}
+        {isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+            {LOG_DATA.map((entry) => {
+              const isExpanded = expandedRow === entry.id;
+              let cardBorder = DS.colors.border;
+              if (entry.highlight === "red") cardBorder = "#FCA5A5";
+              else if (entry.highlight === "amber") cardBorder = "#FCD34D";
+              return (
+                <div
+                  key={entry.id}
+                  onClick={() => setExpandedRow(isExpanded ? null : entry.id)}
+                  style={{
+                    padding: "12px 14px",
+                    borderBottom: `1px solid ${DS.colors.border}`,
+                    background: entry.highlight === "red" ? "#FEF2F2" : entry.highlight === "amber" ? "#FFFBEB" : DS.colors.surface,
+                    cursor: "pointer",
+                    borderLeft: `3px solid ${cardBorder}`,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "6px" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "2px 8px", background: ACTION_COLORS[entry.action], color: ACTION_TEXT_COLORS[entry.action], borderRadius: DS.radius.full, fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap" }}>
+                      <ActionIcon action={entry.action} />
+                      {entry.action}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <StatusBadge variant={entry.status} label={entry.status === "synced" ? "OK" : entry.status === "error" ? "Fail" : "Pend"} size="sm" />
+                      <ExpandIcon size={12} color={DS.colors.textMuted} style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                    <span style={{ fontFamily: "'Courier New', monospace", fontSize: "11px", color: DS.colors.textMuted }}>{entry.timestamp}</span>
+                    <span style={{ fontSize: "11px", color: DS.colors.textSecondary }}>·</span>
+                    <span style={{ fontSize: "12px", fontWeight: 600, color: DS.colors.textPrimary }}>{entry.module}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontFamily: "'Courier New', monospace", fontSize: "11px", color: DS.colors.primary }}>{entry.triggeredBy}</span>
+                    {entry.sensitive && <DataPrivacyShield />}
+                  </div>
+                  {isExpanded && (
+                    <div style={{ marginTop: "10px", padding: "10px", background: "#F8FAFF", borderRadius: DS.radius.md, fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div><span style={{ fontWeight: 700, color: DS.colors.textSecondary }}>Details: </span><span style={{ color: DS.colors.textPrimary }}>{entry.details}</span></div>
+                      <div><span style={{ fontWeight: 700, color: DS.colors.textSecondary }}>IP: </span><span style={{ fontFamily: "'Courier New', monospace", color: entry.highlight === "red" ? DS.colors.error : DS.colors.textSecondary }}>{entry.ip}</span></div>
+                      <div><span style={{ fontWeight: 700, color: DS.colors.textSecondary }}>Req ID: </span><span style={{ fontFamily: "'Courier New', monospace", color: DS.colors.primary }}>req_{entry.id.toString().padStart(8, "0")}</span></div>
+                      <div style={{ color: DS.colors.secondary, fontWeight: 600 }}>✓ PDPO compliant · Logged for audit trail</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: DS.font.family, fontSize: "13px" }}>
+              <thead>
+                <tr style={{ background: DS.colors.background, borderBottom: `2px solid ${DS.colors.border}` }}>
+                  {["#", "Timestamp", "Action", "Module", "Triggered By", "IP Address", "Details", "Status"].map((col) => (
+                    <th key={col} style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, color: DS.colors.textSecondary, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {LOG_DATA.map((entry, idx) => {
+                  const isEven = idx % 2 === 0;
+                  const isExpanded = expandedRow === entry.id;
+                  let rowBg = isEven ? DS.colors.surface : DS.colors.background;
+                  if (entry.highlight === "red") rowBg = "#FEF2F2";
+                  else if (entry.highlight === "amber") rowBg = "#FFFBEB";
+                  return (
+                    <React.Fragment key={entry.id}>
+                      <tr onClick={() => setExpandedRow(isExpanded ? null : entry.id)} style={{ background: rowBg, borderBottom: `1px solid ${DS.colors.border}`, cursor: "pointer", transition: "background 0.1s" }}>
+                        <td style={{ padding: "8px 12px", color: DS.colors.textMuted, fontSize: "12px", fontWeight: 500 }}>{entry.id}</td>
+                        <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                          <span style={{ fontFamily: "'Courier New', monospace", fontSize: "12px", color: DS.colors.textSecondary }}>{entry.timestamp}</span>
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 10px", background: ACTION_COLORS[entry.action], color: ACTION_TEXT_COLORS[entry.action], borderRadius: DS.radius.full, fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" }}>
+                            <ActionIcon action={entry.action} />
+                            {entry.direction && <span style={{ fontWeight: 800 }}>{entry.direction}</span>}
+                            {entry.action}
                           </span>
-                          {entry.sensitive && <DataPrivacyShield />}
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td style={{ padding: "8px 12px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <StatusBadge
-                            variant={entry.status}
-                            label={entry.status === "synced" ? "Success" : entry.status === "error" ? "Failed" : "Pending"}
-                            size="sm"
-                          />
-                          <ExpandIcon
-                            size={13}
-                            color={DS.colors.textMuted}
-                            style={{
-                              transform: isExpanded ? "rotate(90deg)" : "none",
-                              transition: "transform 0.15s",
-                            }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-
-                    {/* Expanded Row Detail */}
-                    {isExpanded && (
-                      <tr style={{ background: "#F8FAFF" }}>
-                        <td colSpan={8} style={{ padding: "12px 24px", borderBottom: `1px solid ${DS.colors.border}` }}>
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(3, 1fr)",
-                              gap: "16px",
-                              fontSize: "12px",
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontWeight: 700, color: DS.colors.textSecondary, marginBottom: "4px" }}>Full Details</div>
-                              <div style={{ color: DS.colors.textPrimary }}>{entry.details}</div>
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: 700, color: DS.colors.textSecondary, marginBottom: "4px" }}>Request ID</div>
-                              <div style={{ fontFamily: "'Courier New', monospace", color: DS.colors.primary }}>
-                                req_{entry.id.toString().padStart(8, "0")}
-                              </div>
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: 700, color: DS.colors.textSecondary, marginBottom: "4px" }}>Compliance Status</div>
-                              <div style={{ color: DS.colors.secondary, fontWeight: 600 }}>
-                                ✓ PDPO compliant · Logged for audit trail
-                              </div>
-                            </div>
+                        </td>
+                        <td style={{ padding: "8px 12px" }}><span style={{ fontSize: "13px", color: DS.colors.textPrimary, fontWeight: 500 }}>{entry.module}</span></td>
+                        <td style={{ padding: "8px 12px" }}><span style={{ fontFamily: "'Courier New', monospace", fontSize: "12px", color: DS.colors.primary }}>{entry.triggeredBy}</span></td>
+                        <td style={{ padding: "8px 12px" }}><span style={{ fontFamily: "'Courier New', monospace", fontSize: "12px", color: entry.highlight === "red" ? DS.colors.error : DS.colors.textSecondary, fontWeight: entry.highlight === "red" ? 700 : 400 }}>{entry.ip}</span></td>
+                        <td style={{ padding: "8px 12px", maxWidth: "280px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "13px", color: DS.colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "220px" }} title={entry.details}>{entry.details}</span>
+                            {entry.sensitive && <DataPrivacyShield />}
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <StatusBadge variant={entry.status} label={entry.status === "synced" ? "Success" : entry.status === "error" ? "Failed" : "Pending"} size="sm" />
+                            <ExpandIcon size={13} color={DS.colors.textMuted} style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
                           </div>
                         </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      {isExpanded && (
+                        <tr style={{ background: "#F8FAFF" }}>
+                          <td colSpan={8} style={{ padding: "12px 24px", borderBottom: `1px solid ${DS.colors.border}` }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", fontSize: "12px" }}>
+                              <div>
+                                <div style={{ fontWeight: 700, color: DS.colors.textSecondary, marginBottom: "4px" }}>Full Details</div>
+                                <div style={{ color: DS.colors.textPrimary }}>{entry.details}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: DS.colors.textSecondary, marginBottom: "4px" }}>Request ID</div>
+                                <div style={{ fontFamily: "'Courier New', monospace", color: DS.colors.primary }}>req_{entry.id.toString().padStart(8, "0")}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: DS.colors.textSecondary, marginBottom: "4px" }}>Compliance Status</div>
+                                <div style={{ color: DS.colors.secondary, fontWeight: 600 }}>✓ PDPO compliant · Logged for audit trail</div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       {/* Bottom Section: Pagination + GSheet Status */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-start", gap: "16px" }}>
         {/* Pagination */}
+        {isMobile ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", background: DS.colors.surface, padding: "10px 16px", borderRadius: DS.radius.md, border: `1px solid ${DS.colors.border}` }}>
+            <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} style={{ width: "36px", height: "36px", background: DS.colors.surface, border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.sm, cursor: currentPage === 1 ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: currentPage === 1 ? 0.4 : 1 }}>
+              <ChevronLeft size={16} color={DS.colors.textSecondary} />
+            </button>
+            <span style={{ fontSize: "13px", color: DS.colors.textSecondary }}>
+              Page <strong style={{ color: DS.colors.textPrimary }}>{currentPage}</strong> / {totalPages} · <strong style={{ color: DS.colors.textPrimary }}>{totalLogs.toLocaleString()}</strong> logs
+            </span>
+            <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} style={{ width: "36px", height: "36px", background: DS.colors.surface, border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.sm, cursor: currentPage === totalPages ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: currentPage === totalPages ? 0.4 : 1 }}>
+              <ChevronRight size={16} color={DS.colors.textSecondary} />
+            </button>
+          </div>
+        ) : (
         <div
           style={{
             display: "flex",
@@ -471,106 +412,26 @@ export const Screen10_AuditLog: React.FC = () => {
             of <strong style={{ color: DS.colors.textPrimary }}>{totalLogs.toLocaleString()}</strong> logs
           </span>
           <div style={{ width: "1px", height: "16px", background: DS.colors.border }} />
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            style={{
-              width: "30px",
-              height: "30px",
-              background: currentPage === 1 ? DS.colors.background : DS.colors.surface,
-              border: `1px solid ${DS.colors.border}`,
-              borderRadius: DS.radius.sm,
-              cursor: currentPage === 1 ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: currentPage === 1 ? 0.4 : 1,
-            }}
-          >
+          <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} style={{ width: "30px", height: "30px", background: currentPage === 1 ? DS.colors.background : DS.colors.surface, border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.sm, cursor: currentPage === 1 ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: currentPage === 1 ? 0.4 : 1 }}>
             <ChevronLeft size={14} color={DS.colors.textSecondary} />
           </button>
-
-          {/* Page Numbers */}
           {[1, 2, 3].map((p) => (
-            <button
-              key={p}
-              onClick={() => setCurrentPage(p)}
-              style={{
-                width: "30px",
-                height: "30px",
-                background: currentPage === p ? DS.colors.primary : DS.colors.surface,
-                border: `1px solid ${currentPage === p ? DS.colors.primary : DS.colors.border}`,
-                borderRadius: DS.radius.sm,
-                cursor: "pointer",
-                fontSize: "13px",
-                fontWeight: currentPage === p ? 700 : 400,
-                color: currentPage === p ? "#fff" : DS.colors.textSecondary,
-                fontFamily: DS.font.family,
-              }}
-            >
-              {p}
-            </button>
+            <button key={p} onClick={() => setCurrentPage(p)} style={{ width: "30px", height: "30px", background: currentPage === p ? DS.colors.primary : DS.colors.surface, border: `1px solid ${currentPage === p ? DS.colors.primary : DS.colors.border}`, borderRadius: DS.radius.sm, cursor: "pointer", fontSize: "13px", fontWeight: currentPage === p ? 700 : 400, color: currentPage === p ? "#fff" : DS.colors.textSecondary, fontFamily: DS.font.family }}>{p}</button>
           ))}
           <span style={{ fontSize: "13px", color: DS.colors.textMuted }}>...</span>
-          <button
-            onClick={() => setCurrentPage(totalPages)}
-            style={{
-              width: "30px",
-              height: "30px",
-              background: currentPage === totalPages ? DS.colors.primary : DS.colors.surface,
-              border: `1px solid ${DS.colors.border}`,
-              borderRadius: DS.radius.sm,
-              cursor: "pointer",
-              fontSize: "13px",
-              color: DS.colors.textSecondary,
-              fontFamily: DS.font.family,
-            }}
-          >
-            {totalPages}
-          </button>
-
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            style={{
-              width: "30px",
-              height: "30px",
-              background: DS.colors.surface,
-              border: `1px solid ${DS.colors.border}`,
-              borderRadius: DS.radius.sm,
-              cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: currentPage === totalPages ? 0.4 : 1,
-            }}
-          >
+          <button onClick={() => setCurrentPage(totalPages)} style={{ width: "30px", height: "30px", background: currentPage === totalPages ? DS.colors.primary : DS.colors.surface, border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.sm, cursor: "pointer", fontSize: "13px", color: DS.colors.textSecondary, fontFamily: DS.font.family }}>{totalPages}</button>
+          <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} style={{ width: "30px", height: "30px", background: DS.colors.surface, border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.sm, cursor: currentPage === totalPages ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: currentPage === totalPages ? 0.4 : 1 }}>
             <ChevronRight size={14} color={DS.colors.textSecondary} />
           </button>
-
           <div style={{ width: "1px", height: "16px", background: DS.colors.border }} />
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <span style={{ fontSize: "12px", color: DS.colors.textMuted }}>Per page:</span>
-            <select
-              value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-              style={{
-                padding: "4px 8px",
-                border: `1px solid ${DS.colors.border}`,
-                borderRadius: DS.radius.sm,
-                fontSize: "13px",
-                fontFamily: DS.font.family,
-                color: DS.colors.textPrimary,
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              {[20, 50, 100].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }} style={{ padding: "4px 8px", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.sm, fontSize: "13px", fontFamily: DS.font.family, color: DS.colors.textPrimary, outline: "none", cursor: "pointer" }}>
+              {[20, 50, 100].map((n) => (<option key={n} value={n}>{n}</option>))}
             </select>
           </div>
         </div>
+        )}
 
         {/* Google Sheets Connection Status Card */}
         <Card

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Shield, Calendar, ChevronDown } from "lucide-react";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
@@ -312,8 +312,78 @@ interface FloatingBatchActionBarProps {
 export const FloatingBatchActionBar: React.FC<FloatingBatchActionBarProps> = ({
   selectedCount, actions, onClear, countLabel, clearLabel,
 }) => {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   if (selectedCount === 0) return null;
   const defaultCountLabel = `${selectedCount} item${selectedCount !== 1 ? "s" : ""} selected`;
+
+  if (isMobile) {
+    return (
+      <div style={{
+        position: "fixed",
+        bottom: 0, left: 0, right: 0,
+        zIndex: 2000,
+        background: "#1F2937",
+        borderRadius: "12px 12px 0 0",
+        padding: "12px 16px 20px",
+        boxShadow: "0 -4px 24px rgba(0,0,0,0.28)",
+        fontFamily: DS.font.family,
+        color: "#fff",
+      }}>
+        {/* Count row */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+          <span style={{ fontSize: "14px", fontWeight: 600 }}>
+            {countLabel ?? defaultCountLabel}
+          </span>
+          <button
+            onClick={onClear}
+            style={{
+              background: "transparent", border: "1px solid #4B5563",
+              borderRadius: DS.radius.md, color: "#9CA3AF",
+              fontSize: "13px", padding: "4px 12px", cursor: "pointer",
+            }}
+          >
+            {clearLabel ?? "Clear"}
+          </button>
+        </div>
+        {/* Buttons grid */}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(actions.length, 3)}, 1fr)`, gap: "8px" }}>
+          {actions.map((action, i) => (
+            <button
+              key={i}
+              onClick={action.onClick}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexDirection: "column", gap: "4px",
+                padding: "8px 6px",
+                borderRadius: DS.radius.md,
+                fontSize: "11px", fontWeight: 600,
+                cursor: "pointer", border: "none",
+                lineHeight: 1.3,
+                textAlign: "center",
+                wordBreak: "keep-all",
+                background:
+                  action.variant === "danger" ? "#DC2626"
+                  : action.variant === "secondary" ? "#374151"
+                  : DS.colors.primary,
+                color: "#fff",
+              }}
+            >
+              {action.icon}
+              <span>{action.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{

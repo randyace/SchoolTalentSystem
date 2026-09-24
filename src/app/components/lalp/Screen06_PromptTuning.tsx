@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Webhook, Cpu, Zap, CheckCircle2, Circle, Save, TestTube2, ChevronDown, Plus, Server, MemoryStick,
 } from "lucide-react";
@@ -40,6 +40,13 @@ export const Screen06_PromptTuning: React.FC = () => {
   const [targetNode, setTargetNode] = useState("n8n-node-001");
   const [maxTokens, setMaxTokens] = useState("2048");
   const [temperature, setTemperature] = useState(0.7);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const toggleTone = (tone: string) => {
     setSelectedTones((prev) => {
@@ -63,7 +70,7 @@ export const Screen06_PromptTuning: React.FC = () => {
         background: DS.colors.background,
         minHeight: "100vh",
         fontFamily: DS.font.family,
-        padding: "24px",
+        padding: isMobile ? "16px" : "24px",
       }}
     >
       {/* Top Banner: n8n Webhook Orchestration */}
@@ -71,12 +78,14 @@ export const Screen06_PromptTuning: React.FC = () => {
         style={{
           background: "linear-gradient(135deg, #92400E 0%, #B45309 50%, #D97706 100%)",
           borderRadius: DS.radius.lg,
-          padding: "16px 24px",
+          padding: isMobile ? "14px 16px" : "16px 24px",
           marginBottom: "24px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: "12px",
           boxShadow: DS.shadow.md,
+          flexWrap: "wrap",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -89,21 +98,24 @@ export const Screen06_PromptTuning: React.FC = () => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              flexShrink: 0,
             }}
           >
             <Webhook size={20} color="#FEF3C7" />
           </div>
           <div>
-            <div style={{ fontSize: "16px", fontWeight: 700, color: "#FEF3C7" }}>
+            <div style={{ fontSize: isMobile ? "14px" : "16px", fontWeight: 700, color: "#FEF3C7" }}>
               n8n Webhook Orchestration
             </div>
-            <div style={{ fontSize: "12px", color: "#FDE68A", marginTop: "2px" }}>
-              Pedagogical Prompt Tuning · 模組六: 提示詞控制門戶
-            </div>
+            {!isMobile && (
+              <div style={{ fontSize: "12px", color: "#FDE68A", marginTop: "2px" }}>
+                Pedagogical Prompt Tuning · 模組六: 提示詞控制門戶
+              </div>
+            )}
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: isMobile ? "8px" : "12px", alignItems: "center", flexWrap: "wrap" }}>
           {[
             { label: "Webhook A", status: "active" },
             { label: "Webhook B", status: "active" },
@@ -116,7 +128,7 @@ export const Screen06_PromptTuning: React.FC = () => {
                 alignItems: "center",
                 gap: "6px",
                 background: "rgba(255,255,255,0.12)",
-                padding: "6px 14px",
+                padding: isMobile ? "4px 10px" : "6px 14px",
                 borderRadius: DS.radius.full,
                 border: "1px solid rgba(255,255,255,0.2)",
               }}
@@ -132,27 +144,23 @@ export const Screen06_PromptTuning: React.FC = () => {
                   display: "inline-block",
                 }}
               />
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "#FEF3C7" }}>
+              <span style={{ fontSize: isMobile ? "11px" : "13px", fontWeight: 600, color: "#FEF3C7" }}>
                 {wh.label}
               </span>
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: wh.status === "active" ? "#6EE7B7" : "#9CA3AF",
-                  textTransform: "capitalize",
-                }}
-              >
-                {wh.status}
-              </span>
+              {!isMobile && (
+                <span style={{ fontSize: "11px", color: wh.status === "active" ? "#6EE7B7" : "#9CA3AF", textTransform: "capitalize" }}>
+                  {wh.status}
+                </span>
+              )}
             </div>
           ))}
         </div>
       </div>
 
       {/* Main 2-col layout */}
-      <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
-        {/* LEFT 60% */}
-        <div style={{ flex: "0 0 60%", display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: "24px", alignItems: "flex-start" }}>
+        {/* LEFT col */}
+        <div style={{ flex: isMobile ? "1 1 auto" : "0 0 60%", width: isMobile ? "100%" : undefined, display: "flex", flexDirection: "column", gap: "20px" }}>
 
           {/* System Prompt Context */}
           <Card style={{ padding: "20px" }}>
@@ -379,8 +387,8 @@ export const Screen06_PromptTuning: React.FC = () => {
           </Card>
         </div>
 
-        {/* RIGHT 40% */}
-        <div style={{ flex: "0 0 40%", display: "flex", flexDirection: "column", gap: "20px" }}>
+        {/* RIGHT col */}
+        <div style={{ flex: isMobile ? "1 1 auto" : "0 0 40%", width: isMobile ? "100%" : undefined, display: "flex", flexDirection: "column", gap: "20px" }}>
 
           {/* LLM Model Selection */}
           <Card style={{ padding: "20px" }}>

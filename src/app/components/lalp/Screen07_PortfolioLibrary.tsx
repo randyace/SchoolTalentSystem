@@ -10,7 +10,7 @@
  *    Props contract is the single boundary; no component fetches its own data.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search, Download, Archive, Share2, Sparkles, Upload, Star,
   ChevronDown, X, FileText, Clock, CheckCircle2, User, AlertCircle,
@@ -334,6 +334,7 @@ interface StudentDetailDrawerProps {
   onForceConfirm: () => void;
   reminderSent: boolean;
   forceConfirmed: boolean;
+  isMobile?: boolean;
 }
 
 const FILE_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -351,7 +352,7 @@ const ARTIFACT_STATUS_CONFIG = {
 };
 
 const StudentDetailDrawer: React.FC<StudentDetailDrawerProps> = ({
-  item, onClose, onSendReminder, onForceConfirm, reminderSent, forceConfirmed,
+  item, onClose, onSendReminder, onForceConfirm, reminderSent, forceConfirmed, isMobile,
 }) => {
   const { drawer } = item;
   const isPending  = drawer.roleStatus === "pending";
@@ -376,17 +377,19 @@ const StudentDetailDrawer: React.FC<StudentDetailDrawerProps> = ({
       <div
         style={{
           position: "fixed",
-          top: 0,
+          top: isMobile ? 0 : 0,
           right: 0,
           bottom: 0,
-          width: "480px",
+          left: isMobile ? 0 : "auto",
+          width: isMobile ? "100%" : "480px",
           background: DS.colors.surface,
-          boxShadow: "-8px 0 32px rgba(0,0,0,0.18)",
+          boxShadow: isMobile ? "0 -8px 32px rgba(0,0,0,0.18)" : "-8px 0 32px rgba(0,0,0,0.18)",
           zIndex: 500,
           display: "flex",
           flexDirection: "column",
           animation: "drawerSlideIn 0.28s cubic-bezier(0.22,1,0.36,1)",
-          borderLeft: `1px solid ${DS.colors.border}`,
+          borderLeft: isMobile ? "none" : `1px solid ${DS.colors.border}`,
+          borderTop: isMobile ? `1px solid ${DS.colors.border}` : "none",
         }}
       >
         <style>{`
@@ -654,7 +657,7 @@ const StudentDetailDrawer: React.FC<StudentDetailDrawerProps> = ({
                     </div>
                     {/* File name + meta */}
                     <div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: DS.colors.textPrimary, fontFamily: DS.font.family, marginBottom: "3px", maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: DS.colors.textPrimary, fontFamily: DS.font.family, marginBottom: "3px", maxWidth: isMobile ? "180px" : "280px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {artifact.filename}
                       </div>
                       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -803,9 +806,17 @@ export const Screen07_PortfolioLibrary: React.FC = () => {
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [levelFilter, setLevelFilter]     = useState("all");
   const [sortBy, setSortBy]               = useState("score-desc");
+  const [isMobile, setIsMobile]           = useState(false);
 
-  // Drawer state — default open on Row 3 (Wong Ka Yan) per spec
-  const [drawerItemId, setDrawerItemId]   = useState<number | null>(3);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // Drawer state — null = Frame 1 (list only); set on row click = Frame 2 (detail drawer)
+  const [drawerItemId, setDrawerItemId]   = useState<number | null>(null);
   const [reminderSent, setReminderSent]   = useState(false);
   const [forceConfirmed, setForceConfirmed] = useState(false);
 
@@ -839,22 +850,28 @@ export const Screen07_PortfolioLibrary: React.FC = () => {
   });
 
   return (
-    <div style={{ background: DS.colors.background, minHeight: "100vh", fontFamily: DS.font.family, padding: "24px", position: "relative" }}>
+    <div style={{ background: DS.colors.background, minHeight: "100vh", fontFamily: DS.font.family, padding: isMobile ? "16px" : "24px", position: "relative" }}>
 
       {/* Page header */}
-      <div style={{ marginBottom: "20px" }}>
+      <div style={{ marginBottom: "16px" }}>
         <SectionHeader
           title="Exemplar & Portfolio Library"
-          subtitle="模組六: 優秀成果課件庫 · Browse, manage and export student portfolios · Click any row to inspect"
+          subtitle={isMobile ? "模組六: 優秀成果課件庫" : "模組六: 優秀成果課件庫 · Browse, manage and export student portfolios · Click any row to inspect"}
           actions={
-            <>
-              <Btn variant="ghost" icon={<Upload size={15} />} style={{ border: `1px solid ${DS.colors.border}` }}>
-                Import from eClass
-              </Btn>
+            isMobile ? (
               <Btn variant="primary" icon={<Sparkles size={15} />}>
-                Generate New Portfolio
+                New Portfolio
               </Btn>
-            </>
+            ) : (
+              <>
+                <Btn variant="ghost" icon={<Upload size={15} />} style={{ border: `1px solid ${DS.colors.border}` }}>
+                  Import from eClass
+                </Btn>
+                <Btn variant="primary" icon={<Sparkles size={15} />}>
+                  Generate New Portfolio
+                </Btn>
+              </>
+            )
           }
         />
       </div>
@@ -887,20 +904,122 @@ export const Screen07_PortfolioLibrary: React.FC = () => {
       </Card>
 
       {/* Stats Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? "10px" : "16px", marginBottom: isMobile ? "16px" : "24px" }}>
         <StatCard label="Total Portfolios" value="347" delta="+12 this week" positive icon={<Archive size={18} color={DS.colors.primary} />} color={DS.colors.primary} />
         <StatCard label="Avg Quality Score" value="87.3" delta="+2.1 vs last term" positive icon={<Star size={18} color={DS.colors.warning} />} color={DS.colors.warning} />
         <StatCard label="Shared to Cloud" value="128" icon={<Share2 size={18} color={DS.colors.secondary} />} color={DS.colors.secondary} />
         <StatCard label="Pending Review" value="23" icon={<Download size={18} color={DS.colors.error} />} color={DS.colors.error} />
       </div>
 
-      {/* Full-width card list */}
+      {/* Card list */}
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
         {filteredItems.map(item => {
-          const isSelected  = selectedItems.has(item.id);
+          const isSelected   = selectedItems.has(item.id);
           const isDrawerOpen = drawerItemId === item.id;
-          const scoreColor  = item.score >= 90 ? DS.colors.secondary : item.score >= 80 ? DS.colors.primary : DS.colors.warning;
-          const isPending   = item.drawer.roleStatus === "pending";
+          const scoreColor   = item.score >= 90 ? DS.colors.secondary : item.score >= 80 ? DS.colors.primary : DS.colors.warning;
+          const isPending    = item.drawer.roleStatus === "pending";
+
+          const cardBorder = isDrawerOpen
+            ? `2px solid ${item.subjectColor}`
+            : isSelected
+              ? `2px solid ${DS.colors.primary}`
+              : `1px solid ${DS.colors.border}`;
+          const cardShadow = isDrawerOpen
+            ? `0 0 0 4px ${item.subjectColor}18, ${DS.shadow.md}`
+            : isSelected
+              ? `0 0 0 3px ${DS.colors.primaryLight}, ${DS.shadow.sm}`
+              : DS.shadow.sm;
+
+          if (isMobile) {
+            return (
+              <div
+                key={item.id}
+                onClick={() => openDrawer(item.id)}
+                style={{
+                  background: DS.colors.surface,
+                  borderRadius: DS.radius.lg,
+                  border: cardBorder,
+                  boxShadow: cardShadow,
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  opacity: drawerItemId !== null && !isDrawerOpen ? 0.55 : 1,
+                  transition: "box-shadow 0.15s, border-color 0.15s",
+                }}
+              >
+                {/* Mobile card header: subject + score + checkbox */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "12px",
+                  padding: "12px 14px",
+                  background: item.headerBg,
+                  borderBottom: `1px solid ${DS.colors.border}`,
+                }}>
+                  <div
+                    style={{ flexShrink: 0 }}
+                    onClick={e => { e.stopPropagation(); toggleItem(item.id); }}
+                  >
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleItem(item.id)} style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: item.subjectColor }} />
+                  </div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: item.subjectColor, background: `${item.subjectColor}18`, padding: "3px 9px", borderRadius: DS.radius.full, border: `1px solid ${item.subjectColor}30` }}>
+                    {item.subject}
+                  </span>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "3px", marginLeft: "auto" }}>
+                    <span style={{ fontSize: "20px", fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{item.score}</span>
+                    <span style={{ fontSize: "10px", color: DS.colors.textMuted }}>/100</span>
+                    <Star size={12} color={scoreColor} fill={scoreColor} style={{ marginLeft: 2 }} />
+                  </div>
+                </div>
+
+                {/* Mobile card body */}
+                <div style={{ padding: "12px 14px" }}>
+                  {/* Student name + group */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "11px", color: DS.colors.textMuted }}>{item.studentName}</span>
+                    <span style={{ fontSize: "10px", fontWeight: 700, color: "#475569", background: "#F1F5F9", padding: "1px 5px", borderRadius: "3px" }}>
+                      Grp {item.drawer.group}
+                    </span>
+                    <span style={{ fontSize: "10px", color: DS.colors.textMuted, marginLeft: "auto" }}>{item.submitted}</span>
+                  </div>
+                  {/* Title */}
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: DS.colors.textPrimary, lineHeight: "1.35", marginBottom: "8px" }}>
+                    {item.title}
+                  </div>
+                  {/* Role badge + skills */}
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{
+                      fontSize: "10px", fontWeight: 700, padding: "2px 7px",
+                      background: isPending ? "#FEF3C7" : "#D1FAE5",
+                      color: isPending ? "#92400E" : "#065F46",
+                      border: `1px solid ${isPending ? "#FDE68A" : "#6EE7B7"}`,
+                      borderRadius: DS.radius.full, display: "flex", alignItems: "center", gap: "3px",
+                    }}>
+                      {isPending ? "⏳" : "✓"} {item.drawer.currentRole}
+                    </span>
+                    {item.skills.slice(0, 2).map(skill => (
+                      <span key={skill} style={{ fontSize: "11px", padding: "2px 8px", background: DS.colors.background, border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.full, color: DS.colors.textSecondary, fontWeight: 500 }}>
+                        {skill}
+                      </span>
+                    ))}
+                    {item.skills.length > 2 && (
+                      <span style={{ fontSize: "10px", color: DS.colors.textMuted }}>+{item.skills.length - 2}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mobile card footer: action buttons */}
+                <div
+                  style={{ display: "flex", gap: "8px", padding: "10px 14px", borderTop: `1px solid ${DS.colors.border}`, background: DS.colors.background }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <button onClick={() => openDrawer(item.id)} style={{ flex: 1, background: item.subjectColor, border: "none", borderRadius: DS.radius.sm, padding: "7px 0", fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "#fff", fontFamily: DS.font.family }}>
+                    {isDrawerOpen ? "Viewing ›" : "View Details"}
+                  </button>
+                  <button style={{ flex: 1, background: "none", border: `1px solid ${DS.colors.border}`, borderRadius: DS.radius.sm, padding: "7px 0", fontSize: "12px", cursor: "pointer", color: DS.colors.textSecondary, fontFamily: DS.font.family }}>
+                    Export
+                  </button>
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div
@@ -909,16 +1028,8 @@ export const Screen07_PortfolioLibrary: React.FC = () => {
               style={{
                 background: DS.colors.surface,
                 borderRadius: DS.radius.lg,
-                border: isDrawerOpen
-                  ? `2px solid ${item.subjectColor}`
-                  : isSelected
-                    ? `2px solid ${DS.colors.primary}`
-                    : `1px solid ${DS.colors.border}`,
-                boxShadow: isDrawerOpen
-                  ? `0 0 0 4px ${item.subjectColor}18, ${DS.shadow.md}`
-                  : isSelected
-                    ? `0 0 0 3px ${DS.colors.primaryLight}, ${DS.shadow.sm}`
-                    : DS.shadow.sm,
+                border: cardBorder,
+                boxShadow: cardShadow,
                 overflow: "hidden",
                 transition: "box-shadow 0.15s, border-color 0.15s",
                 display: "flex",
@@ -957,7 +1068,6 @@ export const Screen07_PortfolioLibrary: React.FC = () => {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: "11px", color: DS.colors.textMuted, marginBottom: "3px", display: "flex", alignItems: "center", gap: "8px" }}>
                       {item.studentName}
-                      {/* PDPO token hint on the row */}
                       <span style={{ fontSize: "10px", fontWeight: 600, color: DS.colors.textMuted, background: "#F8FAFC", border: `1px solid ${DS.colors.border}`, padding: "1px 5px", borderRadius: "3px", fontFamily: "'Courier New', monospace" }}>
                         {item.drawer.studentToken}
                       </span>
@@ -973,7 +1083,6 @@ export const Screen07_PortfolioLibrary: React.FC = () => {
                     <span style={{ fontSize: "11px", color: DS.colors.textMuted, whiteSpace: "nowrap" }}>
                       {item.submitted}
                     </span>
-                    {/* Role + status micro-badge */}
                     <span style={{
                       fontSize: "10px", fontWeight: 700, padding: "2px 7px",
                       background: isPending ? "#FEF3C7" : "#D1FAE5",
@@ -1039,6 +1148,7 @@ export const Screen07_PortfolioLibrary: React.FC = () => {
           onForceConfirm={() => setForceConfirmed(true)}
           reminderSent={reminderSent}
           forceConfirmed={forceConfirmed}
+          isMobile={isMobile}
         />
       )}
     </div>
