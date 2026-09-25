@@ -22,6 +22,8 @@ interface NavItem {
   enLabel: string;
   icon: React.ReactNode;
   screenId?: string;
+  /** Native CI4 URL — full page navigation */
+  href?: string;
 }
 
 interface NavGroup {
@@ -40,66 +42,65 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "workspace", zhTitle: "工作台", enTitle: "Workspace",
     items: [
-      { id: "today-overview",  zhLabel: "今日概覽", enLabel: "Today Overview", icon: <LayoutDashboard size={15} />, screenId: "1.A.1" },
-      { id: "approval-inbox",  zhLabel: "待辦審批", enLabel: "Approval Inbox",  icon: <ClipboardList size={15} />,  screenId: "1.A.3" },
+      { id: "today-overview",  zhLabel: "今日概覽", enLabel: "Today Overview", icon: <LayoutDashboard size={15} />, screenId: "1.A.1", href: "/dashboard" },
+      { id: "approval-inbox",  zhLabel: "待辦審批", enLabel: "Approval Inbox",  icon: <ClipboardList size={15} />,  screenId: "1.A.3", href: "/approval" },
     ],
   },
   {
     id: "students-classes", zhTitle: "學生與班級", enTitle: "Students & Classes",
     items: [
-      { id: "students-by-year", zhLabel: "年度學生名冊", enLabel: "Students by Year",    icon: <Users size={15} />,      screenId: "1.B.1"  },
-      { id: "class-list",       zhLabel: "班別列表",     enLabel: "Class List",          icon: <ListIcon size={15} />,   screenId: "1.B.3"  },
-      { id: "dynamic-groups",   zhLabel: "動態分組管理", enLabel: "Dynamic Group Mgmt",  icon: <PlusCircle size={15} />, screenId: "1.B.5"  },
+      { id: "students-by-year", zhLabel: "年度學生名冊", enLabel: "Students by Year",    icon: <Users size={15} />,      screenId: "1.B.1", href: "/students" },
+      { id: "class-list",       zhLabel: "班別列表",     enLabel: "Class List",          icon: <ListIcon size={15} />,   screenId: "1.B.3", href: "/classes" },
+      { id: "dynamic-groups",   zhLabel: "動態分組管理", enLabel: "Dynamic Group Mgmt",  icon: <PlusCircle size={15} />, screenId: "1.B.5", href: "/dynamic-group" },
     ],
   },
   {
     id: "subjects-assessment", zhTitle: "學科與評估", enTitle: "Subjects & Assessment",
     items: [
-      { id: "subjects",    zhLabel: "科目管理", enLabel: "Subjects",    icon: <BookOpen size={15} />,   screenId: "1.C.1" },
-      { id: "score-entry", zhLabel: "成績輸入", enLabel: "Score Entry", icon: <LayoutGrid size={15} />, screenId: "1.C.3" },
+      { id: "subjects",    zhLabel: "科目管理", enLabel: "Subjects",    icon: <BookOpen size={15} />,   screenId: "1.C.1", href: "/dashboard" },
+      { id: "score-entry", zhLabel: "成績輸入", enLabel: "Score Entry", icon: <LayoutGrid size={15} />, screenId: "1.C.3", href: "/dashboard" },
     ],
   },
   {
     id: "ai-operations", zhTitle: "AI 分析與生產", enTitle: "AI Analytics & Production",
     items: [
-      { id: "ai-workspace",      zhLabel: "AI 文案工作站", enLabel: "AI Writing Workspace", icon: <Sparkles size={15} />, screenId: "1.F.3/6" },
-      { id: "ai-data-assistant", zhLabel: "AI 數據助手",   enLabel: "AI Data Assistant",    icon: <Database size={15} />, screenId: "1.F.AI"  },
+      { id: "ai-workspace",      zhLabel: "AI 文案工作站", enLabel: "AI Writing Workspace", icon: <Sparkles size={15} />, screenId: "1.F.3/6", href: "/ai-workspace" },
+      { id: "ai-data-assistant", zhLabel: "AI 數據助手",   enLabel: "AI Data Assistant",    icon: <Database size={15} />, screenId: "1.F.AI",  href: "/ai-assistant" },
     ],
   },
   {
     id: "activities-talent", zhTitle: "活動與人才", enTitle: "Activities & Talent",
     items: [
-      { id: "activities",       zhLabel: "活動／比賽／事件", enLabel: "Activities / Events",  icon: <CalendarDays size={15} />, screenId: "1.D.1" },
-      { id: "achievements",     zhLabel: "成就與證書",       enLabel: "Achievements & Certs", icon: <Award size={15} />,        screenId: "1.D.4" },
-      { id: "group-awards",     zhLabel: "證書批量建立",     enLabel: "Bulk Certificate Gen", icon: <Layers size={15} />,       screenId: "1.D.4B" },
-      { id: "talent-filter",    zhLabel: "人才篩選與匯出",   enLabel: "Talent Pool & Filter", icon: <Users size={15} />,        screenId: "1.D.5" },
-      { id: "exemplar-library", zhLabel: "成果課件庫",       enLabel: "Exemplar Library",     icon: <FolderOpen size={15} />,   screenId: "1.D.7" },
-      { id: "club-management",  zhLabel: "學會管理",         enLabel: "Club & Society Mgmt",  icon: <Users size={15} />,        screenId: "1.D.8" },
+      { id: "activities",       zhLabel: "活動／比賽／事件", enLabel: "Activities / Events",  icon: <CalendarDays size={15} />, screenId: "1.D.1", href: "/activity" },
+      { id: "achievements",     zhLabel: "成就與證書",       enLabel: "Achievements & Certs", icon: <Award size={15} />,        screenId: "1.D.4", href: "/certificate" },
+      { id: "group-awards",     zhLabel: "證書批量建立",     enLabel: "Bulk Certificate Gen", icon: <Layers size={15} />,       screenId: "1.D.4B", href: "/certificate" },
+      { id: "talent-filter",    zhLabel: "人才篩選與匯出",   enLabel: "Talent Pool & Filter", icon: <Users size={15} />,        screenId: "1.D.5", href: "/talent" },
+      { id: "exemplar-library", zhLabel: "成果課件庫",       enLabel: "Exemplar Library",     icon: <FolderOpen size={15} />,   screenId: "1.D.7", href: "/dashboard" },
+      { id: "club-management",  zhLabel: "學會管理",         enLabel: "Club & Society Mgmt",  icon: <Users size={15} />,        screenId: "1.D.8", href: "/dashboard" },
     ],
   },
   {
     id: "collaboration", zhTitle: "專題研習", enTitle: "Project Learning",
     comingSoon: true,
     items: [
-      { id: "group-projects", zhLabel: "分組專題", enLabel: "Group Projects", icon: <Layers size={15} />,    screenId: "1.E.1" },
-      { id: "role-anchoring", zhLabel: "角色定錨", enLabel: "Role Anchoring", icon: <UserCheck size={15} />, screenId: "1.E.3" },
+      { id: "group-projects", zhLabel: "分組專題", enLabel: "Group Projects", icon: <Layers size={15} />,    screenId: "1.E.1", href: "/dashboard" },
+      { id: "role-anchoring", zhLabel: "角色定錨", enLabel: "Role Anchoring", icon: <UserCheck size={15} />, screenId: "1.E.3", href: "/dashboard" },
     ],
   },
   {
     id: "system-admin", zhTitle: "系統管理", enTitle: "System Admin",
     items: [
-      { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0"    },
-      { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1"    },
-      { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3"    },
-      { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.6,8"  },
-      { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8"  },
-      { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7"    },
-      { id: "tier-mapping",      zhLabel: "成就級別管理",     enLabel: "Tier Mapping",         icon: <Trophy      size={15} />, screenId: "1.G.1"    },
-      { id: "conduct-types",     zhLabel: "行為考勤類別",     enLabel: "Conduct & Att. Types", icon: <Sliders     size={15} />, screenId: "1.G.2"    },
-      { id: "dev-routes",        zhLabel: "路由標籤元件",     enLabel: "Dev Route Labels",     icon: <Code2       size={15} />, screenId: "DEV"      },
-
-      { id: "roles-positions",   zhLabel: "角色與崗位",       enLabel: "Roles & Positions",    icon: <Tag         size={15} />, screenId: "1.D.6"    },
-      { id: "desensitize-audit", zhLabel: "脫敏與審計",       enLabel: "De-sensitize & Audit", icon: <ShieldCheck size={15} />, screenId: "1.F.4,6"  },
+      { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings" },
+      { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster" },
+      { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/ai-workspace" },
+      { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.6,8", href: "/admin/settings" },
+      { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8", href: "/api/docs" },
+      { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7",   href: "/api/docs" },
+      { id: "tier-mapping",      zhLabel: "成就級別管理",     enLabel: "Tier Mapping",         icon: <Trophy      size={15} />, screenId: "1.G.1",   href: "/admin/settings" },
+      { id: "conduct-types",     zhLabel: "行為考勤類別",     enLabel: "Conduct & Att. Types", icon: <Sliders     size={15} />, screenId: "1.G.2",   href: "/admin/settings" },
+      { id: "dev-routes",        zhLabel: "路由標籤元件",     enLabel: "Dev Route Labels",     icon: <Code2       size={15} />, screenId: "DEV",     href: "/dashboard" },
+      { id: "roles-positions",   zhLabel: "角色與崗位",       enLabel: "Roles & Positions",    icon: <Tag         size={15} />, screenId: "1.D.6",   href: "/admin/settings" },
+      { id: "desensitize-audit", zhLabel: "脫敏與審計",       enLabel: "De-sensitize & Audit", icon: <ShieldCheck size={15} />, screenId: "1.F.4,6", href: "/admin/settings" },
     ],
   },
 ];
@@ -222,22 +223,20 @@ const SidebarItem: React.FC<{
   item: NavItem; active: boolean; onClick: () => void; locked?: boolean;
 }> = ({ item, active, onClick, locked = false }) => {
   const [hov, setHov] = useState(false);
-  return (
-    <button
-      onClick={locked ? undefined : onClick}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        width: "100%", display: "flex", alignItems: "center", gap: 9,
-        padding: "7px 14px 7px 11px",
-        background: active ? SB.activeBg : hov && !locked ? SB.hover : "transparent",
-        border: "none",
-        borderLeft: active ? `3px solid ${SB.activeBorder}` : "3px solid transparent",
-        cursor: locked ? "default" : "pointer",
-        fontFamily: ERP.font.family, transition: "all 0.1s", textAlign: "left",
-        opacity: locked ? 0.4 : 1,
-      }}
-    >
+  const style: React.CSSProperties = {
+    width: "100%", display: "flex", alignItems: "center", gap: 9,
+    padding: "7px 14px 7px 11px",
+    background: active ? SB.activeBg : hov && !locked ? SB.hover : "transparent",
+    border: "none",
+    borderLeft: active ? `3px solid ${SB.activeBorder}` : "3px solid transparent",
+    cursor: locked ? "default" : "pointer",
+    fontFamily: ERP.font.family, transition: "all 0.1s", textAlign: "left",
+    opacity: locked ? 0.4 : 1,
+    textDecoration: "none",
+    boxSizing: "border-box",
+  };
+  const inner = (
+    <>
       <span style={{
         color: active ? SB.iconActive : hov ? SB.iconHover : SB.icon,
         display: "flex", flexShrink: 0, transition: "color 0.1s",
@@ -263,6 +262,31 @@ const SidebarItem: React.FC<{
       {active && (
         <div style={{ width: 5, height: 5, borderRadius: "50%", background: SB.activeBorder, flexShrink: 0 }} />
       )}
+    </>
+  );
+
+  if (item.href && !locked) {
+    return (
+      <a
+        href={item.href}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={style}
+      >
+        {inner}
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={locked ? undefined : onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={style}
+    >
+      {inner}
     </button>
   );
 };
