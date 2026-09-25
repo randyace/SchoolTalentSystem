@@ -229,9 +229,42 @@ const ACTIVITY_INSIGHT_DATA = {
   month: { participations: 4830, unique: 389, participDelta: "+11% vs last month", uniqueDelta: "+41 new students" },
 };
 
-const ActivityInsightsWidget: React.FC<{ isMobile?: boolean }> = ({ isMobile = false }) => {
+function readStsDashboardBootstrap() {
+  if (typeof window === "undefined") return null;
+  return (window as unknown as { __STS_DASHBOARD__?: StsDashboardBootstrap }).__STS_DASHBOARD__ ?? null;
+}
+
+export interface StsDashboardBootstrap {
+  total_participations?: number;
+  unique_students?: number;
+  active_alerts?: number;
+  insights?: {
+    week?: { participations: number; unique: number; participDelta: string; uniqueDelta: string };
+    month?: { participations: number; unique: number; participDelta: string; uniqueDelta: string };
+  };
+  risk_alerts?: Array<{
+    emoji: string;
+    level: "error" | "warning";
+    title: string;
+    titleEn: string;
+    desc: string;
+    time: string;
+    count?: number;
+  }>;
+  stats?: DashboardStatItem[];
+  activities?: ActivityItem[];
+}
+
+const ActivityInsightsWidget: React.FC<{
+  isMobile?: boolean;
+  insights?: StsDashboardBootstrap["insights"];
+}> = ({ isMobile = false, insights }) => {
   const [period, setPeriod] = useState<"week" | "month">("week");
-  const d = ACTIVITY_INSIGHT_DATA[period];
+  const source = {
+    week: insights?.week ?? ACTIVITY_INSIGHT_DATA.week,
+    month: insights?.month ?? ACTIVITY_INSIGHT_DATA.month,
+  };
+  const d = source[period];
 
   return (
     <Card style={{ padding: isMobile ? "16px" : "20px" }}>
@@ -374,15 +407,20 @@ const ALERT_STYLES = {
   warning: { bg: "#FFFBEB", border: "#FDE68A", titleColor: "#92400E", subColor: "#D97706" },
 };
 
-const RiskAlertsWidget: React.FC<{ isMobile?: boolean }> = ({ isMobile = false }) => (
+const RiskAlertsWidget: React.FC<{
+  isMobile?: boolean;
+  alerts?: StsDashboardBootstrap["risk_alerts"];
+}> = ({ isMobile = false, alerts }) => {
+  const items = alerts && alerts.length > 0 ? alerts : RISK_ALERTS;
+  return (
   <Card style={{ padding: isMobile ? "16px" : "20px" }}>
     <SectionHeader
       title="學生風險預警"
       subtitle="Student Risk Alerts"
-      badge={<StatusBadge variant="error" label={`${RISK_ALERTS.length} Active`} size="sm" />}
+      badge={<StatusBadge variant="error" label={`${items.length} Active`} size="sm" />}
     />
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      {RISK_ALERTS.map((alert, i) => {
+      {items.map((alert, i) => {
         const s = ALERT_STYLES[alert.level];
         return (
           <div
@@ -431,7 +469,8 @@ const RiskAlertsWidget: React.FC<{ isMobile?: boolean }> = ({ isMobile = false }
       <ChevronRight size={13} />
     </button>
   </Card>
-);
+  );
+};
 
 // ─── EngagementIndexWidget ────────────────────────────────────────────────────
 const EngagementIndexWidget: React.FC<{ data: EngagementData; isMobile?: boolean }> = ({
@@ -545,12 +584,12 @@ const QUICK_ACTIONS = [
   { icon: "🔔", label: "Send Announcement", sub: "School broadcast",    color: "#EC4899" },
 ];
 
-export const Screen01_Dashboard: React.FC<Screen01DashboardProps> = ({
-  engagementData = MOCK_ENGAGEMENT_DATA,
-  classOverview  = MOCK_CLASS_OVERVIEW,
-  stats          = MOCK_DASHBOARD_STATS,
-  activities     = MOCK_ACTIVITIES,
-}) => {
+export const Screen01_Dashboard: React.FC<Screen01DashboardProps> = (props) => {
+  const bootstrap = readStsDashboardBootstrap();
+  const engagementData = props.engagementData ?? MOCK_ENGAGEMENT_DATA;
+  const classOverview  = props.classOverview ?? MOCK_CLASS_OVERVIEW;
+  const stats          = props.stats ?? bootstrap?.stats ?? MOCK_DASHBOARD_STATS;
+  const activities     = props.activities ?? bootstrap?.activities ?? MOCK_ACTIVITIES;
   const isMobile = useIsMobile(768);
 
   return (
@@ -623,7 +662,7 @@ export const Screen01_Dashboard: React.FC<Screen01DashboardProps> = ({
         <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? "14px" : "20px" }}>
 
           {/* Replaces removed ACORN Holistic Index */}
-          <ActivityInsightsWidget isMobile={isMobile} />
+          <ActivityInsightsWidget isMobile={isMobile} insights={bootstrap?.insights} />
 
           {/* Quick Actions — QR Scan removed; 6 school-management shortcuts */}
           <Card style={{ padding: isMobile ? "16px" : "20px" }}>
@@ -673,7 +712,7 @@ export const Screen01_Dashboard: React.FC<Screen01DashboardProps> = ({
         <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? "14px" : "20px" }}>
           <EngagementIndexWidget data={engagementData} isMobile={isMobile} />
           <SchoolSnapshotWidget items={classOverview} isMobile={isMobile} />
-          <RiskAlertsWidget isMobile={isMobile} />
+          <RiskAlertsWidget isMobile={isMobile} alerts={bootstrap?.risk_alerts} />
           <RecentActivityWidget items={activities} isMobile={isMobile} />
           <Card style={{ padding: isMobile ? "14px 16px" : "16px 20px" }}>
             <SectionHeader
