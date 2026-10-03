@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Frame 3.0 — 全校活動總表 with Edit Drawer
-// Frame 1: standardised ghost-icon action buttons on every row
-// Frame 2: right slide-out drawer (40% width) for editing
+// Frame 3.0 — 全校活動總表
+// Edit / Create navigate to dedicated full-page routes (no offcanvas).
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from "react";
 import {
@@ -24,6 +23,7 @@ interface Activity {
   status: StatusKey;
   startDate: string;
   participants: number;
+  academic_year?: string;
 }
 
 type LevelCode = "L4" | "L3" | "L2" | "L1";
@@ -63,42 +63,42 @@ interface EditForm {
 const ACTIVITIES: Activity[] = [
   {
     id: "ACT-001", name: "全港科學創意大賽", nameEn: "HKACE Science Competition",
-    category: "比賽", pic: "陳 Sir", linkedClasses: ["F3A", "F3B"],
+    category: "比賽", pic: "陳 Sir", linkedClasses: ["F3"],
     acornTags: ["認知", "創意"], status: "active", startDate: "2026-08-05", participants: 24,
   },
   {
     id: "ACT-002", name: "班際足球聯賽", nameEn: "Inter-Class Football League",
-    category: "體育", pic: "林 Sir", linkedClasses: ["F1A", "F2A", "F3A"],
+    category: "體育", pic: "林 Sir", linkedClasses: ["F1", "F2", "F3"],
     acornTags: ["體適能", "協作"], status: "active", startDate: "2026-07-20", participants: 72,
   },
   {
     id: "ACT-003", name: "中文詩詞朗誦比賽", nameEn: "Chinese Poetry Recitation",
-    category: "文藝", pic: "王老師", linkedClasses: ["F2B", "F2C"],
+    category: "文藝", pic: "王老師", linkedClasses: ["F2"],
     acornTags: ["認知", "社群"], status: "planning", startDate: "2026-09-12", participants: 32,
   },
   {
     id: "ACT-004", name: "數學思維挑戰賽", nameEn: "Math Thinking Challenge",
-    category: "學術", pic: "黃 Sir", linkedClasses: ["F4A", "F4B", "F5A"],
+    category: "學術", pic: "黃 Sir", linkedClasses: ["F4", "F5"],
     acornTags: ["認知"], status: "active", startDate: "2026-08-01", participants: 45,
   },
   {
     id: "ACT-005", name: "義工服務日", nameEn: "Volunteer Service Day",
-    category: "服務", pic: "李老師", linkedClasses: ["全校"],
+    category: "服務", pic: "李老師", linkedClasses: ["All"],
     acornTags: ["社群", "協作", "領導"], status: "planning", startDate: "2026-10-03", participants: 420,
   },
   {
     id: "ACT-006", name: "英語戲劇表演", nameEn: "English Drama Performance",
-    category: "文藝", pic: "Taylor T.", linkedClasses: ["F5A", "F6A"],
+    category: "文藝", pic: "Taylor T.", linkedClasses: ["F5", "F6"],
     acornTags: ["創意", "社群"], status: "completed", startDate: "2026-06-15", participants: 28,
   },
   {
     id: "ACT-007", name: "STEM 機械人工作坊", nameEn: "STEM Robotics Workshop",
-    category: "學術", pic: "陳 Sir", linkedClasses: ["F3C"],
+    category: "學術", pic: "陳 Sir", linkedClasses: ["F3"],
     acornTags: ["創意", "認知"], status: "active", startDate: "2026-08-10", participants: 18,
   },
   {
     id: "ACT-008", name: "校際音樂節", nameEn: "Inter-school Music Festival",
-    category: "文藝", pic: "何老師", linkedClasses: ["F1B", "F2A"],
+    category: "文藝", pic: "何老師", linkedClasses: ["F1", "F2"],
     acornTags: ["創意"], status: "paused", startDate: "2026-09-28", participants: 36,
   },
 ];
@@ -502,13 +502,22 @@ const WeightMatrix: React.FC<{
 };
 
 /* ── Main Export ─────────────────────────────────────────────────────────── */
-export const Frame03_ActivityTable: React.FC = () => {
+export const Frame03_ActivityTable: React.FC<{
+  activities?: Activity[];
+  createUrl?: string;
+  editUrlBase?: string;
+}> = ({
+  activities,
+  createUrl = "/activities/create",
+  editUrlBase = "/activities/edit",
+}) => {
+  const catalog = activities !== undefined ? activities : ACTIVITIES;
+
   const [search, setSearch]                   = useState("");
   const [year, setYear]                       = useState(YEARS[0]);
   const [category, setCategory]               = useState(CATEGORIES[0]);
   const [page, setPage]                       = useState(1);
   const [selectedIds, setSelectedIds]         = useState<Set<string>>(new Set());
-  const [editingId, setEditingId]             = useState<string | null>(null);
   const [hoveredRow, setHoveredRow]           = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn]           = useState<string | null>(null);
   const [isMobile, setIsMobile]               = useState(false);
@@ -563,9 +572,10 @@ export const Frame03_ActivityTable: React.FC = () => {
     "認知": 60, "創意": 40,
   });
 
-  const filtered = ACTIVITIES.filter((a) => {
+  const filtered = catalog.filter((a) => {
     if (search && !a.name.includes(search) && !a.nameEn.toLowerCase().includes(search.toLowerCase())) return false;
     if (category !== CATEGORIES[0] && a.category !== category) return false;
+    if (a.academic_year && a.academic_year !== year) return false;
     return true;
   });
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -580,22 +590,12 @@ export const Frame03_ActivityTable: React.FC = () => {
     else setSelectedIds(new Set(paginated.map((a) => a.id)));
   };
 
-  const openEdit = (act: Activity) => {
-    const tags = [...act.acornTags];
-    setForm({ name: act.name, category: act.category, pic: act.pic, acornTags: tags, level: "L2", status: act.status });
-    const base = Math.floor(100 / tags.length);
-    const rem  = 100 - base * tags.length;
-    const w: Record<string, number> = {};
-    tags.forEach((t, i) => { w[t] = base + (i === 0 ? rem : 0); });
-    setAcornWeights(w);
-    setEditingId(act.id);
+  const goEdit = (act: Activity) => {
+    window.location.href = `${editUrlBase}/${act.id}`;
   };
 
-  const openNew = () => {
-    setForm({ name: "", category: "比賽", pic: "", acornTags: [], level: "L2", status: "planning" });
-    setAcornWeights({});
-    setParticipantIds(new Set());
-    setEditingId("NEW");
+  const goCreate = () => {
+    window.location.href = createUrl;
   };
 
   // Redistribute weights evenly across `tags`, rounding to integers summing to 100
@@ -686,15 +686,11 @@ export const Frame03_ActivityTable: React.FC = () => {
   };
 
   const statusCounts = {
-    active:    ACTIVITIES.filter(a => a.status === "active").length,
-    planning:  ACTIVITIES.filter(a => a.status === "planning").length,
-    completed: ACTIVITIES.filter(a => a.status === "completed").length,
-    paused:    ACTIVITIES.filter(a => a.status === "paused").length,
+    active:    catalog.filter(a => a.status === "active").length,
+    planning:  catalog.filter(a => a.status === "planning").length,
+    completed: catalog.filter(a => a.status === "completed").length,
+    paused:    catalog.filter(a => a.status === "paused").length,
   };
-
-  const isNewMode = editingId === "NEW";
-  const editingActivity = editingId && !isNewMode ? ACTIVITIES.find(a => a.id === editingId) : null;
-  const drawerOpen = !!editingId;
 
   return (
     <>
@@ -709,10 +705,6 @@ export const Frame03_ActivityTable: React.FC = () => {
       <div style={{
         padding: isMobile ? "16px" : `${ERP.layout.contentPad}px`,
         paddingBottom: isMobile && selectedIds.size > 0 ? "96px" : undefined,
-        transition: "opacity 0.2s, filter 0.2s",
-        opacity: drawerOpen ? 0.45 : 1,
-        filter: drawerOpen ? "blur(1px)" : "none",
-        pointerEvents: drawerOpen ? "none" : "auto",
         minHeight: "100%",
       }}>
 
@@ -734,7 +726,7 @@ export const Frame03_ActivityTable: React.FC = () => {
                 border: `1px solid ${ERP.colors.accent}40`,
                 borderRadius: ERP.radius.full, padding: "2px 10px",
               }}>
-                {ACTIVITIES.length} 個活動
+                {catalog.length} 個活動
               </span>
             </div>
             {!isMobile && (
@@ -755,7 +747,7 @@ export const Frame03_ActivityTable: React.FC = () => {
               <Download size={14} /> 匯出
             </button>
             <button
-              onClick={openNew}
+              onClick={goCreate}
               style={{
                 display: "flex", alignItems: "center", gap: "6px",
                 padding: "8px 16px", flex: isMobile ? 1 : undefined,
@@ -882,7 +874,7 @@ export const Frame03_ActivityTable: React.FC = () => {
                 </div>
               ) : paginated.map((act) => {
                 const isSelected = selectedIds.has(act.id);
-                const isEditing  = editingId === act.id;
+                const isEditing  = false;
                 return (
                   <div
                     key={act.id}
@@ -945,7 +937,7 @@ export const Frame03_ActivityTable: React.FC = () => {
                       {/* Action buttons */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "5px", flexShrink: 0 }}>
                         <button
-                          onClick={() => openEdit(act)}
+                          onClick={() => goEdit(act)}
                           style={{
                             display: "inline-flex", alignItems: "center", gap: "4px",
                             padding: "4px 9px",
@@ -993,7 +985,7 @@ export const Frame03_ActivityTable: React.FC = () => {
                   </th>
                   <TH width="25%">活動名稱</TH>
                   <TH width="9%">負責教師</TH>
-                  <TH width="14%">連結班別</TH>
+                  <TH width="14%">連結級別</TH>
                   <TH width="20%"><span title="ACORN 六維能力屬性標籤">ACORN 屬性標籤</span></TH>
                   <TH width="10%" align="center">狀態</TH>
                   <TH width="9%">開始日期</TH>
@@ -1010,7 +1002,7 @@ export const Frame03_ActivityTable: React.FC = () => {
                 ) : paginated.map((act) => {
                   const isSelected = selectedIds.has(act.id);
                   const isHovered  = hoveredRow === act.id;
-                  const isEditing  = editingId === act.id;
+                  const isEditing  = false;
                   return (
                     <tr
                       key={act.id}
@@ -1109,7 +1101,7 @@ export const Frame03_ActivityTable: React.FC = () => {
                         <div style={{ display: "flex", gap: "6px", justifyContent: "center", alignItems: "center" }}>
                           {/* Edit button */}
                           <button
-                            onClick={() => openEdit(act)}
+                            onClick={() => goEdit(act)}
                             onMouseEnter={() => setHoveredBtn(`edit-${act.id}`)}
                             onMouseLeave={() => setHoveredBtn(null)}
                             style={{
@@ -1227,969 +1219,6 @@ export const Frame03_ActivityTable: React.FC = () => {
           )
         )}
       </div>
-
-      {/* ── Dim overlay (click-to-close) ──────────────────────────────────── */}
-      {drawerOpen && (
-        <div
-          onClick={() => setEditingId(null)}
-          style={{
-            position: "fixed", inset: 0,
-            background: "rgba(15, 23, 42, 0.35)",
-            zIndex: 490,
-            cursor: "pointer",
-          }}
-        />
-      )}
-
-      {/* ── Participant Management Panel ─────────────────────────────────── */}
-      {showParticipants && (
-        <>
-          {/* Backdrop */}
-          <div onClick={() => setShowParticipants(false)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 550 }} />
-
-          {/* Panel */}
-          <div style={{
-            position: "fixed",
-            ...(isMobile ? { bottom: 0, left: 0, right: 0, height: "92vh", borderRadius: "16px 16px 0 0" }
-                        : { top: 0, right: 0, width: "min(560px, 46vw)", height: "100vh", borderLeft: `1px solid ${ERP.colors.border}` }),
-            background: ERP.colors.surface, boxShadow: ERP.shadow.xl,
-            zIndex: 600, display: "flex", flexDirection: "column", overflow: "hidden",
-          }}>
-
-            {/* ── Header ── */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 20px", height: 60, flexShrink: 0, borderBottom: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface }}>
-              <div style={{ width: 32, height: 32, borderRadius: ERP.radius.md, background: ERP.colors.accentPale, border: `1px solid ${ERP.colors.accentLight}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Users size={15} color={ERP.colors.accent} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: ERP.colors.textMuted, letterSpacing: "0.04em", textTransform: "uppercase" as const }}>名單管理 / 動態分組</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{editingActivity?.name ?? "新增活動"}</div>
-              </div>
-              <span style={{ padding: "2px 10px", borderRadius: ERP.radius.full, background: ERP.colors.accent, color: "#fff", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                {participantIds.size} 人已加入
-              </span>
-              {disambigQueue.filter(q => !q.resolved).length > 0 && (
-                <span style={{ padding: "2px 8px", borderRadius: ERP.radius.full, background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
-                  ⚠️ {disambigQueue.filter(q => !q.resolved).length} 撞名
-                </span>
-              )}
-              <button onClick={() => setShowParticipants(false)} style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, background: "transparent", color: ERP.colors.textMuted, cursor: "pointer", flexShrink: 0, marginLeft: 4 }}>
-                <X size={14} />
-              </button>
-            </div>
-
-            {/* ── Tab bar ── */}
-            <div style={{ display: "flex", borderBottom: `1px solid ${ERP.colors.border}`, padding: "0 20px", flexShrink: 0, background: ERP.colors.surface }}>
-              {([
-                { key: "add" as const,   label: "加入學生 Add",       badge: undefined },
-                { key: "roles" as const, label: "名單與職銜 Roles",   badge: participantIds.size > 0 ? participantIds.size : undefined },
-              ]).map(tab => (
-                <button key={tab.key} onClick={() => setRosterTab(tab.key)} style={{ padding: "11px 16px", border: "none", background: "none", fontSize: 12, fontWeight: rosterTab === tab.key ? 700 : 500, color: rosterTab === tab.key ? ERP.colors.accent : ERP.colors.textSecondary, cursor: "pointer", fontFamily: ERP.font.family, borderBottom: rosterTab === tab.key ? `2px solid ${ERP.colors.accent}` : "2px solid transparent", marginBottom: -1, display: "flex", alignItems: "center", gap: 6, transition: "all 0.12s" }}>
-                  {tab.label}
-                  {tab.badge !== undefined && (
-                    <span style={{ padding: "1px 6px", borderRadius: ERP.radius.full, background: rosterTab === tab.key ? ERP.colors.accent : ERP.colors.pageBg, border: rosterTab === tab.key ? "none" : `1px solid ${ERP.colors.border}`, color: rosterTab === tab.key ? "#fff" : ERP.colors.textMuted, fontSize: 10, fontWeight: 800 }}>{tab.badge}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* ── Disambiguation Queue (shown above both tabs when active) ── */}
-            {disambigQueue.filter(q => !q.resolved).length > 0 && (
-              <div style={{ margin: "10px 16px 0", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: ERP.radius.lg, overflow: "hidden", flexShrink: 0 }}>
-                {/* Banner */}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderBottom: "1px solid #FDE68A" }}>
-                  <span style={{ fontSize: 16 }}>⚠️</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", fontFamily: ERP.font.family }}>
-                      撞名待解決 Name Conflicts — {disambigQueue.filter(q => !q.resolved).length} 項
-                    </div>
-                    <div style={{ fontSize: 10.5, color: "#B45309", fontFamily: ERP.font.family }}>系統無法自動指派，請手動確認每位學生身份</div>
-                  </div>
-                </div>
-                {/* Items */}
-                <div style={{ maxHeight: 230, overflowY: "auto" }}>
-                  {disambigQueue.filter(q => !q.resolved).map(item => (
-                    <div key={item.id} style={{ padding: "11px 14px", borderBottom: "1px solid #FEF3C7" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", fontFamily: ERP.font.family, marginBottom: 8 }}>
-                        貼上名稱：「<span style={{ fontFamily: ERP.font.mono }}>{item.rawName}</span>」
-                        {item.matches.length > 0 ? ` — 找到 ${item.matches.length} 個可能匹配` : " — 找不到匹配學生"}
-                      </div>
-                      {item.matches.length > 0 ? (
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {item.matches.map(s => (
-                            <div key={s.id} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", background: "#fff", border: "1px solid #FDE68A", borderRadius: ERP.radius.md, minWidth: 140, flex: "1 1 140px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg, ${ERP.colors.accent}, ${ERP.colors.cyan})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{s.nameZh.slice(0, 1)}</div>
-                                <div>
-                                  <div style={{ fontSize: 12, fontWeight: 700, color: ERP.colors.textPrimary, fontFamily: ERP.font.family }}>{s.nameZh}</div>
-                                  <div style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: ERP.font.family }}>{s.nameEn}</div>
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                                {[s.class, `#${s.id}`, s.yearHash].map(chip => (
-                                  <span key={chip} style={{ padding: "1px 6px", background: ERP.colors.pageBg, border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.xs, fontSize: 10, color: ERP.colors.textSecondary, fontFamily: ERP.font.mono }}>{chip}</span>
-                                ))}
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setParticipantIds(prev => { const n = new Set(prev); n.add(s.id); return n; });
-                                  setDisambigQueue(prev => prev.map(q => q.id === item.id ? { ...q, resolved: true, resolvedId: s.id } : q));
-                                }}
-                                style={{ padding: "5px 10px", border: "none", borderRadius: ERP.radius.sm, background: ERP.colors.accent, color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: ERP.font.family, cursor: "pointer" }}
-                              >
-                                ✓ 選取 Select
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#FEE2E2", borderRadius: ERP.radius.sm }}>
-                          <span style={{ fontSize: 13 }}>❌</span>
-                          <span style={{ fontSize: 11, color: "#991B1B", fontFamily: ERP.font.family }}>找不到符合的學生，請手動搜尋後勾選</span>
-                          <button onClick={() => { setDisambigQueue(prev => prev.map(q => q.id === item.id ? { ...q, resolved: true } : q)); setParticipantSearch(item.rawName); setAddMode("search"); setRosterTab("add"); }} style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, color: ERP.colors.accent, background: "none", border: "none", cursor: "pointer", fontFamily: ERP.font.family, textDecoration: "underline" }}>跳至搜尋</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Tab body ── */}
-            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", minHeight: 0 }}>
-
-              {/* Tab: 加入學生 */}
-              {rosterTab === "add" && (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-
-                  {/* Mode toggle */}
-                  <div style={{ padding: "12px 20px 0", flexShrink: 0 }}>
-                    <div style={{ display: "inline-flex", padding: 3, background: ERP.colors.pageBg, border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, gap: 2, marginBottom: 12 }}>
-                      {([
-                        { key: "search" as const, icon: "🔍", label: "搜尋 Search" },
-                        { key: "paste"  as const, icon: "📋", label: "貼上名單 Paste" },
-                      ]).map(m => (
-                        <button key={m.key} onClick={() => setAddMode(m.key)} style={{ padding: "6px 14px", border: "none", borderRadius: ERP.radius.sm, background: addMode === m.key ? ERP.colors.accent : "transparent", color: addMode === m.key ? "#fff" : ERP.colors.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: ERP.font.family, cursor: "pointer", transition: "all 0.12s" }}>
-                          {m.icon} {m.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Search mode */}
-                  {addMode === "search" && (
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
-                      <div style={{ padding: "0 20px 8px", flexShrink: 0 }}>
-                        <div style={{ position: "relative", marginBottom: 10 }}>
-                          <Search size={13} color={ERP.colors.textMuted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-                          <input value={participantSearch} onChange={e => setParticipantSearch(e.target.value)} placeholder="搜尋學生姓名或學號…" style={{ width: "100%", boxSizing: "border-box" as const, paddingLeft: 32, paddingRight: 12, paddingTop: 8, paddingBottom: 8, border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, fontSize: 13, fontFamily: ERP.font.family, color: ERP.colors.textPrimary, background: ERP.colors.pageBg, outline: "none" }} />
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 11, color: ERP.colors.textMuted, fontFamily: ERP.font.family }}>共 {MOCK_STUDENTS.length} 位學生 · {participantIds.size} 人已加入</span>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => setParticipantIds(new Set(MOCK_STUDENTS.map(s => s.id)))} style={{ fontSize: 11, color: ERP.colors.accent, background: "none", border: "none", cursor: "pointer", fontFamily: ERP.font.family, fontWeight: 600 }}>全選</button>
-                            <span style={{ color: ERP.colors.border }}>|</span>
-                            <button onClick={() => setParticipantIds(new Set())} style={{ fontSize: 11, color: ERP.colors.textMuted, background: "none", border: "none", cursor: "pointer", fontFamily: ERP.font.family }}>全清</button>
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ flex: 1, overflowY: "auto", padding: "0 20px" }}>
-                        {(() => {
-                          const keyword = participantSearch.toLowerCase();
-                          const visible = MOCK_STUDENTS.filter(s => !keyword || s.nameZh.includes(participantSearch) || s.nameEn.toLowerCase().includes(keyword) || s.id.includes(participantSearch) || s.class.toLowerCase().includes(keyword));
-                          if (visible.length === 0) return <div style={{ padding: "32px 0", textAlign: "center", color: ERP.colors.textMuted, fontSize: 13, fontFamily: ERP.font.family }}>找不到符合條件的學生</div>;
-                          const byClass: Record<string, typeof visible> = {};
-                          visible.forEach(s => { if (!byClass[s.class]) byClass[s.class] = []; byClass[s.class].push(s); });
-                          return Object.entries(byClass).map(([cls, students]) => (
-                            <div key={cls} style={{ marginBottom: 4 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0 5px", fontSize: 10.5, fontWeight: 800, color: ERP.colors.textMuted, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: ERP.font.family, borderBottom: `1px solid ${ERP.colors.divider}`, marginBottom: 2 }}>
-                                <span style={{ padding: "1px 7px", borderRadius: ERP.radius.xs, background: ERP.colors.pageBg, border: `1px solid ${ERP.colors.border}`, color: ERP.colors.textSecondary, fontFamily: ERP.font.mono, fontSize: 10 }}>{cls}</span>
-                                <span>{students.length} 人</span>
-                                <span style={{ color: ERP.colors.accent, marginLeft: "auto" }}>{students.filter(s => participantIds.has(s.id)).length} 已加入</span>
-                              </div>
-                              {students.map(student => {
-                                const enrolled = participantIds.has(student.id);
-                                return (
-                                  <div key={student.id} onClick={() => setParticipantIds(prev => { const next = new Set(prev); next.has(student.id) ? next.delete(student.id) : next.add(student.id); return next; })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: ERP.radius.md, background: enrolled ? ERP.colors.accentPale : "transparent", cursor: "pointer", transition: "background 0.1s", marginBottom: 1 }}>
-                                    <div style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, border: `2px solid ${enrolled ? ERP.colors.accent : ERP.colors.borderStrong}`, background: enrolled ? ERP.colors.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>
-                                      {enrolled && <span style={{ color: "#fff", fontSize: 11, lineHeight: 1, fontWeight: 900 }}>✓</span>}
-                                    </div>
-                                    <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: `linear-gradient(135deg, ${ERP.colors.accent}, ${ERP.colors.cyan})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff" }}>{student.nameZh.slice(0, 1)}</div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 13, fontWeight: 600, color: enrolled ? ERP.colors.accent : ERP.colors.textPrimary, fontFamily: ERP.font.family }}>{student.nameZh}</div>
-                                      <div style={{ fontSize: 10.5, color: ERP.colors.textMuted, fontFamily: ERP.font.family }}>{student.nameEn}</div>
-                                    </div>
-                                    <div style={{ textAlign: "right" as const, flexShrink: 0 }}>
-                                      <div style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.textSecondary, fontFamily: ERP.font.mono }}>{student.class}</div>
-                                      <div style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: ERP.font.family }}>No. {student.no}</div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ));
-                        })()}
-                        <div style={{ height: 12 }} />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Paste mode */}
-                  {addMode === "paste" && (
-                    <div style={{ padding: "0 20px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-                      <div style={{ padding: "10px 14px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: ERP.radius.md }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1D4ED8", fontFamily: ERP.font.family, marginBottom: 4 }}>📋 Excel 快速貼上 Smart Paste</div>
-                        <div style={{ fontSize: 11, color: "#3B82F6", fontFamily: ERP.font.family, lineHeight: 1.7 }}>
-                          每行一個名字，或用逗號 / Tab 分隔。唯一比對自動加入；撞名須手動確認。<br />
-                          Each name on a new line, or comma/tab separated. Unique matches auto-enroll; conflicts require manual confirmation.
-                        </div>
-                      </div>
-                      <textarea
-                        value={pasteText}
-                        onChange={e => setPasteText(e.target.value)}
-                        placeholder={"陳大文\n李美玲\n黃志豪\n…或從 Excel 直接貼上"}
-                        rows={8}
-                        style={{ width: "100%", boxSizing: "border-box" as const, padding: "12px 14px", border: `1.5px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, fontSize: 13, fontFamily: ERP.font.mono, color: ERP.colors.textPrimary, background: ERP.colors.pageBg, outline: "none", resize: "vertical" as const, lineHeight: 1.8 }}
-                      />
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          onClick={parsePaste}
-                          disabled={!pasteText.trim()}
-                          style={{ flex: 1, padding: "10px 16px", border: "none", borderRadius: ERP.radius.md, background: pasteText.trim() ? ERP.colors.accent : ERP.colors.border, color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: ERP.font.family, cursor: pasteText.trim() ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.12s" }}
-                        >
-                          <Sparkles size={14} /> 解析名單 Parse List
-                        </button>
-                        <button onClick={() => { setPasteText(""); setDisambigQueue([]); }} style={{ padding: "10px 14px", border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, background: "transparent", color: ERP.colors.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: ERP.font.family, cursor: "pointer" }}>清除</button>
-                      </div>
-                      <div style={{ padding: "8px 12px", background: ERP.colors.pageBg, border: `1px dashed ${ERP.colors.border}`, borderRadius: ERP.radius.sm }}>
-                        <div style={{ fontSize: 10.5, color: ERP.colors.textMuted, fontFamily: ERP.font.family, lineHeight: 1.7 }}>
-                          💡 <strong>Demo：</strong>試貼「陳」或「李明」可觸發撞名處理流程 · Paste "陳" or "李明" to demo the disambiguation flow
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tab: 名單與職銜 */}
-              {rosterTab === "roles" && (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-                  {participantIds.size === 0 ? (
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: ERP.colors.textMuted, fontFamily: ERP.font.family }}>
-                      <Users size={36} color={ERP.colors.border} />
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>尚未加入任何學生</div>
-                      <div style={{ fontSize: 11 }}>請先在「加入學生」分頁選擇或貼上學生名單</div>
-                      <button onClick={() => setRosterTab("add")} style={{ marginTop: 4, padding: "8px 18px", border: `1px solid ${ERP.colors.accent}`, borderRadius: ERP.radius.md, background: ERP.colors.accentPale, color: ERP.colors.accent, fontSize: 12, fontWeight: 600, fontFamily: ERP.font.family, cursor: "pointer" }}>
-                        前往加入學生 →
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Column headers */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 158px 76px", gap: 8, padding: "8px 20px", background: ERP.colors.pageBg, borderBottom: `1px solid ${ERP.colors.border}`, flexShrink: 0 }}>
-                        {[
-                          { zh: "學生 Student", en: "" },
-                          { zh: "自訂職銜", en: "Custom Title" },
-                          { zh: "系統級別", en: "System Tier" },
-                          { zh: "狀態", en: "Status" },
-                        ].map(col => (
-                          <div key={col.zh}>
-                            <div style={{ fontSize: 10.5, fontWeight: 800, color: ERP.colors.textMuted, fontFamily: ERP.font.family, letterSpacing: "0.04em" }}>{col.zh}</div>
-                            {col.en && <div style={{ fontSize: 9.5, color: ERP.colors.textMuted, fontFamily: ERP.font.family, opacity: 0.7 }}>{col.en}</div>}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Enrolled student rows */}
-                      <div style={{ flex: 1, overflowY: "auto" }}>
-                        {MOCK_STUDENTS.filter(s => participantIds.has(s.id)).map(student => {
-                          const role = rosterRoles[student.id] ?? { title: "", tier: "" };
-                          const isAssigned = !!role.tier;
-                          return (
-                            <div key={student.id} style={{ display: "grid", gridTemplateColumns: "1fr 130px 158px 76px", gap: 8, alignItems: "center", padding: "10px 20px", borderBottom: `1px solid ${ERP.colors.divider}`, background: isAssigned ? "#F0FDF4" : ERP.colors.surface, transition: "background 0.15s" }}>
-
-                              {/* Student info */}
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                                <div style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, background: `linear-gradient(135deg, ${ERP.colors.accent}, ${ERP.colors.cyan})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff" }}>
-                                  {student.nameZh.slice(0, 1)}
-                                </div>
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: ERP.colors.textPrimary, fontFamily: ERP.font.family, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{student.nameZh}</div>
-                                  <div style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: ERP.font.mono }}>{student.class} · #{student.id}</div>
-                                </div>
-                              </div>
-
-                              {/* Custom title */}
-                              <input
-                                value={role.title}
-                                onChange={e => setRosterRoles(prev => ({ ...prev, [student.id]: { ...role, title: e.target.value } }))}
-                                placeholder="如 Captain…"
-                                style={{ width: "100%", boxSizing: "border-box" as const, padding: "5px 8px", border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.sm, fontSize: 11, fontFamily: ERP.font.family, color: ERP.colors.textPrimary, background: "#fff", outline: "none" }}
-                              />
-
-                              {/* System tier dropdown */}
-                              <div style={{ position: "relative" }}>
-                                <select
-                                  value={role.tier}
-                                  onChange={e => setRosterRoles(prev => ({ ...prev, [student.id]: { ...role, tier: e.target.value } }))}
-                                  style={{ width: "100%", boxSizing: "border-box" as const, padding: "5px 22px 5px 8px", border: `1px solid ${role.tier ? ERP.colors.accent : ERP.colors.border}`, borderRadius: ERP.radius.sm, fontSize: 11, fontFamily: ERP.font.family, color: role.tier ? ERP.colors.accent : ERP.colors.textSecondary, background: role.tier ? ERP.colors.accentPale : "#fff", outline: "none", appearance: "none" as const, cursor: "pointer", fontWeight: role.tier ? 700 : 400 }}
-                                >
-                                  {TIER_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                </select>
-                                <ChevronDown size={11} color={ERP.colors.textMuted} style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-                              </div>
-
-                              {/* Status badge */}
-                              <div>
-                                {isAssigned ? (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 7px", borderRadius: ERP.radius.full, background: "#D1FAE5", border: "1px solid #6EE7B7", fontSize: 9.5, fontWeight: 700, color: ERP.colors.success, fontFamily: ERP.font.family, whiteSpace: "nowrap" }}>✓ 已設定</span>
-                                ) : (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 7px", borderRadius: ERP.radius.full, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 9.5, fontWeight: 700, color: "#92400E", fontFamily: ERP.font.family, whiteSpace: "nowrap" }}>⏳ 待設定</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        <div style={{ height: 12 }} />
-                      </div>
-
-                      {/* Tier summary bar */}
-                      <div style={{ padding: "8px 20px", borderTop: `1px solid ${ERP.colors.border}`, background: ERP.colors.pageBg, display: "flex", gap: 10, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
-                        {["T0","T1","T2","T3","T4"].map(tier => {
-                          const count = Object.values(rosterRoles).filter(r => r.tier === tier).length;
-                          return count > 0 ? (
-                            <span key={tier} style={{ fontSize: 10.5, fontFamily: ERP.font.family, color: ERP.colors.textSecondary }}>
-                              <strong style={{ color: ERP.colors.accent }}>{tier}</strong> × {count}
-                            </span>
-                          ) : null;
-                        })}
-                        <span style={{ fontSize: 10.5, color: ERP.colors.textMuted, fontFamily: ERP.font.family, marginLeft: "auto" }}>
-                          {Object.values(rosterRoles).filter(r => r.tier).length} / {participantIds.size} 已設定級別
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ── Footer ── */}
-            <div style={{ padding: "14px 20px", borderTop: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface, display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
-              <div style={{ flex: 1, fontSize: 12, color: ERP.colors.textMuted, fontFamily: ERP.font.family }}>
-                已選取 <strong style={{ color: ERP.colors.accent }}>{participantIds.size}</strong> 位學生
-                {disambigQueue.filter(q => !q.resolved).length > 0 && (
-                  <span style={{ marginLeft: 8, color: "#92400E" }}>· ⚠️ {disambigQueue.filter(q => !q.resolved).length} 撞名未解決</span>
-                )}
-              </div>
-              <button onClick={() => setShowParticipants(false)} style={{ padding: "9px 18px", border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, background: "transparent", color: ERP.colors.textSecondary, fontSize: 13, fontWeight: 600, fontFamily: ERP.font.family, cursor: "pointer" }}>取消</button>
-              <button onClick={() => setShowParticipants(false)} style={{ padding: "9px 22px", border: "none", borderRadius: ERP.radius.md, background: ERP.colors.accent, color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: ERP.font.family, cursor: "pointer", boxShadow: `0 2px 8px ${ERP.colors.accent}40`, display: "flex", alignItems: "center", gap: 6 }}>
-                <Users size={13} /> 確認名單
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ── Right Slide-out Edit Drawer (Frame 2) ─────────────────────────── */}
-      <div style={{
-        position: "fixed",
-        ...(isMobile ? {
-          bottom: 0, left: 0, right: 0,
-          height: drawerOpen ? "85vh" : 0,
-          width: "100%",
-          borderTop: `1px solid ${ERP.colors.border}`,
-          borderRadius: "16px 16px 0 0",
-          transition: "height 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
-        } : {
-          top: 0, right: 0,
-          width: drawerOpen ? "min(560px, 44vw)" : 0,
-          height: "100vh",
-          borderLeft: `1px solid ${ERP.colors.border}`,
-          transition: "width 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
-        }),
-        background: ERP.colors.surface,
-        boxShadow: drawerOpen ? ERP.shadow.xl : "none",
-        overflow: "hidden",
-        zIndex: 500,
-        display: "flex",
-        flexDirection: "column",
-      }}>
-        {/* Only render content when open to avoid layout flash */}
-        {drawerOpen && (isNewMode || editingActivity) && (
-          <>
-            {/* Drawer Header */}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "0 20px",
-              height: "60px", flexShrink: 0,
-              borderBottom: `1px solid ${ERP.colors.border}`,
-              background: ERP.colors.surface,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-                <div style={{
-                  width: "32px", height: "32px", borderRadius: ERP.radius.md,
-                  background: isNewMode ? ERP.colors.successLight : ERP.colors.accentPale,
-                  border: `1px solid ${isNewMode ? "#6EE7B7" : ERP.colors.accentLight}`,
-                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                }}>
-                  {isNewMode ? <Plus size={15} color={ERP.colors.success} /> : <Pencil size={15} color={ERP.colors.accent} />}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: "11px", color: ERP.colors.textMuted, letterSpacing: "0.04em", textTransform: "uppercase" as const, marginBottom: "1px" }}>
-                    {isNewMode ? "新增活動" : "編輯活動"}
-                  </div>
-                  <div style={{
-                    fontSize: "14px", fontWeight: 700, color: ERP.colors.textPrimary,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {isNewMode ? "填寫活動資料" : editingActivity!.name}
-                  </div>
-                </div>
-              </div>
-              {/* Breadcrumb pill — edit mode only */}
-              {!isNewMode && editingActivity && (
-                <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
-                  <span style={{ fontSize: "10px", color: ERP.colors.textMuted }}>活動總表</span>
-                  <CRight size={10} color={ERP.colors.textMuted} />
-                  <span style={{ fontSize: "10px", color: ERP.colors.accent, fontWeight: 600 }}>{editingActivity.id}</span>
-                </div>
-              )}
-              <button
-                onClick={() => setEditingId(null)}
-                style={{
-                  width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center",
-                  border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md,
-                  background: "transparent", color: ERP.colors.textMuted, cursor: "pointer",
-                  flexShrink: 0, marginLeft: "8px",
-                }}
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            {/* Drawer Body — scrollable */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 0" }}>
-
-              {/* ── Section 1: 基本資訊 ───────────────────────────────── */}
-              <DrawerSection label="基本資訊" sub="Basic Info">
-
-                <Field label="活動名稱">
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-                    style={inputStyle}
-                  />
-                </Field>
-
-                <Field label="活動類別">
-                  <div style={{ position: "relative" }}>
-                    <select
-                      value={form.category}
-                      onChange={(e) => setForm(f => ({ ...f, category: e.target.value }))}
-                      style={{ ...inputStyle, paddingRight: "28px", appearance: "none", cursor: "pointer" }}
-                    >
-                      {EDIT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                    <ChevronDown size={13} color={ERP.colors.textMuted} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-                  </div>
-                </Field>
-
-                <Field label="負責教師" hint="可搜尋">
-                  <div style={{ position: "relative" }}>
-                    <Search size={13} color={ERP.colors.textMuted} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)" }} />
-                    <input
-                      value={form.pic}
-                      onChange={(e) => setForm(f => ({ ...f, pic: e.target.value }))}
-                      placeholder="搜尋教師姓名..."
-                      style={{ ...inputStyle, paddingLeft: "30px" }}
-                    />
-                  </div>
-                </Field>
-              </DrawerSection>
-
-              {/* ── Section 2: 賽程 / 日程管理 ───────────────────────── */}
-              <DrawerSection label="賽程 / 日程管理" sub="Sub-events & Schedule">
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {subEvents.map((ev, idx) => (
-                    <div key={ev.id} style={{
-                      display: "flex", alignItems: "center", gap: "8px",
-                      padding: "10px 12px",
-                      background: ERP.colors.pageBg,
-                      border: `1px solid ${ERP.colors.border}`,
-                      borderRadius: ERP.radius.md,
-                    }}>
-                      {/* Stage number badge */}
-                      <div style={{
-                        width: "22px", height: "22px", borderRadius: ERP.radius.sm, flexShrink: 0,
-                        background: ERP.colors.accentPale, border: `1px solid ${ERP.colors.accentLight}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: "10px", fontWeight: 800, color: ERP.colors.accent,
-                      }}>
-                        {idx + 1}
-                      </div>
-
-                      {/* Editable fields */}
-                      <div style={{ flex: 1, display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", minWidth: 0 }}>
-                        <input
-                          value={ev.label}
-                          onChange={e => setSubEvents(prev => prev.map(s => s.id === ev.id ? { ...s, label: e.target.value } : s))}
-                          placeholder="階段名"
-                          style={{ ...inputStyle, flex: "0 0 68px", padding: "5px 8px", fontSize: "12px" }}
-                        />
-                        <input
-                          value={ev.labelEn}
-                          onChange={e => setSubEvents(prev => prev.map(s => s.id === ev.id ? { ...s, labelEn: e.target.value } : s))}
-                          placeholder="English name"
-                          style={{ ...inputStyle, flex: "1 1 100px", padding: "5px 8px", fontSize: "12px", minWidth: "90px" }}
-                        />
-                        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                          <Calendar size={12} color={ERP.colors.textMuted} style={{ flexShrink: 0 }} />
-                          <input
-                            type="date"
-                            value={ev.date}
-                            onChange={e => setSubEvents(prev => prev.map(s => s.id === ev.id ? { ...s, date: e.target.value } : s))}
-                            style={{ ...inputStyle, flex: "0 0 140px", padding: "5px 8px", fontSize: "12px" }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Per-stage QR button */}
-                      <button
-                        onClick={() => openQr(ev.label || `第 ${idx + 1} 階段`)}
-                        title="啟動此階段 QR 簽到"
-                        style={{
-                          display: "flex", alignItems: "center", gap: "4px",
-                          padding: "4px 9px",
-                          border: `1px solid ${ERP.colors.accent}`,
-                          borderRadius: ERP.radius.sm,
-                          background: ERP.colors.accentPale, color: ERP.colors.accent,
-                          cursor: "pointer", fontSize: "10px", fontWeight: 700,
-                          fontFamily: ERP.font.family, whiteSpace: "nowrap", flexShrink: 0,
-                          transition: "all 0.12s",
-                        }}
-                      >
-                        <QrCode size={11} /> QR
-                      </button>
-
-                      {/* Delete stage */}
-                      <button
-                        onClick={() => setSubEvents(prev => prev.filter(s => s.id !== ev.id))}
-                        style={{
-                          width: "24px", height: "24px", flexShrink: 0,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.sm,
-                          background: "transparent", color: ERP.colors.textMuted,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Add stage button */}
-                  <button
-                    onClick={() => setSubEvents(prev => [...prev, { id: `s${Date.now()}`, label: "", labelEn: "", date: "" }])}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: "7px",
-                      padding: "9px 12px",
-                      border: `1.5px dashed ${ERP.colors.border}`,
-                      borderRadius: ERP.radius.md,
-                      background: "transparent", color: ERP.colors.textSecondary,
-                      cursor: "pointer", fontSize: "12px", fontWeight: 600,
-                      fontFamily: ERP.font.family, transition: "all 0.13s",
-                    }}
-                  >
-                    <Plus size={13} color={ERP.colors.accent} />
-                    新增階段 Add Stage (+)
-                  </button>
-                </div>
-
-                {/* Reverse sign-in info note */}
-                <div style={{
-                  display: "flex", gap: "8px", alignItems: "flex-start",
-                  padding: "9px 12px",
-                  background: "#FFF7ED", border: "1px solid #FED7AA",
-                  borderRadius: ERP.radius.md,
-                }}>
-                  <span style={{ fontSize: "14px", flexShrink: 0 }}>🔄</span>
-                  <p style={{ margin: 0, fontSize: "11px", lineHeight: 1.7, color: "#7C2D12", fontFamily: ERP.font.family }}>
-                    <strong>逆向簽到 Reverse Sign-in：</strong>
-                    未在名單內的學生掃碼後，系統將自動申請加入本活動，待負責老師批准後正式記錄出席。
-                  </p>
-                </div>
-              </DrawerSection>
-
-              {/* ── Section 3: OCR 文件上傳 ───────────────────────────── */}
-              <DrawerSection label="上傳成就證明 / 相關文件" sub="OCR Document Upload">
-
-                {/* Drop zone */}
-                <div
-                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={e => {
-                    e.preventDefault(); setDragOver(false);
-                    addFiles(Array.from(e.dataTransfer.files));
-                  }}
-                  style={{
-                    border: `2px dashed ${dragOver ? ERP.colors.accent : ERP.colors.border}`,
-                    borderRadius: ERP.radius.lg,
-                    padding: "24px 16px",
-                    textAlign: "center",
-                    background: dragOver ? ERP.colors.accentPale : ERP.colors.pageBg,
-                    transition: "all 0.18s",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{
-                    width: "44px", height: "44px", borderRadius: ERP.radius.full,
-                    background: dragOver ? ERP.colors.accentPale : "#F1F5F9",
-                    border: `1px solid ${dragOver ? ERP.colors.accentLight : ERP.colors.border}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    margin: "0 auto 12px",
-                  }}>
-                    <Upload size={20} color={dragOver ? ERP.colors.accent : ERP.colors.textMuted} />
-                  </div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: dragOver ? ERP.colors.accent : ERP.colors.textPrimary, fontFamily: ERP.font.family, marginBottom: "4px" }}>
-                    上傳成就證明 / 相關文件
-                  </div>
-                  <div style={{ fontSize: "11px", color: ERP.colors.textMuted, fontFamily: ERP.font.family, lineHeight: 1.6, marginBottom: "12px" }}>
-                    Drag and drop images or PDFs here to auto-extract student data and awards.<br />
-                    支援格式：PDF · JPG · PNG · 最大 20 MB / 檔
-                  </div>
-                  <label style={{
-                    display: "inline-flex", alignItems: "center", gap: "6px",
-                    padding: "7px 16px",
-                    border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md,
-                    background: ERP.colors.surface, color: ERP.colors.textSecondary,
-                    cursor: "pointer", fontSize: "12px", fontWeight: 600,
-                    fontFamily: ERP.font.family,
-                  }}>
-                    <FileUp size={13} /> 選擇檔案 Browse
-                    <input
-                      type="file" accept=".pdf,.jpg,.jpeg,.png" multiple
-                      style={{ display: "none" }}
-                      onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }}
-                    />
-                  </label>
-                </div>
-
-                {/* Uploaded file list */}
-                {uploadedFiles.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    {uploadedFiles.map((f, i) => (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "center", gap: "10px",
-                        padding: "9px 12px",
-                        background: f.status === "done" ? "#F0FDF4" : f.status === "scanning" ? "#F0F9FF" : "#FEF2F2",
-                        border: `1px solid ${f.status === "done" ? "#A7F3D0" : f.status === "scanning" ? "#BAE6FD" : "#FECACA"}`,
-                        borderRadius: ERP.radius.md,
-                      }}>
-                        <span style={{ fontSize: "18px", flexShrink: 0 }}>
-                          {f.name.toLowerCase().endsWith(".pdf") ? "📄" : "🖼️"}
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "12px", fontWeight: 600, color: ERP.colors.textPrimary, fontFamily: ERP.font.family, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {f.name}
-                          </div>
-                          <div style={{ fontSize: "10px", color: ERP.colors.textMuted, fontFamily: ERP.font.family, marginTop: "2px" }}>
-                            {f.size} ·{" "}
-                            {f.status === "scanning" ? (
-                              <span style={{ color: "#0369A1" }}>🔄 OCR 分析中…</span>
-                            ) : f.status === "done" ? (
-                              <span style={{ color: ERP.colors.success }}>✅ OCR 完成 · 資料已萃取至審批佇列</span>
-                            ) : (
-                              <span style={{ color: ERP.colors.error }}>❌ 處理失敗，請重新上傳</span>
-                            )}
-                          </div>
-                        </div>
-                        {f.status === "done" && (
-                          <div style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 7px", background: "#D1FAE5", border: "1px solid #6EE7B7", borderRadius: ERP.radius.full, fontSize: "9px", fontWeight: 700, color: ERP.colors.success, flexShrink: 0 }}>
-                            <Sparkles size={9} /> AI 已萃取
-                          </div>
-                        )}
-                        <button
-                          onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))}
-                          style={{ width: "22px", height: "22px", display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent", color: ERP.colors.textMuted, cursor: "pointer", flexShrink: 0 }}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </DrawerSection>
-
-              {/* ── Section 4: 能力加乘與 AI 標籤 ────────────────────── */}
-              <DrawerSection label="能力加乘與 AI 標籤" sub="Tender Bindings">
-
-                {/* ACORN multi-select badges */}
-                <Field label="ACORN 屬性標籤" hint="M3">
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "2px" }}>
-                    {ALL_ACORN_TAGS.map((tag) => {
-                      const s = ERP.acornTags[tag];
-                      const selected = form.acornTags.includes(tag);
-                      return (
-                        <button
-                          key={tag}
-                          onClick={() => toggleAcornTag(tag)}
-                          style={{
-                            display: "inline-flex", alignItems: "center", gap: "4px",
-                            padding: "4px 10px",
-                            background: selected ? s.bg : ERP.colors.pageBg,
-                            color: selected ? s.color : ERP.colors.textMuted,
-                            border: `1.5px solid ${selected ? s.border : ERP.colors.border}`,
-                            borderRadius: ERP.radius.full,
-                            fontSize: "11px", fontWeight: 700,
-                            cursor: "pointer", transition: "all 0.13s",
-                            fontFamily: ERP.font.family,
-                          }}
-                        >
-                          {selected && (
-                            <span style={{
-                              width: "5px", height: "5px", borderRadius: "50%",
-                              background: s.color, display: "inline-block", flexShrink: 0,
-                            }} />
-                          )}
-                          {tag}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ fontSize: "10px", color: ERP.colors.textMuted, marginTop: "6px" }}>
-                    點擊標籤以選取 / 取消選取。目前已選：{form.acornTags.join("、") || "（無）"}
-                  </div>
-                </Field>
-
-                {/* ── Weight Allocation Matrix ── */}
-                {form.acornTags.length >= 1 && (
-                  <Field label="動態權重分配" hint="自動重新平衡">
-                    <WeightMatrix
-                      tags={form.acornTags}
-                      weights={acornWeights}
-                      onChange={handleWeightChange}
-                    />
-                  </Field>
-                )}
-
-                {/* Level radio cards */}
-                <Field label="成就環境級別" hint="Level">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                    {LEVEL_OPTIONS.map(({ code, label, sub }) => {
-                      const active = form.level === code;
-                      return (
-                        <button
-                          key={code}
-                          onClick={() => setForm(f => ({ ...f, level: code }))}
-                          style={{
-                            display: "flex", alignItems: "center", gap: "10px",
-                            padding: "10px 12px",
-                            border: `1.5px solid ${active ? ERP.colors.accent : ERP.colors.border}`,
-                            borderRadius: ERP.radius.md,
-                            background: active ? ERP.colors.accentPale : ERP.colors.surface,
-                            cursor: "pointer", textAlign: "left",
-                            transition: "all 0.13s",
-                            fontFamily: ERP.font.family,
-                          }}
-                        >
-                          {/* Radio dot */}
-                          <div style={{
-                            width: "16px", height: "16px", borderRadius: "50%", flexShrink: 0,
-                            border: `2px solid ${active ? ERP.colors.accent : ERP.colors.borderStrong}`,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}>
-                            {active && <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: ERP.colors.accent }} />}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: "12px", fontWeight: 700, color: active ? ERP.colors.accent : ERP.colors.textPrimary }}>
-                              {label}
-                            </div>
-                            <div style={{ fontSize: "10px", color: ERP.colors.textMuted, marginTop: "1px" }}>
-                              {sub}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Field>
-
-                {/* System governance alert — read-only, replaces manual points slider */}
-                <div style={{
-                  display: "flex", gap: "10px", alignItems: "flex-start",
-                  padding: "11px 13px",
-                  background: "#F0F9FF",
-                  border: "1px solid #BAE6FD",
-                  borderRadius: ERP.radius.md,
-                }}>
-                  <span style={{ fontSize: "14px", flexShrink: 0, lineHeight: 1.4 }}>💡</span>
-                  <p style={{
-                    margin: 0, fontSize: "11px", lineHeight: 1.7,
-                    color: "#0C4A6E", fontFamily: ERP.font.family,
-                  }}>
-                    系統將根據所選之<strong>環境級別 (Level)</strong>，結合後續分配的學生<strong>協作崗位 (T1–T3)</strong>，由底層引擎自動計算並派發對應之自主積點。
-                    <span style={{ display: "block", marginTop: "3px", color: "#0369A1", fontSize: "10px" }}>
-                      System auto-calculates reward points based on Level and Roles to prevent inflation.
-                    </span>
-                  </p>
-                </div>
-              </DrawerSection>
-
-              {/* ── Section 5: 狀態與名單 ─────────────────────────────── */}
-              <DrawerSection label="狀態與名單" sub="Status">
-
-                <Field label="活動狀態">
-                  <div style={{ position: "relative" }}>
-                    <select
-                      value={form.status}
-                      onChange={(e) => setForm(f => ({ ...f, status: e.target.value as StatusKey }))}
-                      style={{ ...inputStyle, paddingRight: "28px", appearance: "none", cursor: "pointer" }}
-                    >
-                      {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-                    </select>
-                    <ChevronDown size={13} color={ERP.colors.textMuted} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-                  </div>
-                  {/* Live status preview */}
-                  <div style={{ marginTop: "6px" }}>
-                    <StatusBadge status={form.status} />
-                  </div>
-                </Field>
-
-                <Field label="參與名單">
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                    <button
-                      onClick={() => setShowParticipants(true)}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: "7px",
-                        padding: "8px 16px",
-                        border: `1px solid ${ERP.colors.accent}`,
-                        borderRadius: ERP.radius.md,
-                        background: ERP.colors.accentPale,
-                        color: ERP.colors.accent,
-                        cursor: "pointer", fontSize: "13px", fontWeight: 600,
-                        fontFamily: ERP.font.family,
-                        boxShadow: ERP.shadow.xs,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      <Users size={14} color={ERP.colors.accent} />
-                      管理名單
-                      <span style={{
-                        fontSize: "10px", fontWeight: 700,
-                        background: ERP.colors.accent, color: "#fff",
-                        borderRadius: ERP.radius.full, padding: "1px 7px",
-                      }}>
-                        {participantIds.size} 人
-                      </span>
-                    </button>
-                  </div>
-                </Field>
-
-                {/* QR Sign-in launcher */}
-                <Field label="QR 簽到">
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    <button
-                      onClick={() => openQr(subEvents.length > 0 ? subEvents[0].label || "主活動" : form.nameZh || "主活動")}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
-                        padding: "12px 18px",
-                        border: "none", borderRadius: ERP.radius.md,
-                        background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)",
-                        color: "#fff",
-                        cursor: "pointer", fontSize: "13px", fontWeight: 700,
-                        fontFamily: ERP.font.family,
-                        boxShadow: "0 4px 14px rgba(124,58,237,0.35)",
-                        transition: "all 0.18s",
-                        width: "100%",
-                      }}
-                    >
-                      <QrCode size={18} />
-                      啟動 QR 簽到 Launch QR Sign-in
-                      {subEvents.length > 0 && (
-                        <span style={{ fontSize: "10px", fontWeight: 500, opacity: 0.85 }}>
-                          · {subEvents.length} 個階段
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Stage selector for multi-stage QR */}
-                    {subEvents.length > 1 && (
-                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                        {subEvents.map((ev, idx) => (
-                          <button
-                            key={ev.id}
-                            onClick={() => openQr(ev.label || `第 ${idx + 1} 階段`)}
-                            style={{
-                              display: "inline-flex", alignItems: "center", gap: "5px",
-                              padding: "5px 11px",
-                              border: "1px solid #C4B5FD",
-                              borderRadius: ERP.radius.full,
-                              background: "#F5F3FF", color: "#5B21B6",
-                              cursor: "pointer", fontSize: "11px", fontWeight: 600,
-                              fontFamily: ERP.font.family,
-                              transition: "all 0.12s",
-                            }}
-                          >
-                            <QrCode size={10} />
-                            {ev.label || `第 ${idx + 1} 階段`}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <div style={{ fontSize: "11px", color: ERP.colors.textMuted, fontFamily: ERP.font.family, lineHeight: 1.6 }}>
-                      🔄 <strong>逆向簽到：</strong>學生掃碼後自動申請加入名單，無需事先登記。
-                    </div>
-                  </div>
-                </Field>
-              </DrawerSection>
-
-              {/* Spacer so last section clears the footer */}
-              <div style={{ height: "12px" }} />
-            </div>
-
-            {/* Drawer Footer — sticky */}
-            <div style={{
-              padding: "14px 20px",
-              borderTop: `1px solid ${ERP.colors.border}`,
-              background: ERP.colors.surface,
-              display: "flex", gap: "10px", alignItems: "center",
-              flexShrink: 0,
-            }}>
-              <button
-                onClick={() => setEditingId(null)}
-                style={{
-                  flex: 1,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: "7px",
-                  padding: "10px 0",
-                  border: "none", borderRadius: ERP.radius.md,
-                  background: ERP.colors.accent, color: "#fff",
-                  cursor: "pointer", fontSize: "13px", fontWeight: 700,
-                  fontFamily: ERP.font.family,
-                  boxShadow: `0 2px 8px ${ERP.colors.accent}40`,
-                }}
-              >
-                <Save size={14} />
-                儲存變更
-              </button>
-              <button
-                onClick={() => setEditingId(null)}
-                style={{
-                  padding: "10px 18px",
-                  border: `1px solid ${ERP.colors.border}`,
-                  borderRadius: ERP.radius.md,
-                  background: "transparent", color: ERP.colors.textSecondary,
-                  cursor: "pointer", fontSize: "13px", fontWeight: 600,
-                  fontFamily: ERP.font.family,
-                }}
-              >
-                取消
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
 
     {/* ── QR Sign-in Modal ─────────────────────────────────────────── */}
     {qrActive && (
@@ -2376,6 +1405,7 @@ export const Frame03_ActivityTable: React.FC = () => {
         </div>
       </>
     )}
+    </div>
     </>
   );
 };

@@ -11,7 +11,7 @@ import {
   Clock, User, Users, BookOpen, Shield, ShieldOff,
   X, ClipboardList, MoreHorizontal, FolderPlus, Trophy,
   Sparkles, SlidersHorizontal, Upload, CloudUpload,
-  FileSpreadsheet, FileWarning, ExternalLink, Info,
+  FileSpreadsheet, FileWarning, ExternalLink, Info, UserPlus,
 } from "lucide-react";
 
 // ── Design tokens (8-pt grid, Linear-style neutrals) ─────────────────────────
@@ -79,8 +79,10 @@ const MOCK: StudentRow[] = [
 ];
 
 const AY_OPTS     = ["2025/26", "2024/25", "2023/24"];
-const FORM_OPTS   = ["全部", "F1", "F2", "F3", "F4", "F5", "F6"];
-const CLASS_OPTS  = ["全部", "F1A", "F1B", "F2A", "F2B"];
+const FORM_OPTS_FALLBACK = ["全部", "F1", "F2", "F3", "F4", "F5", "F6"];
+const CLASS_OPTS_FALLBACK = ["全部", "F1A", "F1B", "F1C", "F2A", "F2B", "F2C", "F3A", "F3B", "F3C", "F4A", "F4B", "F4C"];
+
+type ClassCatalogItem = { id: number; name: string; form: string; classCode: string };
 const STATUS_OPTS = ["全部", "在學", "重讀", "停學", "離校"];
 const PAGE_SIZE   = 10;
 
@@ -534,25 +536,99 @@ const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 interface Props {
   lang?: "en" | "zh-HK";
   onViewStudent?: (studentId: string, ctx?: { classCode?: string }) => void;
+  /** Hydrated from CI4 bridge — when provided, replaces MOCK demo rows */
+  students?: StudentRow[];
+  /** Distinct forms from DB (e.g. F1, F2) — drives Form dropdown */
+  forms?: string[];
+  /** Full class catalog from DB — drives cascading Class dropdown */
+  classCatalog?: ClassCatalogItem[];
+  flashSuccess?: string;
+  academicYear?: string;
+  initialClassFilter?: string;
 }
 
 export const Screen_StudentsbyYear: React.FC<Props> = ({
   lang = "zh-HK",
   onViewStudent,
+  students: studentsProp,
+  forms: formsProp,
+  classCatalog: catalogProp,
+  flashSuccess,
+  academicYear: yearProp,
+  initialClassFilter,
 }) => {
-  const [privacyOn,   setPrivacyOn]   = useState(true);
+  const roster = studentsProp && studentsProp.length > 0 ? studentsProp : MOCK;
+
+  // Prefer CI4-injected catalog; fall back to deriving from roster rows
+  const classCatalog: ClassCatalogItem[] = React.useMemo(() => {
+    if (catalogProp && catalogProp.length > 0) return catalogProp;
+    const map = new Map<string, ClassCatalogItem>();
+    roster.forEach(s => {
+      if (!s.classCode) return;
+      if (!map.has(s.classCode)) {
+        map.set(s.classCode, {
+          id: map.size + 1,
+          name: s.classCode.replace(/^F/, ""),
+          form: s.form,
+          classCode: s.classCode,
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.classCode.localeCompare(b.classCode));
+  }, [catalogProp, roster]);
+
+  const FORM_OPTS = React.useMemo(() => {
+    const fromDb = (formsProp && formsProp.length > 0)
+      ? formsProp
+      : Array.from(new Set(classCatalog.map(c => c.form).filter(Boolean))).sort();
+    return fromDb.length > 0 ? ["全部", ...fromDb] : FORM_OPTS_FALLBACK;
+  }, [formsProp, classCatalog]);
+
+  const [privacyOn,   setPrivacyOn]   = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    new Set(["2025-F1A-001", "2025-F1A-002"])  // Epic 3: 2 rows pre-selected
+    () => new Set(roster.slice(0, 2).map(s => s.id))
   );
   const [revealedCells, setRevealedCells] = useState<Set<string>>(new Set());
 
   const [searchQ,      setSearchQ]      = useState("");
-  const [filterAY,     setFilterAY]     = useState("2025/26");
-  const [filterForm,   setFilterForm]   = useState("全部");
-  const [filterClass,  setFilterClass]  = useState("全部");
+  const [filterAY,     setFilterAY]     = useState(yearProp || "2025/26");
+  const [filterForm,   setFilterForm]   = useState(() => {
+    if (initialClassFilter && /^F(\d)/i.test(initialClassFilter)) {
+      return "F" + initialClassFilter.match(/^F(\d)/i)![1];
+    }
+    return "全部";
+  });
+  const [filterClass,  setFilterClass]  = useState(initialClassFilter && initialClassFilter !== "全部" ? initialClassFilter : "全部");
   const [filterStatus, setFilterStatus] = useState("全部");
   const [page,         setPage]         = useState(1);
   const [isMobile,     setIsMobile]     = useState(false);
+
+  // Cascading: Class options depend on selected Form
+  const CLASS_OPTS = React.useMemo(() => {
+    const filtered = filterForm === "全部"
+      ? classCatalog
+      : classCatalog.filter(c => c.form === filterForm);
+    const codes = filtered.map(c => c.classCode).filter(Boolean);
+    return codes.length > 0 ? ["全部", ...codes] : CLASS_OPTS_FALLBACK;
+  }, [classCatalog, filterForm]);
+
+  // If Form shrinks Class options, clear an invalid Class selection
+  React.useEffect(() => {
+    if (filterClass !== "全部" && !CLASS_OPTS.includes(filterClass)) {
+      setFilterClass("全部");
+    }
+  }, [CLASS_OPTS, filterClass]);
+
+  const onFormChange = (v: string) => {
+    setFilterForm(v);
+    setFilterClass("全部"); // reset Class whenever Form changes
+    setPage(1);
+  };
+
+  const onClassChange = (v: string) => {
+    setFilterClass(v);
+    setPage(1);
+  };
 
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -591,7 +667,7 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
 
   const filtered = useMemo(() => {
     const q = searchQ.toLowerCase();
-    return MOCK.filter(s => {
+    return roster.filter(s => {
       if (filterForm !== "全部" && s.form !== filterForm) return false;
       if (filterClass !== "全部" && s.classCode !== filterClass) return false;
       const sk = statusKeyMap[filterStatus];
@@ -599,16 +675,16 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
       if (q && !s.chName.includes(searchQ) && !s.enName.toLowerCase().includes(q) && !s.id.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [searchQ, filterForm, filterClass, filterStatus]);
+  }, [roster, searchQ, filterForm, filterClass, filterStatus]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage   = Math.min(page, totalPages);
   const start      = (safePage - 1) * PAGE_SIZE;
   const rows       = filtered.slice(start, Math.min(start + PAGE_SIZE, filtered.length));
 
-  const totalRepeat  = MOCK.filter(s => s.isRepeat).length;
-  const totalPending = MOCK.reduce((a, s) => a + s.pendingAwards, 0);
-  const totalAlerts  = MOCK.filter(s => s.aiAlert !== "none").length;
+  const totalRepeat  = roster.filter(s => s.isRepeat).length;
+  const totalPending = roster.reduce((a, s) => a + s.pendingAwards, 0);
+  const totalAlerts  = roster.filter(s => s.aiAlert !== "none").length;
 
   const allChecked  = rows.length > 0 && rows.every(r => selectedIds.has(r.id));
   const someChecked = rows.some(r => selectedIds.has(r.id)) && !allChecked;
@@ -684,7 +760,7 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
             margin: "5px 0 0", fontSize: 13, color: DS.g500,
             fontFamily: DS.font,
           }}>
-            AY {filterAY} · 全校學生 · {MOCK.length} 名
+            AY {filterAY} · 全校學生 · {roster.length} 名
           </p>
         </div>
 
@@ -742,6 +818,19 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
           }}>
             <RefreshCw size={13} />同步資料
           </button>
+          <a
+            href="/students/create"
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 16px", borderRadius: 8,
+              border: "none", background: DS.blue,
+              color: DS.white, fontSize: 12.5, fontFamily: DS.font,
+              cursor: "pointer", fontWeight: 600, textDecoration: "none",
+              boxShadow: `0 1px 3px ${DS.blue}50`,
+            }}
+          >
+            <UserPlus size={13} />+ 加入學生
+          </a>
           <button
             onClick={() => setShowImportModal(true)}
             style={{
@@ -761,10 +850,10 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
           <button style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "8px 16px", borderRadius: 8,
-            border: "none", background: DS.blue,
+            border: "none", background: DS.g700,
             color: DS.white, fontSize: 12.5, fontFamily: DS.font,
             cursor: "pointer", fontWeight: 600,
-            boxShadow: `0 1px 3px ${DS.blue}50`,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
           }}>
             <Download size={13} />匯出名冊
           </button>
@@ -774,32 +863,37 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
       {/* Epic 1: Privacy Active Banner */}
       {privacyOn && (
         <div style={{
-          display: "flex", alignItems: "center", gap: 10,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
           padding: "10px 16px", borderRadius: 10,
-          background: DS.amberPale,
-          border: `1px solid ${DS.amberBorder}`,
-          borderLeft: `4px solid ${DS.amber}`,
+          background: DS.amberPale, border: `1px solid ${DS.amberBorder}`,
         }}>
-          <Shield size={14} color={DS.amber} style={{ flexShrink: 0 }} />
-          <div>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: DS.amberText }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Shield size={14} color={DS.amber} />
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: DS.amberText }}>
               隱私保護模式已啟動 Privacy Mode Active
-            </span>
-            <span style={{ fontSize: 11.5, color: "#B45309", marginLeft: 10 }}>
-              姓名及學號已遮蔽，滑鼠懸停可臨時檢視 · Names and IDs masked — hover any cell to reveal
             </span>
           </div>
           <button
+            type="button"
             onClick={() => setPrivacyOn(false)}
             style={{
-              marginLeft: "auto", display: "flex", alignItems: "center", gap: 5,
-              padding: "4px 10px", borderRadius: 6,
-              border: `1px solid ${DS.amberBorder}`, background: DS.white,
-              color: DS.amberText, fontSize: 11, fontFamily: DS.font, cursor: "pointer",
+              border: "none", background: "transparent", cursor: "pointer",
+              fontSize: 12, fontWeight: 700, color: DS.amberText, fontFamily: DS.font,
             }}
           >
-            <EyeOff size={11} />停用
+            關閉
           </button>
+        </div>
+      )}
+
+      {flashSuccess && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "10px 16px", borderRadius: 10,
+          background: DS.emeraldPale, border: `1px solid ${DS.emeraldBorder}`,
+          color: DS.emeraldText, fontSize: 13, fontWeight: 600,
+        }}>
+          <CheckCircle2 size={15} /> {flashSuccess}
         </div>
       )}
 
@@ -810,7 +904,7 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
         gap: 12,
       }}>
         {[
-          { label: "總人數", sub: "Total Students",   value: MOCK.length,   icon: Users,         color: DS.blue,    bg: DS.bluePale,    border: DS.blueBorder    },
+          { label: "總人數", sub: "Total Students",   value: roster.length,   icon: Users,         color: DS.blue,    bg: DS.bluePale,    border: DS.blueBorder    },
           { label: "篩選人數", sub: "Filtered Count", value: filtered.length, icon: User,         color: "#7C3AED",  bg: "#EDE9FE",     border: "#C4B5FD"        },
           { label: "重讀人數", sub: "Repeaters",       value: totalRepeat,   icon: AlertTriangle, color: DS.amber,   bg: DS.amberPale,  border: DS.amberBorder   },
           { label: "AI 預警", sub: "AI Alerts",        value: totalAlerts,   icon: Sparkles,      color: DS.red,     bg: DS.redPale,    border: DS.redBorder     },
@@ -858,8 +952,8 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
           alignItems: "end",
         }}>
           <FilterSelect label="學年 AY"        value={filterAY}     options={AY_OPTS}     onChange={v => { setFilterAY(v);     setPage(1); }} width={isMobile ? "100%" : 108} />
-          <FilterSelect label="年級 Form"      value={filterForm}   options={FORM_OPTS}   onChange={v => { setFilterForm(v);   setPage(1); }} width={isMobile ? "100%" : 100} />
-          <FilterSelect label="班別 Class"     value={filterClass}  options={CLASS_OPTS}  onChange={v => { setFilterClass(v);  setPage(1); }} width={isMobile ? "100%" : 100} />
+          <FilterSelect label="年級 Form"      value={filterForm}   options={FORM_OPTS}   onChange={onFormChange} width={isMobile ? "100%" : 100} />
+          <FilterSelect label="班別 Class"     value={filterClass}  options={CLASS_OPTS}  onChange={onClassChange} width={isMobile ? "100%" : 100} />
           <FilterSelect label="狀態 Status"    value={filterStatus} options={STATUS_OPTS} onChange={v => { setFilterStatus(v); setPage(1); }} width={isMobile ? "100%" : 108} />
         </div>
 

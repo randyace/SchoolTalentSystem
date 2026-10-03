@@ -28,6 +28,12 @@ function useIsMobile(bp = 768) {
 const F = ERP.font.family;
 
 const CLASS_PALETTE: Record<string, { bg: string; color: string; border: string }> = {
+  F3A: { bg: "#DBEAFE", color: "#1D4ED8",  border: "#93C5FD" },
+  F3B: { bg: "#EDE9FE", color: "#6D28D9",  border: "#C4B5FD" },
+  F3C: { bg: "#DCFCE7", color: "#15803D",  border: "#86EFAC" },
+  "3A": { bg: "#DBEAFE", color: "#1D4ED8",  border: "#93C5FD" },
+  "3B": { bg: "#EDE9FE", color: "#6D28D9",  border: "#C4B5FD" },
+  "3C": { bg: "#DCFCE7", color: "#15803D",  border: "#86EFAC" },
   F4A: { bg: "#DBEAFE", color: "#1D4ED8",  border: "#93C5FD" },
   F4B: { bg: "#EDE9FE", color: "#6D28D9",  border: "#C4B5FD" },
   F4C: { bg: "#DCFCE7", color: "#15803D",  border: "#86EFAC" },
@@ -40,17 +46,46 @@ interface ParsedStudent {
   name:  string;
   cls:   string;
   ok:    boolean;
+  reason?: string;
 }
 
-const PARSED: ParsedStudent[] = [
-  { id: "r1", rawId: "2023-F4A-05", name: "陳大明", cls: "F4A", ok: true },
-  { id: "r2", rawId: "2023-F4B-12", name: "李美玲", cls: "F4B", ok: true },
-  { id: "r3", rawId: "2023-F4C-02", name: "張志強", cls: "F4C", ok: true },
-  { id: "r4", rawId: "2023-F4D-18", name: "王小華", cls: "F4D", ok: true },
-];
+/** Extract F-form from class code (F3A / 3A / S3B → F3). */
+function formFromClassCode(code: string): string {
+  const c = code.trim().toUpperCase();
+  const m = c.match(/^[FS]?([1-6])/);
+  return m ? `F${m[1]}` : "";
+}
 
-const PASTE_TEXT =
-  `2023-F4A-05, 陳大明\n2023-F4B-12, 李美玲\n2023-F4C-02, 張志強\n2023-F4D-18, 王小華`;
+/** Demo paste pool — includes one out-of-form student to prove rejection. */
+const DEMO_BY_FORM: Record<string, { paste: string; rows: ParsedStudent[] }> = {
+  F3: {
+    paste: `2025-3A-05, 陳大明\n2025-3B-12, 李美玲\n2025-3C-02, 張志強\n2025-F4A-18, 王小華`,
+    rows: [
+      { id: "r1", rawId: "2025-3A-05",  name: "陳大明", cls: "3A",  ok: true },
+      { id: "r2", rawId: "2025-3B-12",  name: "李美玲", cls: "3B",  ok: true },
+      { id: "r3", rawId: "2025-3C-02",  name: "張志強", cls: "3C",  ok: true },
+      { id: "r4", rawId: "2025-F4A-18", name: "王小華", cls: "F4A", ok: false, reason: "form_mismatch" },
+    ],
+  },
+  F4: {
+    paste: `2023-F4A-05, 陳大明\n2023-F4B-12, 李美玲\n2023-F4C-02, 張志強\n2023-F3A-18, 王小華`,
+    rows: [
+      { id: "r1", rawId: "2023-F4A-05", name: "陳大明", cls: "F4A", ok: true },
+      { id: "r2", rawId: "2023-F4B-12", name: "李美玲", cls: "F4B", ok: true },
+      { id: "r3", rawId: "2023-F4C-02", name: "張志強", cls: "F4C", ok: true },
+      { id: "r4", rawId: "2023-F3A-18", name: "王小華", cls: "F3A", ok: false, reason: "form_mismatch" },
+    ],
+  },
+};
+
+function applyFormLock(rows: ParsedStudent[], form: string): ParsedStudent[] {
+  const locked = form.toUpperCase();
+  return rows.map((s) => {
+    const studentForm = formFromClassCode(s.cls) || formFromClassCode(s.rawId);
+    const ok = studentForm === locked;
+    return { ...s, ok, reason: ok ? undefined : "form_mismatch" };
+  });
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -255,18 +290,73 @@ const CrossClassDistribution: React.FC<{ students: ParsedStudent[] }> = ({ stude
 };
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export const Screen_DynamicGroupBuilder: React.FC = () => {
-  const [groupName,  setGroupName]  = useState("25/26 中四歷史科選修組 (F4 History Elective)");
+interface BuilderProps {
+  lockedForm?: string;
+  forms?: string[];
+  academicYear?: string;
+  validateMembersUrl?: string;
+}
+
+export const Screen_DynamicGroupBuilder: React.FC<BuilderProps> = ({
+  lockedForm = "F3",
+  forms = ["F1", "F2", "F3", "F4"],
+  academicYear = "2025/26",
+  validateMembersUrl = "/dynamic-group/validate-members",
+}) => {
+  const initialForm = (lockedForm || "F3").toUpperCase();
+  const demo = DEMO_BY_FORM[initialForm] ?? DEMO_BY_FORM.F3;
+
+  const [groupForm,  setGroupForm]  = useState(initialForm);
+  const [groupName,  setGroupName]  = useState(
+    initialForm === "F3"
+      ? "25/26 中三視覺藝術選修組 (F3 Visual Arts Elective)"
+      : `25/26 ${initialForm} 選修組`
+  );
   const [parsed,     setParsed]     = useState(false);
-  const [pasteText,  setPasteText]  = useState(PASTE_TEXT);
+  const [pasteText,  setPasteText]  = useState(demo.paste);
+  const [parsedRows, setParsedRows] = useState<ParsedStudent[]>(() => applyFormLock(demo.rows, initialForm));
   const [hoverSave,  setHoverSave]  = useState(false);
   const [hoverParse, setHoverParse] = useState(false);
   const [hoverPaste, setHoverPaste] = useState(false);
   const [saved,      setSaved]      = useState(false);
   const isMobile = useIsMobile(768);
 
-  const handleParse = () => setParsed(true);
-  const handleSave  = () => { if (parsed) setSaved(true); };
+  const accepted = parsedRows.filter(s => s.ok);
+  const rejected = parsedRows.filter(s => !s.ok);
+
+  const onFormChange = (next: string) => {
+    const f = next.toUpperCase();
+    setGroupForm(f);
+    setParsed(false);
+    setSaved(false);
+    const d = DEMO_BY_FORM[f] ?? DEMO_BY_FORM.F3;
+    setPasteText(d.paste);
+    setParsedRows(applyFormLock(d.rows, f));
+    if (f === "F3") setGroupName("25/26 中三視覺藝術選修組 (F3 Visual Arts Elective)");
+    else setGroupName(`25/26 ${f} 選修組`);
+  };
+
+  const handleParse = async () => {
+    const locked = applyFormLock(
+      (DEMO_BY_FORM[groupForm] ?? DEMO_BY_FORM.F3).rows,
+      groupForm
+    );
+    setParsedRows(locked);
+    setParsed(true);
+    // Server-side form boundary check (dry-run)
+    try {
+      await fetch(validateMembersUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          form: groupForm,
+          academic_year: academicYear,
+          rows: locked.map(r => ({ rawId: r.rawId, name: r.name, cls: r.cls })),
+        }),
+      });
+    } catch { /* UI already enforces locally */ }
+  };
+  const handleSave  = () => { if (parsed && accepted.length > 0) setSaved(true); };
 
   return (
     <div style={{
@@ -296,9 +386,9 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
           {isMobile ? (
             /* Mobile: show only last two crumbs */
             <>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <a href="/dynamic-group" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "inherit", textDecoration: "none" }}>
                 動態分組管理
-              </span>
+              </a>
               <ChevronRight size={10} style={{ flexShrink: 0 }} />
               <span style={{ color: ERP.colors.textPrimary, fontWeight: 600, whiteSpace: "nowrap" }}>
                 建立新群組
@@ -310,7 +400,7 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
               <ChevronRight size={10} />
               <span>學生與班級</span>
               <ChevronRight size={10} />
-              <span>動態分組管理</span>
+              <a href="/dynamic-group" style={{ color: "inherit", textDecoration: "none" }}>動態分組管理</a>
               <ChevronRight size={10} />
               <span style={{ color: ERP.colors.textPrimary, fontWeight: 600 }}>建立新群組</span>
             </>
@@ -472,9 +562,27 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
                 placeholder="輸入群組名稱..."
               />
             </FormField>
+            <FormField label="所屬年級 Form（鎖定）" enLabel="Form Lock — single form only" required flex={isMobile ? undefined : 1.2}>
+              <div style={{ position: "relative" }}>
+                <select
+                  value={groupForm}
+                  onChange={(e) => onFormChange(e.target.value)}
+                  style={{
+                    width: "100%", height: 40, padding: "0 12px",
+                    borderRadius: ERP.radius.md,
+                    border: `1.5px solid ${ERP.colors.accent}`,
+                    background: ERP.colors.accentPale,
+                    fontSize: 13, fontWeight: 700, fontFamily: F,
+                    color: ERP.colors.accent, cursor: "pointer", outline: "none",
+                  }}
+                >
+                  {forms.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+            </FormField>
             <FormField label="所屬學習領域 / 科目" enLabel="KLA / Subject" required flex={isMobile ? undefined : 2}>
               <SelectField
-                value="個人、社會及人文教育 / 歷史科"
+                value={groupForm === "F3" ? "藝術教育 / 視覺藝術" : "個人、社會及人文教育 / 歷史科"}
                 icon={<BookOpen size={13} />}
               />
             </FormField>
@@ -484,6 +592,20 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
                 icon={<UserCog size={13} />}
               />
             </FormField>
+          </div>
+
+          <div style={{
+            marginTop: 12, padding: "10px 12px",
+            background: "#FFFBEB", border: "1px solid #FDE68A",
+            borderRadius: ERP.radius.md, fontSize: 12, color: "#92400E", fontFamily: F,
+            display: "flex", alignItems: "flex-start", gap: 8,
+          }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              <strong>嚴格年級邊界：</strong>此群組鎖定為 <strong>{groupForm}</strong>。
+              智能匯入只接受該年級行政班學生（如 {groupForm.replace("F", "")}A / {groupForm.replace("F", "")}B）；
+              其他年級（如 F4 學生加入 F3 視藝組）將被拒絕。
+            </span>
           </div>
 
           {/* Group type tags */}
@@ -767,8 +889,8 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
             {!isMobile && (
               <span style={{ fontSize: 11, color: ERP.colors.textMuted, fontFamily: F }}>
                 {parsed
-                  ? "系統已從 4 個行政班中識別學生"
-                  : "點擊以自動識別格式並比對學生資料庫"}
+                  ? `已套用 ${groupForm} 年級鎖定，跨班同級學生可入組`
+                  : "點擊以自動識別格式並比對學生資料庫（嚴格年級邊界）"}
               </span>
             )}
           </div>
@@ -799,21 +921,25 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
                   color: "#065F46", fontFamily: F,
                   marginBottom: 4,
                 }}>
-                  ✅ 成功識別 {PARSED.length} 名學生（Successfully parsed {PARSED.length} students）
+                  ✅ 接受 {accepted.length} 名 {groupForm} 學生
+                  {rejected.length > 0 ? ` · 拒絕 ${rejected.length} 名跨年級學生` : ""}
                 </div>
                 <div style={{ fontSize: 12, color: "#047857", fontFamily: F }}>
-                  系統已從 <strong>4 個不同行政班</strong>（F4A、F4B、F4C、F4D）中識別並核實所有學生，跨班群組建立就緒。
-                  <span style={{ color: "#059669", marginLeft: 6 }}>
-                    All students verified across 4 different administrative classes. Ready to create cross-class group.
-                  </span>
+                  年級鎖定 <strong>{groupForm}</strong>：只接受同屬 {groupForm} 的行政班學生組成跨班選修群組。
+                  {rejected.length > 0 && (
+                    <span style={{ color: "#B45309", marginLeft: 6 }}>
+                      已拒絕：{rejected.map(r => `${r.name}(${r.cls})`).join("、")}
+                    </span>
+                  )}
                 </div>
               </div>
               {/* Stats */}
               <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
                 {[
-                  { n: PARSED.length,    label: "已識別", sub: "Identified" },
-                  { n: PARSED.length,    label: "已核實", sub: "Verified"   },
-                  { n: Object.keys(PARSED.reduce((a,s) => ({...a,[s.cls]:1}),{})).length, label: "班別",   sub: "Classes"    },
+                  { n: parsedRows.length, label: "已識別", sub: "Identified" },
+                  { n: accepted.length,   label: "已核實", sub: "Verified"   },
+                  { n: rejected.length,   label: "已拒絕", sub: "Rejected"   },
+                  { n: Object.keys(accepted.reduce((a,s) => ({...a,[s.cls]:1}),{} as Record<string, number>)).length, label: "班別", sub: "Classes" },
                 ].map(s => (
                   <div key={s.label} style={{
                     textAlign: "center", padding: "6px 12px",
@@ -838,9 +964,8 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
               border: `1px solid ${ERP.colors.border}`,
               borderRadius: ERP.radius.md,
             }}>
-              <CrossClassDistribution students={PARSED} />
+              <CrossClassDistribution students={accepted} />
             </div>
-
             {/* Table */}
             <div style={{
               border: `1px solid ${ERP.colors.border}`,
@@ -876,18 +1001,19 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
               </div>
 
               {/* Rows */}
-              {PARSED.map((s, i) => {
+              {parsedRows.map((s, i) => {
                 const pal = CLASS_PALETTE[s.cls] ?? { bg: "#F1F5F9", color: "#475569", border: "#CBD5E1" };
                 return (
                   <div key={s.id} style={{
                     display: "grid",
                     gridTemplateColumns: "2fr 2fr 1.2fr 1.2fr",
-                    borderBottom: i < PARSED.length - 1 ? `1px solid ${ERP.colors.divider}` : "none",
-                    background: i % 2 === 0 ? "#fff" : ERP.colors.pageBg,
+                    borderBottom: i < parsedRows.length - 1 ? `1px solid ${ERP.colors.divider}` : "none",
+                    background: !s.ok ? "#FEF2F2" : (i % 2 === 0 ? "#fff" : ERP.colors.pageBg),
+                    opacity: s.ok ? 1 : 0.85,
                     transition: "background 0.12s",
                   }}
-                    onMouseEnter={e => (e.currentTarget.style.background = ERP.colors.surfaceHover)}
-                    onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? "#fff" : ERP.colors.pageBg)}
+                    onMouseEnter={e => (e.currentTarget.style.background = s.ok ? ERP.colors.surfaceHover : "#FEE2E2")}
+                    onMouseLeave={e => (e.currentTarget.style.background = !s.ok ? "#FEF2F2" : (i % 2 === 0 ? "#fff" : ERP.colors.pageBg))}
                   >
                     {/* Name */}
                     <div style={{
@@ -956,20 +1082,28 @@ export const Screen_DynamicGroupBuilder: React.FC = () => {
                       padding: "12px 16px",
                       display: "flex", alignItems: "center", gap: 6,
                     }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: "50%",
-                        background: ERP.colors.success,
-                        boxShadow: `0 0 5px ${ERP.colors.success}80`,
-                      }} />
-                      <span style={{
-                        fontSize: 12, fontWeight: 700,
-                        color: ERP.colors.success, fontFamily: F,
-                      }}>
-                        🟢 已核實
-                      </span>
-                      <span style={{ fontSize: 11, color: ERP.colors.textMuted, fontFamily: F }}>
-                        Verified
-                      </span>
+                      {s.ok ? (
+                        <>
+                          <div style={{
+                            width: 8, height: 8, borderRadius: "50%",
+                            background: ERP.colors.success,
+                            boxShadow: `0 0 5px ${ERP.colors.success}80`,
+                          }} />
+                          <span style={{ fontSize: 12, fontWeight: 700, color: ERP.colors.success, fontFamily: F }}>
+                            已核實
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{
+                            width: 8, height: 8, borderRadius: "50%",
+                            background: ERP.colors.red,
+                          }} />
+                          <span style={{ fontSize: 12, fontWeight: 700, color: ERP.colors.red, fontFamily: F }}>
+                            拒絕 · 非{groupForm}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

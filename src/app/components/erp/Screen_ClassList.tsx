@@ -20,6 +20,9 @@ interface ClassInfo {
   headcount: number;
   activeActivities: number;
   room: string;
+  name?: string;
+  academic_year?: string;
+  student_count?: number;
 }
 
 interface RosterStudent {
@@ -569,7 +572,8 @@ const RosterView: React.FC<{
 const ClassCard: React.FC<{
   cls: ClassInfo; lang: "en" | "zh-HK";
   onOpen: () => void;
-}> = ({ cls, lang, onOpen }) => {
+  rosterHref: string;
+}> = ({ cls, lang, onOpen, rosterHref }) => {
   const F = ERP.font.family;
   const T = lang === "zh-HK"
     ? { formTeacher: "班主任", headcount: "學生人數", activeActs: "進行中活動", openRoster: "開啟名冊" }
@@ -584,6 +588,7 @@ const ClassCard: React.FC<{
     F6: { bg: "#CCFBF1", color: "#0F766E" },
   };
   const fc = formColors[cls.form] ?? { bg: ERP.colors.accentPale, color: ERP.colors.accent };
+  const studentCount = cls.student_count ?? cls.headcount;
 
   return (
     <div style={{
@@ -619,8 +624,8 @@ const ClassCard: React.FC<{
       {/* Stats row */}
       <div style={{ display: "flex", gap: 0, borderTop: `1px solid ${ERP.colors.divider}`, paddingTop: 14 }}>
         {[
-          { icon: Users, label: T.headcount, value: cls.headcount },
-          { icon: BookOpen, label: T.formTeacher, value: cls.formTeacher },
+          { icon: Users, label: T.headcount, value: studentCount },
+          { icon: BookOpen, label: T.formTeacher, value: cls.formTeacher || "—" },
           { icon: Activity, label: T.activeActs, value: cls.activeActivities },
         ].map((item, idx) => (
           <div key={idx} style={{
@@ -633,26 +638,31 @@ const ClassCard: React.FC<{
               <item.icon size={12} color={ERP.colors.textMuted} />
               <span style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>{item.label}</span>
             </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: ERP.colors.textPrimary, fontFamily: F }}>
+            <div style={{
+              fontSize: typeof item.value === "number" ? 15 : 13,
+              fontWeight: 700, color: ERP.colors.textPrimary, fontFamily: F,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
               {item.value}
             </div>
           </div>
         ))}
       </div>
 
-      {/* Open roster button */}
-      <button
-        onClick={e => { e.stopPropagation(); onOpen(); }}
+      {/* Open roster → Student List pre-filtered */}
+      <a
+        href={rosterHref}
+        onClick={e => e.stopPropagation()}
         style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
           padding: "9px 16px", borderRadius: ERP.radius.md,
           border: `1px solid ${ERP.colors.accentLight}`, background: ERP.colors.accentPale,
           color: ERP.colors.accent, fontSize: 13, fontWeight: 600, fontFamily: F,
-          cursor: "pointer", width: "100%",
+          cursor: "pointer", width: "100%", textDecoration: "none", boxSizing: "border-box",
         }}
       >
         <ClipboardList size={14} />{T.openRoster}<ChevronRight size={13} />
-      </button>
+      </a>
     </div>
   );
 };
@@ -662,15 +672,68 @@ const ClassCard: React.FC<{
 interface Props {
   lang?: "en" | "zh-HK";
   onViewStudent?: (studentId: string, classCode: string) => void;
+  classes?: ClassInfo[];
+  forms?: string[];
+  academicYears?: string[];
+  academicYear?: string;
+  filterForm?: string;
 }
+
+const FilterSelect: React.FC<{
+  id: string; label: string; value: string; options: string[];
+  onChange: (v: string) => void; width?: number | string;
+}> = ({ id, label, value, options, onChange, width = 120 }) => {
+  const F = ERP.font.family;
+  const active = value !== "全部" && value !== "";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <label htmlFor={id} style={{ fontSize: 10.5, fontWeight: 600, color: ERP.colors.textMuted, fontFamily: F, letterSpacing: "0.04em" }}>
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          width, padding: "7px 28px 7px 10px", borderRadius: 8,
+          border: `1px solid ${active ? ERP.colors.accent : ERP.colors.border}`,
+          background: active ? ERP.colors.accentPale : ERP.colors.surface,
+          color: active ? ERP.colors.accent : ERP.colors.textPrimary,
+          fontSize: 12.5, fontFamily: F, outline: "none", cursor: "pointer",
+          appearance: "none", fontWeight: active ? 600 : 400,
+        }}
+      >
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+};
 
 export const Screen_ClassList: React.FC<Props> = ({
   lang = "zh-HK",
   onViewStudent,
+  classes: classesProp,
+  forms: formsProp,
+  academicYears: yearsProp,
+  academicYear: yearProp = "2025/26",
+  filterForm: formProp = "全部",
 }) => {
+  const classList = classesProp && classesProp.length > 0 ? classesProp : CLASSES;
   const [openClassId, setOpenClassId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const F = ERP.font.family;
+
+  const ayOpts = (yearsProp && yearsProp.length > 0) ? yearsProp : ["2025/26", "2024/25", "2023/24"];
+  const formOpts = ["全部", ...((formsProp && formsProp.length > 0)
+    ? formsProp
+    : Array.from(new Set(classList.map(c => c.form).filter(Boolean))).sort())];
+
+  const navigateFilters = (ay: string, form: string) => {
+    const params = new URLSearchParams();
+    params.set("academic_year", ay);
+    if (form && form !== "全部") params.set("form", form);
+    window.location.href = `/classes?${params.toString()}`;
+  };
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -682,20 +745,20 @@ export const Screen_ClassList: React.FC<Props> = ({
   const T = lang === "zh-HK"
     ? {
         pageTitle: "班別列表",
-        subtitle: "AY 2025/26 · 全校班別",
+        subtitle: `AY ${yearProp} · 全校班別`,
         colClasses: "個班級",
         totalStudents: "名學生",
         activeActs: "項進行中活動",
       }
     : {
         pageTitle: "Class List",
-        subtitle: "AY 2025/26 · All Classes",
+        subtitle: `AY ${yearProp} · All Classes`,
         colClasses: "Classes",
         totalStudents: "Students",
         activeActs: "Active Activities",
       };
 
-  const openClass = openClassId ? CLASSES.find(c => c.id === openClassId) : null;
+  const openClass = openClassId ? classList.find(c => c.id === openClassId) : null;
 
   if (openClass) {
     return (
@@ -709,8 +772,8 @@ export const Screen_ClassList: React.FC<Props> = ({
     );
   }
 
-  const totalStudents = CLASSES.reduce((acc, c) => acc + c.headcount, 0);
-  const totalActs = CLASSES.reduce((acc, c) => acc + c.activeActivities, 0);
+  const totalStudents = classList.reduce((acc, c) => acc + (c.student_count ?? c.headcount), 0);
+  const totalActs = classList.reduce((acc, c) => acc + c.activeActivities, 0);
 
   return (
     <div style={{
@@ -731,7 +794,7 @@ export const Screen_ClassList: React.FC<Props> = ({
         {/* Summary chips */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {[
-            { val: CLASSES.length, label: T.colClasses, color: ERP.colors.accent },
+            { val: classList.length, label: T.colClasses, color: ERP.colors.accent },
             { val: totalStudents, label: T.totalStudents, color: ERP.colors.teal },
             { val: totalActs, label: T.activeActs, color: ERP.colors.green },
           ].map((chip, i) => (
@@ -747,12 +810,52 @@ export const Screen_ClassList: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* AY + Form filters — server reload for year-scoped teachers/counts */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end",
+        padding: "12px 14px", borderRadius: 12,
+        background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
+      }}>
+        <FilterSelect
+          id="ayFilter"
+          label="學年 AY"
+          value={yearProp}
+          options={ayOpts}
+          onChange={v => navigateFilters(v, formProp)}
+          width={isMobile ? "100%" : 120}
+        />
+        <FilterSelect
+          id="formFilter"
+          label="年級 Form"
+          value={formProp || "全部"}
+          options={formOpts}
+          onChange={v => navigateFilters(yearProp, v)}
+          width={isMobile ? "100%" : 110}
+        />
+      </div>
+
       {/* Class Cards Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-        {CLASSES.map(cls => (
-          <ClassCard key={cls.id} cls={cls} lang={lang} onOpen={() => setOpenClassId(cls.id)} />
-        ))}
+        {classList.map(cls => {
+          const ay = cls.academic_year || yearProp;
+          const rosterHref = `/classes/details/${cls.id}?academic_year=${encodeURIComponent(ay)}`;
+          return (
+            <ClassCard
+              key={cls.id}
+              cls={cls}
+              lang={lang}
+              onOpen={() => { window.location.href = rosterHref; }}
+              rosterHref={rosterHref}
+            />
+          );
+        })}
       </div>
+
+      {classList.length === 0 && (
+        <div style={{ padding: 40, textAlign: "center", color: ERP.colors.textMuted, fontSize: 13 }}>
+          此篩選條件下沒有班別
+        </div>
+      )}
     </div>
   );
 };

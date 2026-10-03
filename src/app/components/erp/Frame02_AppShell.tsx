@@ -57,7 +57,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "subjects-assessment", zhTitle: "學科與評估", enTitle: "Subjects & Assessment",
     items: [
-      { id: "subjects",    zhLabel: "科目管理", enLabel: "Subjects",    icon: <BookOpen size={15} />,   screenId: "1.C.1", href: "/dashboard" },
+      { id: "subjects",    zhLabel: "科目管理", enLabel: "Subjects",    icon: <BookOpen size={15} />,   screenId: "1.C.1", href: "/subjects" },
       { id: "score-entry", zhLabel: "成績輸入", enLabel: "Score Entry", icon: <LayoutGrid size={15} />, screenId: "1.C.3", href: "/dashboard" },
     ],
   },
