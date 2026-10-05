@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from "react";
 import {
   ArrowLeft, Calendar, Check, ChevronDown, Layers, Plus,
-  Save, UserCog, X,
+  Save, UserCog, X, Trophy, Sliders, Users,
 } from "lucide-react";
 import { ERP, type AcornTagKey } from "./erpTokens";
 
@@ -20,6 +20,16 @@ type TeacherOpt = {
 };
 type Stage = { id: string; label: string; labelEn: string; date: string };
 
+type AchievementLevel = {
+  id: number;
+  code: string;
+  name_en: string;
+  name_zh_hk: string;
+  base_points?: number;
+  label?: string;
+  sub?: string;
+};
+
 type InitialActivity = {
   id?: number;
   name_en?: string;
@@ -27,6 +37,10 @@ type InitialActivity = {
   category?: string;
   academic_year?: string;
   teacher_in_charge_id?: number | null;
+  achievement_level_id?: number | null;
+  status?: string;
+  acorn_weights?: Record<string, number>;
+  acorn_tags?: string[];
   forms?: string[];
   stages?: Array<{
     id?: number;
@@ -35,6 +49,13 @@ type InitialActivity = {
     date?: string;
   }>;
 };
+
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "active", label: "進行中 Active" },
+  { value: "paused", label: "暫停 Paused" },
+  { value: "completed", label: "已完結 Completed" },
+  { value: "draft", label: "籌備中 Draft" },
+];
 
 const EDIT_CATEGORIES = ["比賽", "體育", "文藝", "學術", "服務"];
 const ALL_ACORN_TAGS: AcornTagKey[] = ["認知", "社群", "創意", "協作", "領導", "體適能"];
@@ -91,6 +112,9 @@ export const Screen_ActivityForm: React.FC<{
   teachers?: TeacherOpt[];
   academicYears?: string[];
   targetForms?: string[];
+  achievementLevels?: AchievementLevel[];
+  enrollmentCount?: number;
+  rosterUrl?: string;
   storeUrl?: string;
   listUrl?: string;
   activityId?: number | null;
@@ -101,6 +125,9 @@ export const Screen_ActivityForm: React.FC<{
   teachers = [],
   academicYears = DEFAULT_YEARS,
   targetForms = DEFAULT_FORMS,
+  achievementLevels = [],
+  enrollmentCount = 0,
+  rosterUrl = "",
   storeUrl = "/activities/store",
   listUrl = "/activities",
   activityId = null,
@@ -118,7 +145,22 @@ export const Screen_ActivityForm: React.FC<{
     initialActivity?.teacher_in_charge_id ? String(initialActivity.teacher_in_charge_id) : ""
   );
   const [forms, setForms] = useState<string[]>(initialActivity?.forms || []);
-  const [acornTags, setAcornTags] = useState<AcornTagKey[]>([]);
+  const [acornTags, setAcornTags] = useState<AcornTagKey[]>(() => {
+    const tags = (initialActivity?.acorn_tags || []) as AcornTagKey[];
+    return tags.filter(t => ALL_ACORN_TAGS.includes(t));
+  });
+  const [acornWeights, setAcornWeights] = useState<Record<string, number>>(
+    () => initialActivity?.acorn_weights || {}
+  );
+  const [levelId, setLevelId] = useState<string>(
+    initialActivity?.achievement_level_id ? String(initialActivity.achievement_level_id) : ""
+  );
+  const [status, setStatus] = useState(() => {
+    const s = (initialActivity?.status || "draft").toLowerCase();
+    if (s === "planning") return "draft";
+    if (["active", "paused", "completed", "draft"].includes(s)) return s;
+    return "draft";
+  });
   const [stages, setStages] = useState<Stage[]>(() => {
     const src = initialActivity?.stages || [];
     if (src.length === 0) {
@@ -161,8 +203,43 @@ export const Screen_ActivityForm: React.FC<{
     });
   };
 
+  const rebalanceEvenly = (tags: AcornTagKey[]) => {
+    if (tags.length === 0) { setAcornWeights({}); return; }
+    const base = Math.floor(100 / tags.length);
+    const rem  = 100 - base * tags.length;
+    const w: Record<string, number> = {};
+    tags.forEach((t, i) => { w[t] = base + (i === 0 ? rem : 0); });
+    setAcornWeights(w);
+  };
+
   const toggleAcorn = (tag: AcornTagKey) => {
-    setAcornTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+    setAcornTags(prev => {
+      const next = prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag];
+      rebalanceEvenly(next);
+      return next;
+    });
+  };
+
+  const handleWeightChange = (changedTag: AcornTagKey, newVal: number) => {
+    const clamped = Math.max(0, Math.min(100, newVal));
+    const others = acornTags.filter(t => t !== changedTag);
+    if (others.length === 0) { setAcornWeights({ [changedTag]: 100 }); return; }
+    const remaining = 100 - clamped;
+    const othersOldSum = others.reduce((s, t) => s + (acornWeights[t] ?? 0), 0);
+    const newW: Record<string, number> = { [changedTag]: clamped };
+    let distributed = 0;
+    others.forEach((t, i) => {
+      if (i < others.length - 1) {
+        const share = othersOldSum > 0
+          ? Math.round((acornWeights[t] ?? 0) / othersOldSum * remaining)
+          : Math.round(remaining / others.length);
+        newW[t] = share;
+        distributed += share;
+      } else {
+        newW[t] = Math.max(0, remaining - distributed);
+      }
+    });
+    setAcornWeights(newW);
   };
 
   const goList = () => { window.location.href = listUrl; };
@@ -191,6 +268,9 @@ export const Screen_ActivityForm: React.FC<{
             date: s.date,
           })),
           acorn_tags: acornTags,
+          acorn_weights: acornWeights,
+          achievement_level_id: levelId === "" ? null : Number(levelId),
+          status,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -414,7 +494,117 @@ export const Screen_ActivityForm: React.FC<{
             })}
           </div>
           <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 10 }}>
-            點擊標籤以選取。目前已選：{acornTags.join("、") || "（無）"} · ACORN 樞紐表將於下一階段接線。
+            點擊標籤以選取。目前已選：{acornTags.join("、") || "（無）"}
+          </div>
+
+          {acornTags.length > 0 && (
+            <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${ERP.colors.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                <Sliders size={13} color={ERP.colors.accent} />
+                <span style={{ fontSize: 12, fontWeight: 800, color: ERP.colors.textPrimary }}>ACORN 權重分配</span>
+                <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>Weight Distribution · 合計須為 100%</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {acornTags.map(tag => {
+                  const s = ERP.acornTags[tag];
+                  const val = acornWeights[tag] ?? 0;
+                  return (
+                    <div key={tag}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{tag}</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, fontFamily: ERP.font.mono }}>{val}%</span>
+                      </div>
+                      <input
+                        type="range" min={0} max={100} value={val}
+                        onChange={e => handleWeightChange(tag, Number(e.target.value))}
+                        style={{ width: "100%", accentColor: s.color }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: Object.values(acornWeights).reduce((a, b) => a + b, 0) === 100 ? ERP.colors.success : ERP.colors.red }}>
+                合計 {Object.values(acornWeights).reduce((a, b) => a + b, 0)}%
+              </div>
+            </div>
+          )}
+        </Section>
+
+        <Section label="成就環境級別" sub="Achievement Level · 決定積點倍率">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+            {achievementLevels.map(lv => {
+              const selected = String(lv.id) === levelId;
+              return (
+                <label key={lv.id} style={{
+                  display: "flex", flexDirection: "column", gap: 4, cursor: "pointer",
+                  padding: "12px 10px", borderRadius: ERP.radius.md, textAlign: "center" as const,
+                  border: `1.5px solid ${selected ? ERP.colors.accent : ERP.colors.border}`,
+                  background: selected ? ERP.colors.accentPale : ERP.colors.pageBg,
+                }}>
+                  <input type="radio" name="achievement_level_id" value={String(lv.id)} checked={selected} onChange={() => setLevelId(String(lv.id))} style={{ accentColor: ERP.colors.accent, alignSelf: "center" }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: selected ? ERP.colors.accent : ERP.colors.textPrimary, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    <Trophy size={12} /> {lv.code}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.textSecondary }}>{lv.name_zh_hk}</span>
+                  <span style={{ fontSize: 10, color: ERP.colors.textMuted }}>{lv.name_en} · {lv.base_points ?? 0} pts</span>
+                </label>
+              );
+            })}
+            {achievementLevels.length === 0 && (
+              <div style={{ gridColumn: "1 / -1", fontSize: 12, color: ERP.colors.textMuted }}>尚未設定成就級別。請先執行 AchievementLevelSeeder。</div>
+            )}
+          </div>
+        </Section>
+
+        <Section label="狀態與名單" sub="Status & Roster">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+            <Field label="活動狀態 Status">
+              <div style={{ position: "relative" }}>
+                <select value={status} onChange={e => setStatus(e.target.value)} style={{ ...inputStyle, paddingRight: 28, appearance: "none" as const, cursor: "pointer" }}>
+                  {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <ChevronDown size={13} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+              </div>
+            </Field>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: ERP.colors.textSecondary, marginBottom: 6 }}>參與名單 Manage Roster</div>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                padding: "12px 14px", borderRadius: ERP.radius.md,
+                border: `1px solid ${ERP.colors.border}`, background: ERP.colors.pageBg,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: ERP.radius.md,
+                    background: ERP.colors.accentPale, border: `1px solid ${ERP.colors.accentLight}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Users size={16} color={ERP.colors.accent} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary }}>已報名學生</div>
+                    <div style={{ fontSize: 11, color: ERP.colors.textMuted }}>Enrolled participants</div>
+                  </div>
+                </div>
+                <span style={{
+                  fontSize: 14, fontWeight: 800, color: ERP.colors.accent,
+                  background: ERP.colors.accentLight, borderRadius: ERP.radius.full, padding: "2px 10px",
+                }}>{enrollmentCount}</span>
+              </div>
+              {isEdit && rosterUrl ? (
+                <a href={rosterUrl} style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 10,
+                  width: "100%", boxSizing: "border-box", padding: "9px 14px",
+                  borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.accentLight}`,
+                  background: ERP.colors.accentPale, color: ERP.colors.accent,
+                  fontSize: 13, fontWeight: 700, fontFamily: F, textDecoration: "none",
+                }}>
+                  <Users size={14} /> 管理名單
+                </a>
+              ) : (
+                <div style={{ marginTop: 8, fontSize: 11, color: ERP.colors.textMuted }}>儲存活動後即可管理參與名單。</div>
+              )}
+            </div>
           </div>
         </Section>
 

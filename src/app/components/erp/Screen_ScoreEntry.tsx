@@ -2,20 +2,21 @@
 // Screen 1.C.3  成績輸入 / Score Entry
 // UI Pattern: High-Density Spreadsheet Grid (Excel-like)
 // Sticky left columns: 班號, 姓名. ABS/EXM rows with disabled cells.
+// High-speed keyboard: auto-select, Enter/Arrow vertical nav, status lock.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ERP } from "./erpTokens";
 import {
   Upload, Save, Send, ChevronDown, AlertTriangle,
   Sparkles, CheckCircle2, FileSpreadsheet, RotateCcw,
 } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 type StatusCode = "normal" | "abs" | "exm";
 
 interface ScoreRow {
   classNum: number;
-  id: string;
+  id: number;
+  studentCode: string;
   chName: string;
   enName: string;
   score: number | null;
@@ -23,35 +24,36 @@ interface ScoreRow {
   note: string;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const TERM_OPTIONS       = ["上學期", "下學期"];
-const CLASS_OPTIONS      = ["1A", "1B", "2A", "2B", "3A"];
-const SUBJECT_OPTIONS    = ["數學", "英文", "中文", "物理"];
-const ASSESSMENT_OPTIONS = ["期中考", "期末考", "平時表現", "專題報告"];
+interface ClassOpt {
+  id: number | string;
+  name?: string;
+  form?: string;
+  classCode?: string;
+  label?: string;
+}
 
-const INITIAL_SCORES: ScoreRow[] = [
-  { classNum:1,  id:"2025-F1A-001", chName:"陳大文", enName:"Chan Tai Man",    score:78,   status:"normal", note:"" },
-  { classNum:2,  id:"2025-F1A-002", chName:"黃美怡", enName:"Wong Mei Yi",     score:85,   status:"normal", note:"" },
-  { classNum:3,  id:"2025-F1A-003", chName:"李家豪", enName:"Lee Ka Ho",       score:null, status:"abs",    note:"缺席，未補考" },
-  { classNum:4,  id:"2025-F1A-004", chName:"劉曉峰", enName:"Lau Hiu Fung",   score:92,   status:"normal", note:"" },
-  { classNum:5,  id:"2025-F1A-005", chName:"林詩雅", enName:"Lam Sze Nga",    score:67,   status:"normal", note:"" },
-  { classNum:6,  id:"2025-F1A-006", chName:"張俊傑", enName:"Cheung Chun Kit",score:88,   status:"normal", note:"" },
-  { classNum:7,  id:"2025-F1A-007", chName:"吳敏兒", enName:"Ng Man Yi",      score:71,   status:"normal", note:"重讀學生，需加強" },
-  { classNum:8,  id:"2025-F1A-008", chName:"鄭博文", enName:"Cheng Pok Man",  score:null, status:"exm",    note:"醫生證明免試" },
-  { classNum:9,  id:"2025-F1A-009", chName:"何紫晴", enName:"Ho Tsz Ching",   score:82,   status:"normal", note:"" },
-  { classNum:10, id:"2025-F1A-010", chName:"梁嘉駿", enName:"Leung Ka Chun",  score:76,   status:"normal", note:"" },
-  { classNum:11, id:"2025-F1A-011", chName:"李建志", enName:"Li Kin Chi",     score:90,   status:"normal", note:"" },
-  { classNum:12, id:"2025-F1A-012", chName:"陳志明", enName:"Chan Chi Ming",  score:55,   status:"normal", note:"需要補底支援" },
+interface SubjectOpt {
+  id: number | string;
+  code?: string;
+  name_zh_hk?: string;
+  name_en?: string;
+  label?: string;
+  offered_forms?: string[];
+}
+
+interface LabelOpt { value: string; label: string }
+
+const TERM_FALLBACK: LabelOpt[] = [
+  { value: "T1", label: "上學期 Term 1" },
+  { value: "T2", label: "下學期 Term 2" },
 ];
 
-// ─── Status config ────────────────────────────────────────────────────────────
-const STATUS_CFG: Record<StatusCode, { bg: string; color: string; border: string; label: string }> = {
-  normal: { bg: "#F0FDF4", color: "#15803D", border: "#86EFAC", label: "正常" },
-  abs:    { bg: "#FFFBEB", color: "#92400E", border: "#FCD34D", label: "ABS 缺席" },
-  exm:    { bg: "#EFF6FF", color: "#1D4ED8", border: "#93C5FD", label: "EXM 免修" },
+const STATUS_CFG: Record<StatusCode, { bg: string; color: string; border: string; label: string; db: string }> = {
+  normal: { bg: "#F0FDF4", color: "#15803D", border: "#86EFAC", label: "正常", db: "Normal" },
+  abs:    { bg: "#FFFBEB", color: "#92400E", border: "#FCD34D", label: "ABS 缺席", db: "ABS" },
+  exm:    { bg: "#EFF6FF", color: "#1D4ED8", border: "#93C5FD", label: "EXM 免修", db: "EXM" },
 };
 
-// ─── Score color helper ───────────────────────────────────────────────────────
 const scoreColor = (score: number | null, status: StatusCode): string => {
   if (score === null || status !== "normal") return ERP.colors.pageBg;
   if (score >= 80) return "#F0FDF4";
@@ -66,11 +68,12 @@ const scoreTextColor = (score: number | null): string => {
   return ERP.colors.textPrimary;
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
 const FilterSelect: React.FC<{
-  label: string; value: string; options: string[];
+  label: string; value: string; options: LabelOpt[];
   onChange: (v: string) => void;
-}> = ({ label, value, options, onChange }) => (
+  disabled?: boolean;
+  placeholder?: string;
+}> = ({ label, value, options, onChange, disabled, placeholder }) => (
   <div style={{ position: "relative" }}>
     <label style={{
       display: "block", fontSize: 10, fontWeight: 600,
@@ -78,21 +81,21 @@ const FilterSelect: React.FC<{
       fontFamily: ERP.font.family,
     }}>{label}</label>
     <div style={{ position: "relative" }}>
-      <select value={value} onChange={e => onChange(e.target.value)} style={{
+      <select value={value} disabled={disabled} onChange={e => onChange(e.target.value)} style={{
         padding: "6px 26px 6px 10px", borderRadius: ERP.radius.sm,
         border: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface,
         fontSize: 13, fontFamily: ERP.font.family, color: ERP.colors.textPrimary,
-        outline: "none", cursor: "pointer", appearance: "none" as const,
-        fontWeight: 600,
+        outline: "none", cursor: disabled ? "not-allowed" : "pointer", appearance: "none" as const,
+        fontWeight: 600, opacity: disabled ? 0.6 : 1,
       }}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {placeholder && <option value="">{placeholder}</option>}
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
       <ChevronDown size={11} style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: ERP.colors.textMuted }} />
     </div>
   </div>
 );
 
-// ─── Cell shared style ────────────────────────────────────────────────────────
 const cellBorder: React.CSSProperties = {
   borderRight: `1px solid ${ERP.colors.border}`,
   borderBottom: `1px solid ${ERP.colors.border}`,
@@ -108,18 +111,70 @@ const headCellStyle = (extra?: React.CSSProperties): React.CSSProperties => ({
   ...extra,
 });
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-interface Props { lang?: "en" | "zh-HK" }
+interface AssessOpt { id: number; name: string; max_score: number }
 
-export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
-  const [scores,     setScores]     = useState<ScoreRow[]>(INITIAL_SCORES);
-  const [term,       setTerm]       = useState("上學期");
-  const [cls,        setCls]        = useState("1A");
-  const [subject,    setSubject]    = useState("數學");
-  const [assessment, setAssessment] = useState("期中考");
+export interface ScoreEntryProps {
+  lang?: "en" | "zh-HK";
+  academicYear?: string;
+  classes?: ClassOpt[];
+  subjects?: SubjectOpt[];
+  terms?: LabelOpt[];
+  rosterUrl?: string;
+  saveUrl?: string;
+  assessmentsUrl?: string;
+}
+
+export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
+  lang = "zh-HK",
+  academicYear = "2025/26",
+  classes = [],
+  subjects = [],
+  terms = TERM_FALLBACK,
+  rosterUrl = "/scores/roster",
+  saveUrl = "/scores/save",
+  assessmentsUrl = "/scores/assessments",
+}) => {
+  const termOpts = terms.length ? terms : TERM_FALLBACK;
+
+  const classOpts: LabelOpt[] = classes.map(c => ({
+    value: String(c.id),
+    label: c.label || [c.classCode || (c.name ? `F${c.name}` : ""), c.form].filter(Boolean).join(" · ") || String(c.id),
+  }));
+
+  const [scores,     setScores]     = useState<ScoreRow[]>([]);
+  const [term,       setTerm]       = useState(termOpts[0]?.value ?? "T1");
+  const [cls,        setCls]        = useState(classOpts[0]?.value ?? "");
+  const [subject,    setSubject]    = useState(() => String(subjects[0]?.id ?? ""));
+  const [assessmentItems, setAssessmentItems] = useState<AssessOpt[]>([]);
+  const [assessmentId, setAssessmentId] = useState<string>("");
+  const [maxScore,   setMaxScore]   = useState(100);
   const [isMobile,   setIsMobile]   = useState(false);
   const [isDraft,    setIsDraft]    = useState(false);
-  const [focusedId,  setFocusedId]  = useState<string | null>(null);
+  const [saving,     setSaving]     = useState(false);
+  const [loadError,  setLoadError]  = useState<string | null>(null);
+  const [focusedId,  setFocusedId]  = useState<number | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  const selectedForm = String(classes.find(c => String(c.id) === cls)?.form || "");
+  const subjectOpts: LabelOpt[] = subjects
+    .filter(s => {
+      const of = Array.isArray(s.offered_forms) ? s.offered_forms : [];
+      if (!selectedForm || of.length === 0) return true;
+      return of.some(f => {
+        const n = String(f).toUpperCase().replace(/^S/, "F");
+        return n === selectedForm || String(f) === selectedForm;
+      });
+    })
+    .map(s => ({
+      value: String(s.id),
+      label: s.label || [s.code, s.name_zh_hk || s.name_en].filter(Boolean).join(" ") || String(s.id),
+    }));
+
+  useEffect(() => {
+    if (subjectOpts.length && !subjectOpts.some(o => o.value === subject)) {
+      setSubject(subjectOpts[0].value);
+    }
+  }, [cls]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -128,7 +183,106 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const update = (id: string, field: keyof ScoreRow, value: ScoreRow[keyof ScoreRow]) => {
+  useEffect(() => {
+    if (!cls || !subject || !term) {
+      setAssessmentItems([]);
+      setAssessmentId("");
+      setScores([]);
+      return;
+    }
+    let cancelled = false;
+    const q = new URLSearchParams({
+      class_id: cls,
+      subject_id: subject,
+      term,
+      academic_year: academicYear,
+    });
+    fetch(`${assessmentsUrl}?${q.toString()}`, { credentials: "same-origin" })
+      .then(r => r.json())
+      .then(json => {
+        if (cancelled) return;
+        const list: AssessOpt[] = Array.isArray(json?.data) ? json.data : [];
+        setAssessmentItems(list);
+        setAssessmentId(prev => {
+          if (prev && list.some(a => String(a.id) === prev)) return prev;
+          return list[0] ? String(list[0].id) : "";
+        });
+        if (!list.length) {
+          setScores([]);
+          setLoadError("此班級／科目尚無評估項目。請到「評估項目設定」新增。");
+        } else {
+          setLoadError(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssessmentItems([]);
+          setAssessmentId("");
+          setLoadError("無法載入評估項目");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [cls, subject, term, academicYear, assessmentsUrl]);
+
+  useEffect(() => {
+    const selected = assessmentItems.find(a => String(a.id) === assessmentId);
+    if (selected) setMaxScore(Number(selected.max_score) || 100);
+    if (!cls || !assessmentId) {
+      setScores([]);
+      return;
+    }
+    let cancelled = false;
+    const q = new URLSearchParams({
+      class_id: cls,
+      assessment_id: assessmentId,
+      academic_year: academicYear,
+    });
+    fetch(`${rosterUrl}?${q.toString()}`, { credentials: "same-origin" })
+      .then(r => r.json())
+      .then(json => {
+        if (cancelled) return;
+        if (!json?.ok) {
+          setLoadError(json?.message || "無法載入名冊");
+          setScores([]);
+          return;
+        }
+        setLoadError(null);
+        setMaxScore(Number(json.assessment?.max_score) || 100);
+        setIsDraft(false);
+        const rows: ScoreRow[] = (json.students || []).map((s: any) => ({
+          id: Number(s.id),
+          studentCode: String(s.student_id ?? ""),
+          classNum: Number(s.classNum ?? 0),
+          chName: String(s.chName ?? ""),
+          enName: String(s.enName ?? ""),
+          score: s.score === null || s.score === undefined || s.score === "" ? null : Number(s.score),
+          status: (s.status === "abs" || s.status === "exm" ? s.status : "normal") as StatusCode,
+          note: String(s.note ?? ""),
+        }));
+        setScores(rows);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadError("無法載入名冊");
+          setScores([]);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [cls, assessmentId, academicYear, rosterUrl]);
+
+  const exceedsMax = (score: number | null, status: StatusCode) =>
+    status === "normal" && score !== null && !Number.isNaN(score) && score > maxScore;
+
+  const overMaxRows = scores.filter(r => exceedsMax(r.score, r.status));
+
+  const onScoreChange = (id: number, raw: string) => {
+    setIsDraft(false);
+    const next = raw === "" ? null : Number(raw);
+    setScores(prev => prev.map(r => r.id === id ? { ...r, score: next } : r));
+  };
+
+  const update = (id: number, field: keyof ScoreRow, value: ScoreRow[keyof ScoreRow]) => {
+    setIsDraft(false);
     setScores(prev => prev.map(r =>
       r.id === id
         ? { ...r, [field]: value, ...(field === "status" && value !== "normal" ? { score: null } : {}) }
@@ -136,18 +290,107 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
     ));
   };
 
-  const enteredRows = scores.filter(r => r.score !== null && r.status === "normal");
+  const focusScoreInRow = (current: HTMLInputElement, dir: 1 | -1) => {
+    const table = tableRef.current;
+    if (!table) return;
+    const tr = current.closest("tr");
+    if (!tr) return;
+    let sibling: HTMLTableRowElement | null = dir === 1
+      ? tr.nextElementSibling as HTMLTableRowElement | null
+      : tr.previousElementSibling as HTMLTableRowElement | null;
+    while (sibling) {
+      const nextInput = sibling.querySelector(".raw-score-input") as HTMLInputElement | null;
+      if (nextInput && !nextInput.disabled) {
+        nextInput.focus();
+        nextInput.select();
+        return;
+      }
+      sibling = dir === 1
+        ? sibling.nextElementSibling as HTMLTableRowElement | null
+        : sibling.previousElementSibling as HTMLTableRowElement | null;
+    }
+  };
+
+  const onScoreKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault();
+      focusScoreInRow(e.currentTarget, 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      focusScoreInRow(e.currentTarget, -1);
+    }
+  };
+
+  const onStatusChange = (id: number, next: StatusCode) => {
+    setIsDraft(false);
+    setScores(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      if (next === "abs" || next === "exm") {
+        return { ...r, status: next, score: null };
+      }
+      return { ...r, status: next };
+    }));
+  };
+
+  const payloadScores = useCallback(() => {
+    const out: Record<string, { raw_score: number | null; status: string; remarks: string }> = {};
+    scores.forEach(r => {
+      out[String(r.id)] = {
+        raw_score: r.status === "normal" ? r.score : null,
+        status: STATUS_CFG[r.status].db,
+        remarks: r.note,
+      };
+    });
+    return out;
+  }, [scores]);
+
+  const save = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!assessmentId || saving) return;
+    if (overMaxRows.length > 0) {
+      const r = overMaxRows[0];
+      setLoadError(`Student ${r.studentCode} score (${r.score}) exceeds the maximum allowed score of ${maxScore}.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(saveUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          assessment_id: Number(assessmentId) || 0,
+          class_id: Number(cls) || 0,
+          subject_id: Number(subject) || 0,
+          term,
+          academic_year: academicYear,
+          scores: payloadScores(),
+        }),
+      });
+      const json = await res.json();
+      if (json?.ok) setIsDraft(true);
+      else setLoadError(json?.message || "儲存失敗");
+    } catch {
+      setLoadError("儲存失敗");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const enteredRows = scores.filter(r => r.score !== null && r.status === "normal" && !exceedsMax(r.score, r.status));
   const avg = enteredRows.length
     ? Math.round((enteredRows.reduce((s, r) => s + r.score!, 0) / enteredRows.length) * 10) / 10
     : "—";
   const highest  = enteredRows.length ? Math.max(...enteredRows.map(r => r.score!)) : "—";
   const passFail = enteredRows.filter(r => (r.score ?? 0) < 50).length;
   const F = ERP.font.family;
+  void lang;
+  void isMobile;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", fontFamily: F, background: ERP.colors.pageBg }}>
+    <form id="scoreForm" onSubmit={save} style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", fontFamily: F, background: ERP.colors.pageBg }}>
+      <input type="hidden" name="assessment_id" value={assessmentId} />
 
-      {/* ── TOP BAR ───────────────────────────────────────────────────── */}
       <div style={{ flexShrink: 0, background: ERP.colors.surface, borderBottom: `1px solid ${ERP.colors.border}`, padding: "14px 24px 12px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
           <div>
@@ -156,9 +399,9 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
               <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: ERP.colors.textPrimary }}>成績輸入</h1>
               <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: ERP.radius.full, background: ERP.colors.accentPale, color: ERP.colors.accent, border: `1px solid ${ERP.colors.accentLight}` }}>Score Entry</span>
             </div>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: ERP.colors.textMuted }}>1.C.3 · AY 2025/26 · 逐格輸入或匯入試算表</p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: ERP.colors.textMuted }}>1.C.3 · AY {academicYear} · 逐格輸入或匯入試算表</p>
           </div>
-          <button style={{
+          <button type="button" style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "8px 16px", borderRadius: ERP.radius.md,
             border: `1.5px solid ${ERP.colors.accentLight}`, background: ERP.colors.accentPale,
@@ -168,14 +411,19 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
           </button>
         </div>
 
-        {/* Filters */}
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" as const, alignItems: "flex-end" }}>
-          <FilterSelect label="學期"   value={term}       options={TERM_OPTIONS}       onChange={setTerm} />
-          <FilterSelect label="班級"   value={cls}        options={CLASS_OPTIONS}       onChange={setCls} />
-          <FilterSelect label="科目"   value={subject}    options={SUBJECT_OPTIONS}     onChange={setSubject} />
-          <FilterSelect label="評估項目" value={assessment} options={ASSESSMENT_OPTIONS} onChange={setAssessment} />
+          <FilterSelect label="學期" value={term} options={termOpts} onChange={setTerm} />
+          <FilterSelect label="班級" value={cls} options={classOpts.length ? classOpts : [{ value: "", label: "—" }]} onChange={setCls} />
+          <FilterSelect label="科目" value={subject} options={subjectOpts.length ? subjectOpts : [{ value: "", label: "—" }]} onChange={setSubject} />
+          <FilterSelect
+            label="評估項目"
+            value={assessmentId}
+            options={assessmentItems.map(a => ({ value: String(a.id), label: `${a.name} /${a.max_score}` }))}
+            onChange={setAssessmentId}
+            placeholder={assessmentItems.length ? undefined : "尚無評估項目"}
+            disabled={!assessmentItems.length}
+          />
 
-          {/* Legend */}
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
             {Object.entries(STATUS_CFG).map(([k, v]) => (
               <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: ERP.radius.full, background: v.bg, color: v.color, border: `1px solid ${v.border}` }}>
@@ -184,9 +432,14 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
             ))}
           </div>
         </div>
+        {loadError && (
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: ERP.colors.red, fontWeight: 600 }}>
+            {loadError}{" "}
+            <a href="/assessments" style={{ color: ERP.colors.accent, fontWeight: 700 }}>前往評估項目設定</a>
+          </p>
+        )}
       </div>
 
-      {/* ── STATS BAR ─────────────────────────────────────────────────── */}
       <div style={{
         flexShrink: 0, background: "#F8FAFC",
         borderBottom: `1px solid ${ERP.colors.border}`,
@@ -207,19 +460,16 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
         ))}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
           <div style={{ width: 160, background: ERP.colors.border, borderRadius: 4, height: 5, overflow: "hidden" }}>
-            <div style={{ width: `${(enteredRows.length / scores.length) * 100}%`, height: "100%", background: ERP.colors.accent, borderRadius: 4, transition: "width 0.3s" }} />
+            <div style={{ width: `${scores.length ? (enteredRows.length / scores.length) * 100 : 0}%`, height: "100%", background: ERP.colors.accent, borderRadius: 4, transition: "width 0.3s" }} />
           </div>
           <span style={{ fontSize: 10, color: ERP.colors.textMuted, fontWeight: 600 }}>
-            {Math.round((enteredRows.length / scores.length) * 100)}% 完成
+            {scores.length ? Math.round((enteredRows.length / scores.length) * 100) : 0}% 完成
           </span>
         </div>
       </div>
 
-      {/* ── SPREADSHEET TABLE ─────────────────────────────────────────── */}
       <div style={{ flex: 1, overflow: "auto" }}>
-        <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: 720, tableLayout: "fixed" as const, width: "100%" }}>
-
-          {/* Colgroup */}
+        <table ref={tableRef} data-max-score={maxScore} style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: 720, tableLayout: "fixed" as const, width: "100%" }}>
           <colgroup>
             <col style={{ width: 50 }} />
             <col style={{ width: 150 }} />
@@ -227,20 +477,16 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
             <col style={{ width: 120 }} />
             <col style={{ minWidth: 240 }} />
           </colgroup>
-
           <thead>
             <tr>
-              {/* Sticky: 班號 */}
               <th style={{ ...headCellStyle(), position: "sticky", left: 0, zIndex: 3, textAlign: "center" as const, borderLeft: `1px solid ${ERP.colors.border}` }}>
                 班號
               </th>
-              {/* Sticky: 姓名 */}
               <th style={{ ...headCellStyle(), position: "sticky", left: 50, zIndex: 3 }}>
                 姓名 <span style={{ fontSize: 9, fontWeight: 400, color: ERP.colors.textMuted }}>Name</span>
               </th>
-              {/* Scrollable columns */}
               <th style={headCellStyle({ textAlign: "right" as const })}>
-                原始分數 <span style={{ fontSize: 9, fontWeight: 400, display: "block", color: ERP.colors.textMuted }}>Raw Score /100</span>
+                原始分數 <span style={{ fontSize: 9, fontWeight: 400, display: "block", color: ERP.colors.textMuted }}>Raw Score /{maxScore}</span>
               </th>
               <th style={headCellStyle()}>
                 特殊狀態 <span style={{ fontSize: 9, fontWeight: 400, display: "block", color: ERP.colors.textMuted }}>Status</span>
@@ -254,7 +500,6 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
               </th>
             </tr>
           </thead>
-
           <tbody>
             {scores.map((row) => {
               const isAbs    = row.status === "abs";
@@ -262,11 +507,12 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
               const disabled = isAbs || isExm;
               const sCfg     = STATUS_CFG[row.status];
               const rowBg    = isAbs ? "#FFFBEB" : isExm ? "#EFF6FF" : ERP.colors.surface;
+              const overCap  = exceedsMax(row.score, row.status);
               const focused  = focusedId === row.id;
+              void focused;
 
               return (
                 <tr key={row.id} style={{ background: rowBg }}>
-                  {/* Sticky: class num */}
                   <td style={{
                     ...cellBorder, position: "sticky", left: 0, zIndex: 2,
                     background: rowBg, textAlign: "center" as const,
@@ -275,8 +521,6 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
                   }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: ERP.colors.textMuted }}>{row.classNum}</span>
                   </td>
-
-                  {/* Sticky: name */}
                   <td style={{
                     ...cellBorder, position: "sticky", left: 50, zIndex: 2,
                     background: rowBg, padding: "0 10px",
@@ -284,41 +528,45 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
                   }}>
                     <div style={{ padding: "8px 0" }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: ERP.colors.textPrimary, lineHeight: 1.2 }}>{row.chName}</div>
-                      <div style={{ fontSize: 10, color: ERP.colors.textMuted, marginTop: 1 }}>{row.enName}</div>
+                      <div style={{ fontSize: 10, color: ERP.colors.textMuted, marginTop: 1 }}>{row.enName || row.studentCode}</div>
                     </div>
                   </td>
-
-                  {/* Raw score */}
                   <td style={{
                     ...cellBorder,
-                    background: disabled ? "#F1F5F9" : scoreColor(row.score, row.status),
+                    background: disabled ? "#F1F5F9" : overCap ? "#FEF2F2" : scoreColor(row.score, row.status),
                     padding: 0,
+                    boxShadow: overCap ? "inset 0 0 0 2px #DC2626" : undefined,
                   }}>
                     <input
-                      type="number" min={0} max={100}
+                      className="raw-score-input"
+                      type="number" min={0} max={maxScore} step="0.01"
+                      data-max-score={maxScore}
+                      name={`scores[${row.id}][raw_score]`}
                       value={disabled ? "" : row.score ?? ""}
                       disabled={disabled}
-                      placeholder={disabled ? (isAbs ? "— ABS" : "— EXM") : "0–100"}
-                      onChange={e => update(row.id, "score", e.target.value === "" ? null : Math.min(100, Math.max(0, Number(e.target.value))))}
-                      onFocus={() => setFocusedId(row.id)}
+                      placeholder={disabled ? (isAbs ? "— ABS" : "— EXM") : `0–${maxScore}`}
+                      title={overCap ? `Score exceeds maximum allowed (${maxScore})` : `0–${maxScore}`}
+                      onChange={e => onScoreChange(row.id, e.target.value)}
+                      onInput={e => onScoreChange(row.id, (e.target as HTMLInputElement).value)}
+                      onFocus={e => { setFocusedId(row.id); e.currentTarget.select(); }}
                       onBlur={() => setFocusedId(null)}
+                      onKeyDown={onScoreKeyDown}
                       style={{
                         width: "100%", height: "100%", minHeight: 42, boxSizing: "border-box" as const,
                         padding: "0 10px", border: "none", outline: "none",
                         background: "transparent",
                         fontSize: 15, fontWeight: 700, fontFamily: ERP.font.mono,
-                        color: disabled ? ERP.colors.textMuted : scoreTextColor(row.score),
+                        color: disabled ? ERP.colors.textMuted : overCap ? "#DC2626" : scoreTextColor(row.score),
                         textAlign: "right" as const, cursor: disabled ? "not-allowed" : "text",
                       }}
                     />
                   </td>
-
-                  {/* Status dropdown */}
                   <td style={{ ...cellBorder, padding: 0, background: sCfg.bg }}>
                     <div style={{ position: "relative" }}>
                       <select
+                        name={`scores[${row.id}][status]`}
                         value={row.status}
-                        onChange={e => update(row.id, "status", e.target.value as StatusCode)}
+                        onChange={e => onStatusChange(row.id, e.target.value as StatusCode)}
                         style={{
                           width: "100%", height: 42, border: "none", outline: "none",
                           background: "transparent", fontWeight: 700, fontSize: 12,
@@ -334,13 +582,12 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
                       <ChevronDown size={11} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: sCfg.color }} />
                     </div>
                   </td>
-
-                  {/* AI Note */}
                   <td style={{ ...cellBorder, padding: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", padding: "0 4px 0 8px", height: 42 }}>
                       <Sparkles size={11} color={row.note ? ERP.colors.purple : ERP.colors.textMuted} style={{ flexShrink: 0, marginRight: 4 }} />
                       <input
                         type="text"
+                        name={`scores[${row.id}][remarks]`}
                         value={row.note}
                         onChange={e => update(row.id, "note", e.target.value)}
                         placeholder="輸入觀察或備注…"
@@ -359,13 +606,11 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
         </table>
       </div>
 
-      {/* ── FOOTER ────────────────────────────────────────────────────── */}
       <div style={{
         flexShrink: 0, background: ERP.colors.surface,
         borderTop: `1px solid ${ERP.colors.border}`,
         padding: "12px 24px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" as const,
       }}>
-        {/* Status indicator */}
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {isDraft
             ? <><CheckCircle2 size={14} color={ERP.colors.success} /><span style={{ fontSize: 12, color: ERP.colors.success, fontWeight: 600 }}>草稿已儲存</span></>
@@ -375,7 +620,15 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
 
         <div style={{ flex: 1 }} />
 
-        {/* ABS warning */}
+        {overMaxRows.length > 0 && (
+          <div role="alert" style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", background: "#FEF2F2", borderRadius: ERP.radius.sm, border: "1px solid #FECACA" }}>
+            <AlertTriangle size={12} color="#DC2626" />
+            <span style={{ fontSize: 11, color: "#DC2626", fontWeight: 600 }}>
+              Score exceeds maximum allowed ({maxScore}) · {overMaxRows.length} 格超標
+            </span>
+          </div>
+        )}
+
         {scores.filter(r => r.status === "abs").length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", background: "#FFFBEB", borderRadius: ERP.radius.sm, border: "1px solid #FCD34D" }}>
             <AlertTriangle size={12} color="#92400E" />
@@ -386,7 +639,8 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
         )}
 
         <button
-          onClick={() => setIsDraft(true)}
+          type="submit"
+          disabled={saving || !assessmentId || overMaxRows.length > 0}
           style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "9px 18px", borderRadius: ERP.radius.md,
@@ -394,10 +648,10 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
             color: ERP.colors.textSecondary, fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer",
           }}
         >
-          <Save size={14} /> 儲存草稿
+          <Save size={14} /> {saving ? "儲存中…" : "儲存草稿"}
         </button>
 
-        <button style={{
+        <button type="submit" disabled={saving || !assessmentId || overMaxRows.length > 0} style={{
           display: "flex", alignItems: "center", gap: 6,
           padding: "9px 20px", borderRadius: ERP.radius.md,
           border: "none", background: ERP.colors.accent,
@@ -407,6 +661,6 @@ export const Screen_ScoreEntry: React.FC<Props> = ({ lang = "zh-HK" }) => {
           <Send size={14} /> 提交成績
         </button>
       </div>
-    </div>
+    </form>
   );
 };

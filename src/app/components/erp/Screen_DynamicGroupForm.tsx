@@ -21,7 +21,7 @@ type SubjectOpt = {
   offered_forms?: string[];
 };
 
-type TeacherOpt = { id: string; name_en: string; name_zh_hk: string; label: string };
+type TeacherOpt = { id: number | string; name?: string; name_en?: string; name_zh_hk?: string; label: string };
 
 type RosterStudent = {
   pk: number;
@@ -48,8 +48,9 @@ type InitialGroup = {
   form: string;
   academic_year: string;
   subject_area: string;
-  teacher_en: string;
-  teacher_zh_hk: string;
+  teacher_id?: number | null;
+  teacher_en?: string;
+  teacher_zh_hk?: string;
 };
 
 interface Props {
@@ -166,13 +167,15 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
     return hit?.code || subjects[0]?.code || "";
   });
   const [teacherId, setTeacherId] = useState(() => {
-    if (!initialGroup) return teachers[0]?.id || "";
+    if (!initialGroup) return teachers[0] ? String(teachers[0].id) : "";
+    if (initialGroup.teacher_id) return String(initialGroup.teacher_id);
     const hit = teachers.find(
       t => t.name_en === initialGroup.teacher_en
         || t.name_zh_hk === initialGroup.teacher_zh_hk
-        || t.label.includes(initialGroup.teacher_en)
+        || t.name === initialGroup.teacher_en
+        || (initialGroup.teacher_en && t.label.includes(initialGroup.teacher_en))
     );
-    return hit?.id || teachers[0]?.id || "";
+    return hit ? String(hit.id) : (teachers[0] ? String(teachers[0].id) : "");
   });
 
   const [roster, setRoster] = useState<RosterStudent[]>(() =>
@@ -206,7 +209,6 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
   /** Selected Roster filter: "all" | form code (e.g. "F3") */
   const [rosterFormTab, setRosterFormTab] = useState<string>("all");
 
-  const selectedTeacher = teachers.find(t => t.id === teacherId);
   const selectedSubject = subjects.find(s => s.code === subjectCode);
   const rosterIds = useMemo(() => new Set(roster.map(r => r.pk)), [roster]);
 
@@ -474,8 +476,6 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
         <input type="hidden" name="subject_code" value={subjectCode} />
         <input type="hidden" name="subject_area" value={selectedSubject?.name_en || ""} />
         <input type="hidden" name="teacher_id" value={teacherId} />
-        <input type="hidden" name="teacher_en" value={selectedTeacher?.name_en || ""} />
-        <input type="hidden" name="teacher_zh_hk" value={selectedTeacher?.name_zh_hk || ""} />
         {groupId ? <input type="hidden" name="group_id" value={groupId} /> : null}
         {roster.map(r => (
           <input key={`payload-${r.pk}`} type="hidden" name="student_ids[]" value={r.student_id} />
@@ -596,7 +596,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                 <UserCog size={13} style={{ position: "absolute", left: 10, top: 12, color: ERP.colors.textMuted }} />
                 <select value={teacherId} onChange={e => setTeacherId(e.target.value)} style={{ ...selectCss, paddingLeft: 30 }}>
                   <option value="">選擇教師…</option>
-                  {teachers.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  {teachers.map(t => <option key={String(t.id)} value={String(t.id)}>{t.label || t.name || t.name_zh_hk || t.name_en}</option>)}
                 </select>
               </div>
             </Field>

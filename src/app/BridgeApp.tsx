@@ -21,9 +21,14 @@ import { Screen_SystemAdminHome } from "./components/erp/Screen_SystemAdminHome"
 import { Screen_APIDocs } from "./components/erp/Screen_APIDocs";
 import { Frame03_ActivityTable } from "./components/erp/Frame03_ActivityTable";
 import { Screen_ActivityForm } from "./components/erp/Screen_ActivityForm";
+import { Screen_ActivityRoster } from "./components/erp/Screen_ActivityRoster";
+import { Screen_ScoreEntry } from "./components/erp/Screen_ScoreEntry";
+import { Screen_Assessments } from "./components/erp/Screen_Assessments";
 import { Screen01_Dashboard } from "./components/lalp/Screen01_Dashboard";
 import { Screen_StudentBatchCreate } from "./components/erp/Screen_StudentBatchCreate";
 import { Screen_ClassDetails } from "./components/erp/Screen_ClassDetails";
+import { Screen_Staff } from "./components/erp/Screen_Staff";
+import { Screen_ClubManagement, ClubRosterView } from "./components/erp/Screen_ClubManagement";
 
 export type StsBridgePage =
   | "dashboard"
@@ -38,6 +43,7 @@ export type StsBridgePage =
   | "subjects"
   | "activities"
   | "activity-form"
+  | "activity-roster"
   | "approvals"
   | "certificates"
   | "certificate-bulk"
@@ -45,7 +51,12 @@ export type StsBridgePage =
   | "ai-assistant"
   | "ai-workspace"
   | "settings"
-  | "api-docs";
+  | "api-docs"
+  | "scores"
+  | "assessments"
+  | "staff"
+  | "clubs"
+  | "club-roster";
 
 export interface StsBridgeConfig {
   page: StsBridgePage;
@@ -63,6 +74,7 @@ export interface StsBridgeConfig {
     name: string;
     classCode: string;
     form: string;
+    form_teacher_id?: number | null;
     form_teacher_en: string;
     form_teacher_zh_hk: string;
     formTeacher: string;
@@ -149,6 +161,7 @@ export interface StsBridgeConfig {
     form: string;
     academic_year: string;
     subject_area: string;
+    teacher_id?: number | null;
     teacher_en: string;
     teacher_zh_hk: string;
   } | null;
@@ -162,10 +175,12 @@ export interface StsBridgeConfig {
     form?: string;
   }>;
   teachers?: Array<{
-    id: string;
-    name_en: string;
-    name_zh_hk: string;
+    id: string | number;
+    name?: string;
+    name_en?: string;
+    name_zh_hk?: string;
     label: string;
+    role?: string;
   }>;
   subjects?: Array<{
     id: string | number;
@@ -206,6 +221,38 @@ export interface StsBridgeConfig {
   activityId?: number | null;
   initialActivity?: any;
   targetForms?: string[];
+  achievementLevels?: any[];
+  enrollmentCount?: number;
+  rosterUrl?: string;
+  activityName?: string;
+  students?: any[];
+  candidates?: any[];
+  addUrl?: string;
+  bulkAddUrl?: string;
+  eligibleTabs?: any[];
+  editUrl?: string;
+  saveUrl?: string;
+  terms?: Array<{ value: string; label: string }>;
+  assessmentItems?: Array<{ value: string; label: string; name_en?: string }>;
+  assessmentsUrl?: string;
+  assessments?: any[];
+  assessmentId?: number | null;
+  initialAssessment?: any;
+  openForm?: boolean;
+  deleteUrl?: string;
+  listUrl?: string;
+  createUrl?: string;
+  staff?: any[];
+  staffId?: number | null;
+  initialStaff?: any;
+  clubs?: any[];
+  summary?: { clubCount?: number; memberCount?: number; eventCount?: number; categoryCount?: number };
+  rosterUrlBase?: string;
+  club?: any;
+  members?: any[];
+  acornIds?: number[];
+  updateRoleUrl?: string;
+  removeUrl?: string;
 }
 
 declare global {
@@ -282,6 +329,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
             name: "",
             classCode: "",
             form: "",
+            form_teacher_id: null,
             form_teacher_en: "",
             form_teacher_zh_hk: "",
             formTeacher: "",
@@ -290,6 +338,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
             updateUrl: "/classes",
           }}
           students={config.students}
+          teachers={(config.teachers as any) || []}
           academicYears={config.academicYears}
           academicYear={config.academicYear}
           flashSuccess={config.flashSuccess}
@@ -359,6 +408,95 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         />
       ));
 
+    case "scores":
+      return shell(nav || "score-entry", (
+        <Screen_ScoreEntry
+          lang="zh-HK"
+          academicYear={config.academicYear}
+          classes={(config.classes as any) || []}
+          subjects={(config.subjects as any) || []}
+          terms={config.terms}
+          rosterUrl={config.rosterUrl || "/scores/roster"}
+          saveUrl={config.saveUrl || "/scores/save"}
+          assessmentsUrl={config.assessmentsUrl || "/scores/assessments"}
+        />
+      ));
+
+    case "assessments":
+      return shell(nav || "assessments", (
+        <Screen_Assessments
+          assessments={(config.assessments as any) || []}
+          subjects={(config.subjects as any) || []}
+          terms={config.terms}
+          forms={config.forms}
+          academicYear={config.academicYear}
+          academicYears={config.academicYears}
+          openForm={!!config.openForm}
+          assessmentId={config.assessmentId ?? null}
+          initialAssessment={config.initialAssessment}
+          storeUrl={config.storeUrl || "/assessments/store"}
+          updateUrl={config.updateUrl || "/assessments/update"}
+          deleteUrl={config.deleteUrl || "/assessments/delete"}
+          listUrl={config.listUrl || "/assessments"}
+          createUrl={config.createUrl || "/assessments/create"}
+          editUrlBase={config.editUrlBase || "/assessments/edit"}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
+    case "staff":
+      return shell(nav || "roles-positions", (
+        <Screen_Staff
+          staff={config.staff || []}
+          openForm={!!config.openForm}
+          staffId={config.staffId ?? null}
+          initialStaff={config.initialStaff}
+          storeUrl={config.storeUrl || "/staff/store"}
+          updateUrl={config.updateUrl || "/staff/update"}
+          deleteUrl={config.deleteUrl || "/staff/delete"}
+          listUrl={config.listUrl || "/staff"}
+          createUrl={config.createUrl || "/staff/create"}
+          editUrlBase={config.editUrlBase || "/staff/edit"}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
+    case "clubs":
+      return shell(nav || "club-management", (
+        <Screen_ClubManagement
+          clubs={config.clubs || []}
+          summary={config.summary}
+          academicYear={config.academicYear || "2025/26"}
+          rosterUrlBase={config.rosterUrlBase || "/clubs/roster"}
+          storeUrl={config.storeUrl || "/clubs"}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
+    case "club-roster":
+      return shell(nav || "club-management", (
+        <ClubRosterView
+          club={config.club || { id: 0, zhName: "", enName: "", category: "arts", teacher: "—", memberCount: 0, ongoingEvents: 0, founded: "" }}
+          onBack={() => go(config.listUrl || "/clubs")}
+          members={config.members || []}
+          teachers={(config.teachers as any) || []}
+          acorns={config.acorns || []}
+          acornIds={config.acornIds || []}
+          academicYear={config.academicYear || "2025/26"}
+          eligibleTabs={config.eligibleTabs || []}
+          updateUrl={config.updateUrl || ""}
+          addUrl={config.addUrl || ""}
+          bulkAddUrl={config.bulkAddUrl || ""}
+          updateRoleUrl={config.updateRoleUrl || ""}
+          removeUrl={config.removeUrl || ""}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
     case "activities":
       return shell(nav || "activities", (
         <Frame03_ActivityTable
@@ -374,10 +512,30 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           teachers={(config.teachers as any) || []}
           academicYears={config.academicYears}
           targetForms={config.targetForms}
+          achievementLevels={config.achievementLevels || []}
+          enrollmentCount={config.enrollmentCount ?? 0}
+          rosterUrl={config.rosterUrl || ""}
           storeUrl={config.storeUrl || "/activities/store"}
           listUrl={config.listUrl || "/activities"}
           activityId={config.activityId ?? null}
           initialActivity={config.initialActivity}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
+    case "activity-roster":
+      return shell(nav || "activities", (
+        <Screen_ActivityRoster
+          activityId={config.activityId ?? null}
+          activityName={config.activityName || ""}
+          academicYear={config.academicYear}
+          targetForms={config.targetForms || []}
+          students={config.students || []}
+          eligibleTabs={config.eligibleTabs || []}
+          bulkAddUrl={config.bulkAddUrl || ""}
+          listUrl={config.listUrl || "/activities"}
+          editUrl={config.editUrl || "/activities"}
           flashSuccess={config.flashSuccess}
           flashError={config.flashError}
         />

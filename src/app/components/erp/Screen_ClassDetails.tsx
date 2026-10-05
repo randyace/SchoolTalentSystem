@@ -13,6 +13,7 @@ type ClassProfile = {
   name: string;
   classCode: string;
   form: string;
+  form_teacher_id?: number | null;
   form_teacher_en: string;
   form_teacher_zh_hk: string;
   formTeacher: string;
@@ -20,6 +21,15 @@ type ClassProfile = {
   academic_year: string;
   updateUrl: string;
   room?: string;
+};
+
+type TeacherOpt = {
+  id: number | string;
+  name?: string;
+  name_en?: string;
+  name_zh_hk?: string;
+  label?: string;
+  role?: string;
 };
 
 type StudentRow = {
@@ -34,6 +44,7 @@ type StudentRow = {
 interface Props {
   profile: ClassProfile;
   students?: StudentRow[];
+  teachers?: TeacherOpt[];
   academicYears?: string[];
   academicYear?: string;
   flashSuccess?: string;
@@ -50,6 +61,7 @@ const STATUS_LABEL: Record<string, { zh: string; color: string; bg: string; bord
 export const Screen_ClassDetails: React.FC<Props> = ({
   profile,
   students = [],
+  teachers = [],
   academicYears = ["2025/26", "2024/25", "2023/24"],
   academicYear,
   flashSuccess,
@@ -58,8 +70,9 @@ export const Screen_ClassDetails: React.FC<Props> = ({
   const year = academicYear || profile.academic_year || "2025/26";
   const [statusFilter, setStatusFilter] = useState("全部");
   const [searchQ, setSearchQ] = useState("");
-  const [teacherEn, setTeacherEn] = useState(profile.form_teacher_en || "");
-  const [teacherZh, setTeacherZh] = useState(profile.form_teacher_zh_hk || "");
+  const [teacherId, setTeacherId] = useState(
+    profile.form_teacher_id ? String(profile.form_teacher_id) : ""
+  );
   const F = ERP.font.family;
 
   const filtered = useMemo(() => {
@@ -196,29 +209,23 @@ export const Screen_ClassDetails: React.FC<Props> = ({
           }}
         >
           <input type="hidden" name="academic_year" value={year} />
-          <div>
+          <div style={{ gridColumn: "1 / -1" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 5 }}>
-              <BookOpen size={12} /> 班主任 (EN)
+              <BookOpen size={12} /> 班主任 Form Teacher
             </label>
-            <input
-              name="form_teacher_en"
-              value={teacherEn}
-              onChange={e => setTeacherEn(e.target.value)}
-              placeholder="Ms. Wong"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 5 }}>
-              班主任 (繁中)
-            </label>
-            <input
-              name="form_teacher_zh_hk"
-              value={teacherZh}
-              onChange={e => setTeacherZh(e.target.value)}
-              placeholder="黃老師"
-              style={inputStyle}
-            />
+            <select
+              name="form_teacher_id"
+              value={teacherId}
+              onChange={e => setTeacherId(e.target.value)}
+              style={{ ...inputStyle, cursor: "pointer" }}
+            >
+              <option value="">— 未指定 —</option>
+              {teachers.map(t => (
+                <option key={String(t.id)} value={String(t.id)}>
+                  {t.label || t.name || t.name_zh_hk || t.name_en}
+                </option>
+              ))}
+            </select>
           </div>
           <button
             type="submit"

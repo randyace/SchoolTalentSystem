@@ -16,6 +16,7 @@ import { Screen_StudentsbyYear }  from "../components/erp/Screen_StudentsbyYear"
 import { Screen_ClassList }       from "../components/erp/Screen_ClassList";
 import { Screen_Subjects }        from "../components/erp/Screen_Subjects";
 import { Screen_ScoreEntry }      from "../components/erp/Screen_ScoreEntry";
+import { Screen_Assessments }     from "../components/erp/Screen_Assessments";
 import { Screen_DiagnosticDashboard } from "../components/erp/Screen_DiagnosticDashboard";
 import { Screen_RolesPositions }  from "../components/erp/Screen_RolesPositions";
 import { Screen_GroupProjects }   from "../components/erp/Screen_GroupProjects";
@@ -51,7 +52,8 @@ const NAV_TO_PATH: Record<string, string> = {
   "students-by-year":   "/teacher/students",
   "class-list":         "/teacher/class",
   "subjects":           "/teacher/subjects",
-  "assessment-weights": "/teacher/assessment",
+  "assessments":        "/teacher/assessments",
+  "assessment-weights": "/teacher/assessments",
   "score-entry":        "/teacher/scores",
   "diagnostic":         "/teacher/diagnostic",
   "qr-signin":          "/teacher/qr",
@@ -147,7 +149,8 @@ const TeacherContent: React.FC<{
       />
     );
     case "subjects":           return <Screen_Subjects lang={lang} />;
-    case "assessment-weights":
+    case "assessments":
+    case "assessment-weights": return <Screen_Assessments />;
     case "diagnostic":         return <Screen_DiagnosticDashboard lang={lang} />;
     case "score-entry":        return <Screen_ScoreEntry lang={lang} />;
     case "qr-signin":          return null; // handled as full-screen bypass below

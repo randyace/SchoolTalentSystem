@@ -24,6 +24,7 @@ interface NavItem {
   screenId?: string;
   /** Native CI4 URL — full page navigation */
   href?: string;
+  todo?: boolean;
 }
 
 interface NavGroup {
@@ -32,8 +33,25 @@ interface NavGroup {
   enTitle: string;
   adminOnly?: boolean;
   comingSoon?: boolean;
+  todo?: boolean;
   items: NavItem[];
 }
+
+const TodoBadge: React.FC = () => (
+  <span style={{
+    marginLeft: "auto",
+    flexShrink: 0,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: "0.02em",
+    lineHeight: 1.2,
+    color: "#92400E",
+    background: "#FDE68A",
+    borderRadius: 4,
+    padding: "2px 5px",
+    whiteSpace: "nowrap",
+  }}>To Do</span>
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CANONICAL TEACHER NAV — Section 4 of LALP_SITEMAP_AND_FEATURES.md
@@ -42,8 +60,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "workspace", zhTitle: "工作台", enTitle: "Workspace",
     items: [
-      { id: "today-overview",  zhLabel: "今日概覽", enLabel: "Today Overview", icon: <LayoutDashboard size={15} />, screenId: "1.A.1", href: "/dashboard" },
-      { id: "approval-inbox",  zhLabel: "待辦審批", enLabel: "Approval Inbox",  icon: <ClipboardList size={15} />,  screenId: "1.A.3", href: "/approval" },
+      { id: "today-overview",  zhLabel: "今日概覽", enLabel: "Today Overview", icon: <LayoutDashboard size={15} />, screenId: "1.A.1", href: "/dashboard", todo: true },
+      { id: "approval-inbox",  zhLabel: "待辦審批", enLabel: "Approval Inbox",  icon: <ClipboardList size={15} />,  screenId: "1.A.3", href: "/approval", todo: true },
     ],
   },
   {
@@ -57,50 +75,52 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "subjects-assessment", zhTitle: "學科與評估", enTitle: "Subjects & Assessment",
     items: [
-      { id: "subjects",    zhLabel: "科目管理", enLabel: "Subjects",    icon: <BookOpen size={15} />,   screenId: "1.C.1", href: "/subjects" },
-      { id: "score-entry", zhLabel: "成績輸入", enLabel: "Score Entry", icon: <LayoutGrid size={15} />, screenId: "1.C.3", href: "/dashboard" },
+      { id: "subjects",    zhLabel: "科目管理",     enLabel: "Subjects",    icon: <BookOpen size={15} />,   screenId: "1.C.1", href: "/subjects" },
+      { id: "assessments", zhLabel: "評估項目管理", enLabel: "Assessment Mgmt", icon: <Sliders size={15} />,    screenId: "1.C.2", href: "/assessments", todo: true },
+      { id: "score-entry", zhLabel: "成績輸入",     enLabel: "Score Entry", icon: <LayoutGrid size={15} />, screenId: "1.C.3", href: "/scores" },
     ],
   },
   {
     id: "ai-operations", zhTitle: "AI 分析與生產", enTitle: "AI Analytics & Production",
+    todo: true,
     items: [
-      { id: "ai-workspace",      zhLabel: "AI 文案工作站", enLabel: "AI Writing Workspace", icon: <Sparkles size={15} />, screenId: "1.F.3/6", href: "/ai-workspace" },
-      { id: "ai-data-assistant", zhLabel: "AI 數據助手",   enLabel: "AI Data Assistant",    icon: <Database size={15} />, screenId: "1.F.AI",  href: "/ai-assistant" },
+      { id: "ai-workspace",      zhLabel: "AI 文案工作站", enLabel: "AI Writing Workspace", icon: <Sparkles size={15} />, screenId: "1.F.3/6", href: "/ai-workspace", todo: true },
+      { id: "ai-data-assistant", zhLabel: "AI 數據助手",   enLabel: "AI Data Assistant",    icon: <Database size={15} />, screenId: "1.F.AI",  href: "/ai-assistant", todo: true },
     ],
   },
   {
     id: "activities-talent", zhTitle: "活動與人才", enTitle: "Activities & Talent",
     items: [
       { id: "activities",       zhLabel: "活動／比賽／事件", enLabel: "Activities / Events",  icon: <CalendarDays size={15} />, screenId: "1.D.1", href: "/activity" },
-      { id: "achievements",     zhLabel: "成就與證書",       enLabel: "Achievements & Certs", icon: <Award size={15} />,        screenId: "1.D.4", href: "/certificate" },
-      { id: "group-awards",     zhLabel: "證書批量建立",     enLabel: "Bulk Certificate Gen", icon: <Layers size={15} />,       screenId: "1.D.4B", href: "/certificate" },
-      { id: "talent-filter",    zhLabel: "人才篩選與匯出",   enLabel: "Talent Pool & Filter", icon: <Users size={15} />,        screenId: "1.D.5", href: "/talent" },
-      { id: "exemplar-library", zhLabel: "成果課件庫",       enLabel: "Exemplar Library",     icon: <FolderOpen size={15} />,   screenId: "1.D.7", href: "/dashboard" },
-      { id: "club-management",  zhLabel: "學會管理",         enLabel: "Club & Society Mgmt",  icon: <Users size={15} />,        screenId: "1.D.8", href: "/dashboard" },
+      { id: "achievements",     zhLabel: "成就與證書",       enLabel: "Achievements & Certs", icon: <Award size={15} />,        screenId: "1.D.4", href: "/certificate", todo: true },
+      { id: "group-awards",     zhLabel: "證書批量建立",     enLabel: "Bulk Certificate Gen", icon: <Layers size={15} />,       screenId: "1.D.4B", href: "/certificate", todo: true },
+      { id: "talent-filter",    zhLabel: "人才篩選與匯出",   enLabel: "Talent Pool & Filter", icon: <Users size={15} />,        screenId: "1.D.5", href: "/talent", todo: true },
+      { id: "exemplar-library", zhLabel: "成果課件庫",       enLabel: "Exemplar Library",     icon: <FolderOpen size={15} />,   screenId: "1.D.7", href: "/dashboard", todo: true },
+      { id: "club-management",  zhLabel: "學會管理",         enLabel: "Club & Society Mgmt",  icon: <Users size={15} />,        screenId: "1.D.8", href: "/clubs" },
     ],
   },
   {
     id: "collaboration", zhTitle: "專題研習", enTitle: "Project Learning",
     comingSoon: true,
     items: [
-      { id: "group-projects", zhLabel: "分組專題", enLabel: "Group Projects", icon: <Layers size={15} />,    screenId: "1.E.1", href: "/dashboard" },
-      { id: "role-anchoring", zhLabel: "角色定錨", enLabel: "Role Anchoring", icon: <UserCheck size={15} />, screenId: "1.E.3", href: "/dashboard" },
+      { id: "group-projects", zhLabel: "分組專題", enLabel: "Group Projects", icon: <Layers size={15} />,    screenId: "1.E.1", href: "/dashboard", todo: true },
+      { id: "role-anchoring", zhLabel: "角色定錨", enLabel: "Role Anchoring", icon: <UserCheck size={15} />, screenId: "1.E.3", href: "/dashboard", todo: true },
     ],
   },
   {
     id: "system-admin", zhTitle: "系統管理", enTitle: "System Admin",
     items: [
-      { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings" },
-      { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster" },
-      { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/ai-workspace" },
-      { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.6,8", href: "/admin/settings" },
-      { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8", href: "/api/docs" },
-      { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7",   href: "/api/docs" },
-      { id: "tier-mapping",      zhLabel: "成就級別管理",     enLabel: "Tier Mapping",         icon: <Trophy      size={15} />, screenId: "1.G.1",   href: "/admin/settings" },
-      { id: "conduct-types",     zhLabel: "行為考勤類別",     enLabel: "Conduct & Att. Types", icon: <Sliders     size={15} />, screenId: "1.G.2",   href: "/admin/settings" },
-      { id: "dev-routes",        zhLabel: "路由標籤元件",     enLabel: "Dev Route Labels",     icon: <Code2       size={15} />, screenId: "DEV",     href: "/dashboard" },
-      { id: "roles-positions",   zhLabel: "角色與崗位",       enLabel: "Roles & Positions",    icon: <Tag         size={15} />, screenId: "1.D.6",   href: "/admin/settings" },
-      { id: "desensitize-audit", zhLabel: "脫敏與審計",       enLabel: "De-sensitize & Audit", icon: <ShieldCheck size={15} />, screenId: "1.F.4,6", href: "/admin/settings" },
+      { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings", todo: true },
+      { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster", todo: true },
+      { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/ai-workspace", todo: true },
+      { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.6,8", href: "/admin/settings", todo: true },
+      { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8", href: "/api/docs", todo: true },
+      { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7",   href: "/api/docs", todo: true },
+      { id: "tier-mapping",      zhLabel: "成就級別管理",     enLabel: "Tier Mapping",         icon: <Trophy      size={15} />, screenId: "1.G.1",   href: "/admin/settings", todo: true },
+      { id: "conduct-types",     zhLabel: "行為考勤類別",     enLabel: "Conduct & Att. Types", icon: <Sliders     size={15} />, screenId: "1.G.2",   href: "/admin/settings", todo: true },
+      { id: "dev-routes",        zhLabel: "路由標籤元件",     enLabel: "Dev Route Labels",     icon: <Code2       size={15} />, screenId: "DEV",     href: "/dashboard", todo: true },
+      { id: "roles-positions",   zhLabel: "角色與崗位",       enLabel: "Roles & Positions",    icon: <Tag         size={15} />, screenId: "1.D.6",   href: "/staff" },
+      { id: "desensitize-audit", zhLabel: "脫敏與審計",       enLabel: "De-sensitize & Audit", icon: <ShieldCheck size={15} />, screenId: "1.F.4,6", href: "/admin/settings", todo: true },
     ],
   },
 ];
@@ -210,6 +230,7 @@ const SidebarGroup: React.FC<{
           {group.enTitle}
         </div>
       </div>
+      {group.todo && <TodoBadge />}
       {!locked && (
         <ChevronDown size={11} color={SB.groupLabel}
           style={{ transform: expanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.18s", flexShrink: 0 }} />
@@ -243,7 +264,7 @@ const SidebarItem: React.FC<{
       }}>
         {item.icon}
       </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
         <div style={{
           fontSize: 13, fontWeight: active ? 600 : 400,
           color: active ? SB.itemActive : hov ? "#1E293B" : SB.itemText,
@@ -259,9 +280,9 @@ const SidebarItem: React.FC<{
           {item.enLabel}
         </div>
       </div>
-      {active && (
+      {item.todo ? <TodoBadge /> : active ? (
         <div style={{ width: 5, height: 5, borderRadius: "50%", background: SB.activeBorder, flexShrink: 0 }} />
-      )}
+      ) : null}
     </>
   );
 
