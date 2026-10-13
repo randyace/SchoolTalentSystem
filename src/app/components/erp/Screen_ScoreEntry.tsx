@@ -321,6 +321,46 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
     }
   };
 
+  /** Excel / Sheets column paste into the score grid (same column, down the rows). */
+  const onScorePaste = (e: React.ClipboardEvent<HTMLInputElement>, startId: number) => {
+    const text = e.clipboardData.getData("text");
+    if (!text || (!text.includes("\n") && !text.includes("\t"))) return;
+
+    e.preventDefault();
+    const cells = text
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .map(line => {
+        const first = line.split("\t")[0] ?? "";
+        return first.trim();
+      })
+      .filter((v, i, arr) => !(v === "" && i === arr.length - 1));
+
+    if (cells.length === 0) return;
+
+    const startIdx = scores.findIndex(r => r.id === startId);
+    if (startIdx < 0) return;
+
+    setIsDraft(false);
+    setScores(prev => {
+      const next = [...prev];
+      for (let i = 0; i < cells.length; i++) {
+        const row = next[startIdx + i];
+        if (!row || row.status !== "normal") continue;
+        const raw = cells[i];
+        if (raw === "") {
+          next[startIdx + i] = { ...row, score: null };
+          continue;
+        }
+        const num = Number(raw.replace(/,/g, ""));
+        if (Number.isNaN(num)) continue;
+        next[startIdx + i] = { ...row, score: num };
+      }
+      return next;
+    });
+  };
+
   const onStatusChange = (id: number, next: StatusCode) => {
     setIsDraft(false);
     setScores(prev => prev.map(r => {
@@ -551,6 +591,7 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
                       onFocus={e => { setFocusedId(row.id); e.currentTarget.select(); }}
                       onBlur={() => setFocusedId(null)}
                       onKeyDown={onScoreKeyDown}
+                      onPaste={e => onScorePaste(e, row.id)}
                       style={{
                         width: "100%", height: "100%", minHeight: 42, boxSizing: "border-box" as const,
                         padding: "0 10px", border: "none", outline: "none",

@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from "react";
 import {
   Plus, Search, Users, BookOpen, Layers, ExternalLink, Pencil,
-  Filter, School,
+  Filter, School, Zap, ClipboardPaste,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 
@@ -31,6 +31,7 @@ interface Props {
   filterForm?: string;
   filterSubject?: string;
   createUrl?: string;
+  smartImportUrl?: string;
   flashSuccess?: string;
   flashError?: string;
 }
@@ -100,10 +101,12 @@ export const Screen_DynamicGroupList: React.FC<Props> = ({
   filterForm = "全部",
   filterSubject = "全部",
   createUrl = "/dynamic-group/create",
+  smartImportUrl = "/dynamic-group/smart-import",
   flashSuccess,
   flashError,
 }) => {
   const [searchQ, setSearchQ] = useState("");
+  const [importText, setImportText] = useState("");
 
   const filtered = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -196,6 +199,47 @@ export const Screen_DynamicGroupList: React.FC<Props> = ({
         }}>
           {flashSuccess || flashError}
         </div>
+      )}
+
+      {smartImportUrl && (
+        <form method="post" action={smartImportUrl} style={{
+          background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
+          borderRadius: 12, padding: "16px 18px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <Zap size={15} color="#D97706" />
+            <span style={{ fontSize: 13, fontWeight: 800 }}>智能匯入 Smart Import</span>
+            <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>
+              格式：2025/26, F3, F3 VA Group 1, Visual Arts, Mr. Chan
+            </span>
+          </div>
+          <textarea
+            name="import_text"
+            value={importText}
+            onChange={e => setImportText(e.target.value)}
+            rows={3}
+            placeholder={"2025/26, F3, F3 VA Group 1, Visual Arts, Mr. Chan\n2025/26, F3, F3 Music Group A, Music, Chan Tai Man"}
+            style={{
+              width: "100%", boxSizing: "border-box", padding: 12, marginTop: 10,
+              border: `1.5px solid ${ERP.colors.border}`, borderRadius: 10,
+              fontFamily: ERP.font.mono, fontSize: 13, resize: "vertical", outline: "none", background: "#FAFBFC",
+            }}
+          />
+          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+            <button type="button" onClick={() => navigator.clipboard.readText().then(t => setImportText(t)).catch(() => {})} style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8,
+              border: `1px solid ${ERP.colors.border}`, background: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer", color: ERP.colors.textSecondary,
+            }}>
+              <ClipboardPaste size={14} /> 貼上
+            </button>
+            <button type="submit" style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8,
+              border: "1px solid #FDE68A", background: "#FFFBEB", color: "#92400E", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+            }}>
+              <Zap size={14} /> 智能匯入（後端解析）
+            </button>
+          </div>
+        </form>
       )}
 
       {/* Filters */}

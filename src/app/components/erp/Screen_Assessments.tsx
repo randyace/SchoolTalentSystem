@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo, useState } from "react";
 import { ERP } from "./erpTokens";
-import { Plus, Search, ChevronDown, Edit2, Trash2, ArrowLeft, Save } from "lucide-react";
+import { Plus, Search, ChevronDown, Edit2, Trash2, ArrowLeft, Save, Zap, ClipboardPaste } from "lucide-react";
 
 export interface AssessmentRow {
   id: number;
@@ -91,6 +91,7 @@ export interface AssessmentsScreenProps {
   listUrl?: string;
   createUrl?: string;
   editUrlBase?: string;
+  smartImportUrl?: string;
   flashSuccess?: string;
   flashError?: string;
 }
@@ -124,6 +125,7 @@ const AssessmentListPage: React.FC<AssessmentsScreenProps> = ({
   deleteUrl = "/assessments/delete",
   createUrl = "/assessments/create",
   editUrlBase = "/assessments/edit",
+  smartImportUrl = "/assessments/smart-import",
   flashSuccess,
   flashError,
 }) => {
@@ -135,6 +137,7 @@ const AssessmentListPage: React.FC<AssessmentsScreenProps> = ({
   const [filterForm, setFilterForm] = useState("");
   const [msg, setMsg] = useState(flashSuccess || "");
   const [err, setErr] = useState(flashError || "");
+  const [importText, setImportText] = useState("");
   const years = academicYears.length ? academicYears : [academicYear];
 
   const filtered = useMemo(() => {
@@ -216,6 +219,46 @@ const AssessmentListPage: React.FC<AssessmentsScreenProps> = ({
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px 24px 24px" }}>
+        {smartImportUrl && (
+          <form method="post" action={smartImportUrl} style={{
+            background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
+            borderRadius: ERP.radius.lg, padding: "16px 18px", marginBottom: 16, boxShadow: ERP.shadow.xs,
+          }}>
+            <input type="hidden" name="academic_year" value={filterYear || academicYear} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <Zap size={15} color="#D97706" />
+              <span style={{ fontSize: 13, fontWeight: 800 }}>智能匯入 Smart Import</span>
+              <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>格式：F1, MATH, T1, 期中考, 100</span>
+            </div>
+            <textarea
+              name="import_text"
+              value={importText}
+              onChange={e => setImportText(e.target.value)}
+              rows={3}
+              placeholder={"F1, MATH, T1, 期中考, 100\nF1, ENG, T1, Mid-Term, 100"}
+              style={{
+                width: "100%", boxSizing: "border-box", padding: 12, marginTop: 10,
+                border: `1.5px solid ${ERP.colors.borderStrong ?? ERP.colors.border}`, borderRadius: ERP.radius.lg,
+                fontFamily: ERP.font.mono, fontSize: 13, resize: "vertical", outline: "none", background: "#FAFBFC",
+              }}
+            />
+            <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+              <button type="button" onClick={() => navigator.clipboard.readText().then(t => setImportText(t)).catch(() => {})} style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: ERP.radius.md,
+                border: `1px solid ${ERP.colors.border}`, background: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer", color: ERP.colors.textSecondary,
+              }}>
+                <ClipboardPaste size={14} /> 貼上
+              </button>
+              <button type="submit" style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: ERP.radius.md,
+                border: "1px solid #FDE68A", background: "#FFFBEB", color: "#92400E", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+              }}>
+                <Zap size={14} /> 智能匯入（後端解析）
+              </button>
+            </div>
+          </form>
+        )}
+
         <div style={{ background: ERP.colors.surface, borderRadius: ERP.radius.lg, border: `1px solid ${ERP.colors.border}`, overflow: "hidden", boxShadow: ERP.shadow.xs }}>
           <div style={{ overflowX: "auto" }}>
             <div style={{

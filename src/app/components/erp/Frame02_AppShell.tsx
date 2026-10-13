@@ -101,9 +101,8 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "collaboration", zhTitle: "專題研習", enTitle: "Project Learning",
-    comingSoon: true,
     items: [
-      { id: "group-projects", zhLabel: "分組專題", enLabel: "Group Projects", icon: <Layers size={15} />,    screenId: "1.E.1", href: "/dashboard", todo: true },
+      { id: "group-projects", zhLabel: "分組專題", enLabel: "Group Projects", icon: <Layers size={15} />,    screenId: "1.E.1", href: "/projects" },
       { id: "role-anchoring", zhLabel: "角色定錨", enLabel: "Role Anchoring", icon: <UserCheck size={15} />, screenId: "1.E.3", href: "/dashboard", todo: true },
     ],
   },
@@ -312,15 +311,25 @@ const SidebarItem: React.FC<{
   );
 };
 
+export type AppShellUser = {
+  id?: number;
+  name?: string;
+  email?: string;
+  role?: string;
+  googleId?: string | null;
+  avatarUrl?: string | null;
+};
+
 /* ── Sidebar Panel (shared between desktop and mobile drawer) ────────────── */
 const SidebarPanel: React.FC<{
   effectiveId: string; isAdmin: boolean;
   expandedGroups: Record<string, boolean>;
   onToggleGroup: (id: string) => void;
   onNav: (id: string) => void;
-  onBack?: () => void;
+  logoutUrl?: string;
+  profileUrl?: string;
   onClose?: () => void;
-}> = ({ effectiveId, isAdmin, expandedGroups, onToggleGroup, onNav, onBack, onClose }) => (
+}> = ({ effectiveId, isAdmin, expandedGroups, onToggleGroup, onNav, logoutUrl = "/logout", profileUrl = "/profile", onClose }) => (
   <div style={{
     width: ERP.layout.sidebarWidth, height: "100%",
     background: SB.bg, borderRight: `1px solid ${SB.border}`,
@@ -398,24 +407,38 @@ const SidebarPanel: React.FC<{
 
     {/* Footer */}
     <div style={{ borderTop: `1px solid ${SB.border}`, padding: "6px 0" }}>
-      {[
-        { icon: <HelpCircle size={13} />, label: "說明文件", action: undefined },
-        { icon: <LogOut size={13} />,     label: "登出系統", action: onBack },
-      ].map((item, i) => (
-        <button key={i} onClick={item.action} style={{
+      <a
+        href={profileUrl}
+        style={{
           width: "100%", display: "flex", alignItems: "center", gap: 8,
-          padding: "8px 14px",
+          padding: "8px 14px", textDecoration: "none",
           background: "transparent", border: "none",
-          cursor: item.action ? "pointer" : "default",
-          fontSize: 12, color: SB.footerText, fontFamily: ERP.font.family,
-          transition: "color 0.1s",
+          cursor: "pointer", fontSize: 12, color: SB.footerText, fontFamily: ERP.font.family,
         }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = ERP.colors.textSecondary; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = SB.footerText; }}
-        >
-          {item.icon} {item.label}
-        </button>
-      ))}
+        onMouseEnter={e => { e.currentTarget.style.color = ERP.colors.textSecondary; }}
+        onMouseLeave={e => { e.currentTarget.style.color = SB.footerText; }}
+      >
+        <Settings size={13} /> 帳戶管理
+      </a>
+      <a
+        href={logoutUrl}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 8,
+          padding: "8px 14px", textDecoration: "none",
+          background: "transparent", border: "none",
+          cursor: "pointer", fontSize: 12, color: SB.footerText, fontFamily: ERP.font.family,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = ERP.colors.textSecondary; }}
+        onMouseLeave={e => { e.currentTarget.style.color = SB.footerText; }}
+      >
+        <LogOut size={13} /> 登出系統
+      </a>
+      <div style={{
+        width: "100%", display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 14px", fontSize: 12, color: SB.footerText, fontFamily: ERP.font.family,
+      }}>
+        <HelpCircle size={13} /> 說明文件
+      </div>
     </div>
   </div>
 );
@@ -426,7 +449,11 @@ export interface AppShellProps {
   activeNavId?: string;
   onNavChange?: (id: string) => void;
   isAdmin?: boolean;
+  /** @deprecated Prefer logoutUrl — kept for demo shells */
   onBack?: () => void;
+  currentUser?: AppShellUser | null;
+  logoutUrl?: string;
+  profileUrl?: string;
 }
 
 /* ── Main Export ─────────────────────────────────────────────────────────── */
@@ -436,7 +463,17 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
   onNavChange,
   isAdmin     = true,
   onBack,
+  currentUser = null,
+  logoutUrl = "/logout",
+  profileUrl = "/profile",
 }) => {
+  const displayName = (currentUser?.name || "").trim() || "使用者";
+  const displayRole = (currentUser?.role || "").trim() || "staff";
+  const initial = displayName.charAt(0) || "?";
+  const doLogout = () => {
+    if (onBack) { onBack(); return; }
+    window.location.href = logoutUrl;
+  };
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
     Object.fromEntries(NAV_GROUPS.map(g => [g.id, true]))
   );
@@ -617,39 +654,54 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
           )}
         </div>
 
-        {/* User avatar */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 7, cursor: "pointer",
-          padding: "4px 8px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`,
-        }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: "50%",
-            background: `linear-gradient(135deg, ${ERP.colors.accent}, ${ERP.colors.purple})`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#fff", fontSize: 11, fontWeight: 700, flexShrink: 0,
-          }}>陳</div>
+        {/* User avatar → profile */}
+        <a
+          href={profileUrl}
+          style={{
+            display: "flex", alignItems: "center", gap: 7, cursor: "pointer",
+            padding: "4px 8px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`,
+            textDecoration: "none", color: "inherit",
+          }}
+          title="帳戶管理"
+        >
+          {currentUser?.avatarUrl ? (
+            <img
+              src={currentUser.avatarUrl}
+              alt=""
+              width={28}
+              height={28}
+              style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%",
+              background: `linear-gradient(135deg, ${ERP.colors.accent}, ${ERP.colors.purple})`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "#fff", fontSize: 11, fontWeight: 700, flexShrink: 0,
+            }}>{initial}</div>
+          )}
           {!isMobile && (
             <>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: ERP.colors.textPrimary, lineHeight: 1.1 }}>陳老師</div>
-                <div style={{ fontSize: 10, color: ERP.colors.textMuted, lineHeight: 1.1 }}>科學科主任</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: ERP.colors.textPrimary, lineHeight: 1.1 }}>{displayName}</div>
+                <div style={{ fontSize: 10, color: ERP.colors.textMuted, lineHeight: 1.1 }}>{displayRole}</div>
               </div>
               <ChevronDown size={12} color={ERP.colors.textMuted} />
             </>
           )}
-        </div>
+        </a>
 
-        {/* Logout */}
-        {onBack && !isMobile && (
-          <button onClick={onBack} style={{
+        {/* Logout — always wired to /logout */}
+        {!isMobile && (
+          <a href={logoutUrl} onClick={e => { if (onBack) { e.preventDefault(); doLogout(); } }} style={{
             display: "flex", alignItems: "center", gap: 5,
             padding: "5px 10px", border: `1px solid ${ERP.colors.border}`,
             borderRadius: ERP.radius.md, background: "transparent",
             color: ERP.colors.textSecondary, cursor: "pointer",
-            fontSize: 12, fontFamily: ERP.font.family,
+            fontSize: 12, fontFamily: ERP.font.family, textDecoration: "none",
           }}>
             <LogOut size={13} /> 登出
-          </button>
+          </a>
         )}
       </header>
 
@@ -681,7 +733,8 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
               expandedGroups={expandedGroups}
               onToggleGroup={toggleGroup}
               onNav={handleNav}
-              onBack={onBack}
+              logoutUrl={logoutUrl}
+              profileUrl={profileUrl}
               onClose={() => setMobileOpen(false)}
             />
           </div>
@@ -693,7 +746,8 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
             expandedGroups={expandedGroups}
             onToggleGroup={toggleGroup}
             onNav={handleNav}
-            onBack={onBack}
+            logoutUrl={logoutUrl}
+            profileUrl={profileUrl}
           />
         )}
 

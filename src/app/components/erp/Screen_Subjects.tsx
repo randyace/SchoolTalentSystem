@@ -8,7 +8,7 @@ import { ERP } from "./erpTokens";
 import {
   Plus, Search, X, ChevronDown, Check, Edit2, Trash2,
   BookOpen, Tag, ShieldCheck, ArrowLeft,
-  Sliders, BarChart2, AlertCircle,
+  Sliders, AlertCircle,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,6 +28,13 @@ interface AcornRef {
   description?: string | null;
 }
 
+interface SubjectPaper {
+  id?: number;
+  name_en: string;
+  name_zh_hk: string;
+  weighting: number;
+}
+
 interface Subject {
   id: string;
   code: string;
@@ -41,6 +48,10 @@ interface Subject {
   allow_dynamic_grouping?: boolean;
   dbId?: number;
   acorn_ids?: number[];
+  t1_weighting?: number;
+  t2_weighting?: number;
+  has_sub_papers?: boolean;
+  papers?: SubjectPaper[];
 }
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
@@ -112,74 +123,98 @@ const defaultForm = (s: Subject): SubjectForm => ({
   acornIds: [...(s.acorn_ids || [])],
 });
 
-// ─── Assessment Weights Data ──────────────────────────────────────────────────
-interface WeightComp { key: string; zhLabel: string; enLabel: string; color: string; bg: string; bd: string }
-
-const WEIGHT_COMPONENTS: WeightComp[] = [
-  { key: "participation", zhLabel: "課堂表現",    enLabel: "Participation",    color: "#6366F1", bg: "#EEF2FF", bd: "#C7D2FE" },
-  { key: "homework",      zhLabel: "功課 / 習作", enLabel: "Homework",         color: "#0891B2", bg: "#E0F2FE", bd: "#BAE6FD" },
-  { key: "tests",         zhLabel: "測驗 / 小考", enLabel: "Tests & Quizzes",  color: "#D97706", bg: "#FFFBEB", bd: "#FDE68A" },
-  { key: "exam",          zhLabel: "考試",        enLabel: "Examination",      color: "#059669", bg: "#ECFDF5", bd: "#6EE7B7" },
-];
-
-const DEFAULT_SUBJECT_WEIGHTS: Record<string, Record<string, Record<string, number>>> = {
-  MATH: { S1: { participation:10, homework:20, tests:30, exam:40 }, S2: { participation:10, homework:15, tests:30, exam:45 }, S3: { participation:5,  homework:15, tests:30, exam:50 } },
-  ENG:  { S1: { participation:15, homework:25, tests:25, exam:35 }, S2: { participation:15, homework:20, tests:25, exam:40 }, S3: { participation:10, homework:20, tests:25, exam:45 }, S4: { participation:10, homework:15, tests:25, exam:50 }, S5: { participation:10, homework:10, tests:25, exam:55 } },
-  CHI:  { S1: { participation:15, homework:25, tests:25, exam:35 }, S2: { participation:15, homework:20, tests:25, exam:40 }, S3: { participation:10, homework:20, tests:25, exam:45 }, S4: { participation:10, homework:15, tests:25, exam:50 }, S5: { participation:10, homework:10, tests:25, exam:55 } },
-  PHY:  { S4: { participation:10, homework:15, tests:25, exam:50 }, S5: { participation:5,  homework:10, tests:20, exam:65 } },
-  CHEM: { S4: { participation:10, homework:15, tests:25, exam:50 }, S5: { participation:5,  homework:10, tests:20, exam:65 } },
-  HIST: { S1: { participation:20, homework:20, tests:25, exam:35 }, S2: { participation:15, homework:20, tests:25, exam:40 }, S3: { participation:15, homework:15, tests:25, exam:45 } },
-  MUS:  { S1: { participation:30, homework:20, tests:20, exam:30 }, S2: { participation:30, homework:20, tests:20, exam:30 }, S3: { participation:25, homework:20, tests:20, exam:35 } },
-  PE:   { S1: { participation:40, homework:10, tests:20, exam:30 }, S2: { participation:40, homework:10, tests:20, exam:30 }, S3: { participation:35, homework:10, tests:20, exam:35 }, S4: { participation:30, homework:10, tests:20, exam:40 }, S5: { participation:30, homework:10, tests:20, exam:40 } },
-  GEO:  { S1: { participation:15, homework:20, tests:25, exam:40 }, S2: { participation:15, homework:20, tests:25, exam:40 }, S3: { participation:10, homework:15, tests:25, exam:50 } },
-  VA:   { S3: { participation:25, homework:25, tests:20, exam:30 }, S4: { participation:20, homework:20, tests:20, exam:40 }, S5: { participation:15, homework:20, tests:20, exam:45 }, S6: { participation:10, homework:15, tests:20, exam:55 } },
-};
-
-// ─── WeightsPanel ─────────────────────────────────────────────────────────────
-const WeightsPanel: React.FC<{ subject: Subject; onBack: () => void }> = ({ subject, onBack }) => {
+// ─── WeightsPanel — Term weightings + Sub-papers (分卷) ───────────────────────
+const WeightsPanel: React.FC<{
+  subject: Subject;
+  onBack: () => void;
+  updateUrl: string;
+  onSaved: (subject: Subject) => void;
+}> = ({ subject, onBack, updateUrl, onSaved }) => {
   const F = ERP.font.family;
-  const [activeLevel, setActiveLevel] = useState(subject.levels[0] ?? "");
-  const [weights, setWeights] = useState<Record<string, Record<string, number>>>(() => {
-    const base = DEFAULT_SUBJECT_WEIGHTS[subject.id] ?? {};
-    return subject.levels.reduce<Record<string, Record<string, number>>>((acc, lvl) => {
-      acc[lvl] = base[lvl] ?? { participation: 20, homework: 20, tests: 30, exam: 30 };
-      return acc;
-    }, {});
-  });
+  const [t1, setT1] = useState(subject.t1_weighting ?? 50);
+  const [t2, setT2] = useState(subject.t2_weighting ?? 50);
+  const [papers, setPapers] = useState<SubjectPaper[]>(() =>
+    (subject.papers && subject.papers.length > 0)
+      ? subject.papers.map(p => ({ ...p }))
+      : []
+  );
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState("");
 
-  const current = weights[activeLevel] ?? { participation: 20, homework: 20, tests: 30, exam: 30 };
-  const total = Object.values(current).reduce((s, v) => s + v, 0);
-  const isValid = total === 100;
+  const termTotal = t1 + t2;
+  const paperTotal = papers.reduce((s, p) => s + (Number(p.weighting) || 0), 0);
+  const termOk = termTotal === 100;
+  const papersOk = papers.length === 0 || paperTotal === 100;
 
-  const update = (key: string, val: number) =>
-    setWeights(w => ({ ...w, [activeLevel]: { ...w[activeLevel], [key]: val } }));
+  const addPaper = () => setPapers(p => [...p, { name_en: "", name_zh_hk: "", weighting: 0 }]);
+  const removePaper = (idx: number) => setPapers(p => p.filter((_, i) => i !== idx));
+  const patchPaper = (idx: number, field: keyof SubjectPaper, value: string | number) =>
+    setPapers(p => p.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
 
-  const handleSave = () => {
-    if (!isValid) return;
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+  const handleSave = async () => {
+    if (!subject.dbId) {
+      setErr("請先儲存科目基本資料，再設定權重。");
+      return;
+    }
+    if (!termOk) {
+      setErr("上／下學期比重必須合計 100%。");
+      return;
+    }
+    if (!papersOk) {
+      setErr("分卷比重必須合計 100%（或清空分卷）。");
+      return;
+    }
+    setSaving(true);
+    setErr("");
+    try {
+      const res = await fetch(`${updateUrl.replace(/\/$/, "")}/${subject.dbId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          dbId: subject.dbId,
+          code: subject.code,
+          zhName: subject.zhName,
+          enName: subject.enName,
+          name_zh_hk: subject.zhName,
+          name_en: subject.enName,
+          kla_id: subject.kla_id ?? null,
+          offered_forms: subject.levels,
+          acorn_ids: subject.acorn_ids ?? [],
+          status: subject.status,
+          t1_weighting: t1,
+          t2_weighting: t2,
+          has_sub_papers: papers.length > 0,
+          papers,
+        }),
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        setErr(json?.message || "儲存失敗");
+        return;
+      }
+      if (json.subject) onSaved(json.subject);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch {
+      setErr("儲存失敗，請重試");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <>
-      <style>{`
-        @keyframes wSave { 0% { transform: scale(0.95); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
-        input[type=range].wt-slider { -webkit-appearance:none; height:4px; border-radius:2px; outline:none; cursor:pointer; }
-        input[type=range].wt-slider::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.25); cursor:pointer; }
-      `}</style>
+      <style>{`@keyframes wSave { 0% { transform: scale(0.95); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }`}</style>
 
-      {/* Header */}
       <div style={{ padding: "13px 18px", borderBottom: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 9px", border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, background: "transparent", fontSize: 11, fontWeight: 600, color: ERP.colors.textSecondary, cursor: "pointer", fontFamily: F, transition: "all 0.12s" }}
-            onMouseEnter={e => { e.currentTarget.style.background = ERP.colors.accentPale; e.currentTarget.style.color = ERP.colors.accent; e.currentTarget.style.borderColor = ERP.colors.accentLight; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = ERP.colors.textSecondary; e.currentTarget.style.borderColor = ERP.colors.border; }}>
+          <button type="button" onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 9px", border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, background: "transparent", fontSize: 11, fontWeight: 600, color: ERP.colors.textSecondary, cursor: "pointer", fontFamily: F }}>
             <ArrowLeft size={12} /> 返回科目設定
           </button>
           <div style={{ flex: 1 }} />
-          <div style={{ padding: "2px 9px", borderRadius: ERP.radius.full, background: "#FFF7ED", border: "1px solid #FED7AA", fontSize: 10, fontWeight: 700, color: "#C2410C", fontFamily: F }}>
-            {ERP.font.mono ? <span style={{ fontFamily: ERP.font.mono }}>{subject.code}</span> : subject.code}
+          <div style={{ padding: "2px 9px", borderRadius: ERP.radius.full, background: "#FFF7ED", border: "1px solid #FED7AA", fontSize: 10, fontWeight: 700, color: "#C2410C", fontFamily: ERP.font.mono }}>
+            {subject.code}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -187,100 +222,148 @@ const WeightsPanel: React.FC<{ subject: Subject; onBack: () => void }> = ({ subj
             <Sliders size={14} color="#C2410C" />
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: ERP.colors.textPrimary, fontFamily: F }}>測考與權重</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: ERP.colors.textPrimary, fontFamily: F }}>學期比重與分卷</div>
             <div style={{ fontSize: 11, color: ERP.colors.textMuted, fontFamily: F, marginTop: 1 }}>
-              Assessment Weights · <span style={{ fontStyle: "italic" }}>{subject.zhName}</span>
+              Term Weights · Sub-papers · <span style={{ fontStyle: "italic" }}>{subject.zhName}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Body */}
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-
-        {/* Level tabs */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: ERP.colors.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" as const, marginBottom: 8, fontFamily: F }}>選擇級別 · Select Level</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
-            {subject.levels.map(lvl => (
-              <button key={lvl} onClick={() => setActiveLevel(lvl)} style={{ padding: "5px 13px", borderRadius: ERP.radius.full, border: `1.5px solid ${activeLevel === lvl ? ERP.colors.accent : ERP.colors.border}`, background: activeLevel === lvl ? ERP.colors.accent : ERP.colors.surface, color: activeLevel === lvl ? "#fff" : ERP.colors.textSecondary, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: F, transition: "all 0.15s" }}>
-                {lvl}
-              </button>
-            ))}
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: ERP.colors.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" as const, marginBottom: 10, fontFamily: F }}>
+          學期比重 Term Weightings
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <div style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: ERP.radius.lg, padding: "12px 14px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#4338CA", marginBottom: 8, fontFamily: F }}>上學期比重 (Term 1)</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="number" min={0} max={100} value={t1}
+                onChange={e => {
+                  const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                  setT1(v);
+                  setT2(100 - v);
+                }}
+                style={{ width: 72, textAlign: "center", padding: "6px 8px", border: "1.5px solid #C7D2FE", borderRadius: ERP.radius.sm, fontSize: 16, fontWeight: 800, color: "#4338CA", fontFamily: F, outline: "none" }}
+              />
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#4338CA" }}>%</span>
+            </div>
+          </div>
+          <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: ERP.radius.lg, padding: "12px 14px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#047857", marginBottom: 8, fontFamily: F }}>下學期比重 (Term 2)</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="number" min={0} max={100} value={t2}
+                onChange={e => {
+                  const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                  setT2(v);
+                  setT1(100 - v);
+                }}
+                style={{ width: 72, textAlign: "center", padding: "6px 8px", border: "1.5px solid #A7F3D0", borderRadius: ERP.radius.sm, fontSize: 16, fontWeight: 800, color: "#047857", fontFamily: F, outline: "none" }}
+              />
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#047857" }}>%</span>
+            </div>
           </div>
         </div>
-
-        {/* Weight components */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-          {WEIGHT_COMPONENTS.map(comp => {
-            const val = current[comp.key] ?? 0;
-            return (
-              <div key={comp.key} style={{ background: comp.bg, border: `1px solid ${comp.bd}`, borderRadius: ERP.radius.lg, padding: "12px 14px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: comp.color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: comp.color, fontFamily: F }}>{comp.zhLabel}</span>
-                    <span style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>{comp.enLabel}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <input
-                      type="number" min={0} max={100} value={val}
-                      onChange={e => update(comp.key, Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                      style={{ width: 52, textAlign: "center" as const, padding: "3px 6px", border: `1.5px solid ${comp.bd}`, borderRadius: ERP.radius.sm, fontSize: 14, fontWeight: 800, color: comp.color, background: "#fff", fontFamily: F, outline: "none" }}
-                    />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: comp.color, fontFamily: F }}>%</span>
-                  </div>
-                </div>
-                <input type="range" min={0} max={100} value={val}
-                  onChange={e => update(comp.key, parseInt(e.target.value))}
-                  className="wt-slider"
-                  style={{ width: "100%", background: `linear-gradient(90deg, ${comp.color} ${val}%, #E2E8F0 ${val}%)` }}
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Total indicator */}
-        <div style={{ padding: "12px 14px", borderRadius: ERP.radius.lg, background: isValid ? "#F0FDF4" : "#FFF7ED", border: `1px solid ${isValid ? "#BBF7D0" : "#FED7AA"}`, display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-          {isValid
-            ? <Check size={14} color="#15803D" />
-            : <AlertCircle size={14} color="#C2410C" />}
-          <span style={{ fontSize: 12, fontWeight: 700, color: isValid ? "#15803D" : "#C2410C", fontFamily: F }}>
-            {isValid ? `合計 100% · 權重設定有效` : `合計 ${total}% · 各項權重必須加總至 100%`}
+        <div style={{ padding: "10px 12px", borderRadius: ERP.radius.md, background: termOk ? "#F0FDF4" : "#FFF7ED", border: `1px solid ${termOk ? "#BBF7D0" : "#FED7AA"}`, display: "flex", alignItems: "center", gap: 8, marginBottom: 22 }}>
+          {termOk ? <Check size={14} color="#15803D" /> : <AlertCircle size={14} color="#C2410C" />}
+          <span style={{ fontSize: 12, fontWeight: 700, color: termOk ? "#15803D" : "#C2410C", fontFamily: F }}>
+            {termOk ? "學期比重合計 100%" : `合計 ${termTotal}% · 必須為 100%`}
           </span>
         </div>
 
-        {/* Visual bar */}
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: ERP.colors.textMuted, letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: 6, display: "flex", alignItems: "center", gap: 5, fontFamily: F }}>
-            <BarChart2 size={11} color={ERP.colors.textMuted} /> 比例預覽 Visual Breakdown
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: ERP.colors.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" as const, fontFamily: F }}>
+            分卷 Sub-papers
           </div>
-          <div style={{ height: 12, borderRadius: 6, overflow: "hidden", display: "flex", background: ERP.colors.border }}>
-            {WEIGHT_COMPONENTS.map(comp => {
-              const pct = (current[comp.key] ?? 0);
-              return pct > 0 ? <div key={comp.key} title={`${comp.zhLabel} ${pct}%`} style={{ width: `${pct}%`, background: comp.color, transition: "width 0.25s ease", height: "100%" }} /> : null;
-            })}
+          <button type="button" onClick={addPaper} style={{
+            display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px",
+            borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "#fff",
+            fontSize: 11, fontWeight: 700, fontFamily: F, cursor: "pointer", color: ERP.colors.accent,
+          }}>
+            <Plus size={12} /> 新增分卷
+          </button>
+        </div>
+        <p style={{ margin: "0 0 12px", fontSize: 11, color: ERP.colors.textMuted, fontFamily: F }}>
+          語文科等可設定閱讀／寫作等分卷及其佔科總百分比。
+        </p>
+
+        {papers.length === 0 ? (
+          <div style={{ padding: "20px 14px", textAlign: "center", border: `1px dashed ${ERP.colors.border}`, borderRadius: ERP.radius.lg, color: ERP.colors.textMuted, fontSize: 12, marginBottom: 12 }}>
+            尚未設定分卷（選修）。按「新增分卷」加入 Reading / Writing 等。
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 7, flexWrap: "wrap" as const }}>
-            {WEIGHT_COMPONENTS.map(comp => (
-              <div key={comp.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 2, background: comp.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>{comp.zhLabel} {current[comp.key] ?? 0}%</span>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+            {papers.map((p, idx) => (
+              <div key={idx} style={{ border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.lg, padding: "12px 12px", background: "#FAFBFC" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 72px 32px", gap: 8, alignItems: "end" }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 4 }}>中文名稱</div>
+                    <input value={p.name_zh_hk} placeholder="閱讀"
+                      onChange={e => patchPaper(idx, "name_zh_hk", e.target.value)}
+                      style={{ ...inputStyle, padding: "7px 10px", fontSize: 12 }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 4 }}>English</div>
+                    <input value={p.name_en} placeholder="Reading"
+                      onChange={e => patchPaper(idx, "name_en", e.target.value)}
+                      style={{ ...inputStyle, padding: "7px 10px", fontSize: 12 }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 4 }}>比重 %</div>
+                    <input type="number" min={0} max={100} value={p.weighting}
+                      onChange={e => patchPaper(idx, "weighting", Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                      style={{ ...inputStyle, padding: "7px 8px", fontSize: 13, fontWeight: 800, textAlign: "center" }}
+                    />
+                  </div>
+                  <button type="button" onClick={() => removePaper(idx)} title="移除" style={{
+                    height: 34, border: "none", background: "transparent", color: ERP.colors.red, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        )}
 
+        {papers.length > 0 && (
+          <div style={{ padding: "10px 12px", borderRadius: ERP.radius.md, background: papersOk ? "#F0FDF4" : "#FFF7ED", border: `1px solid ${papersOk ? "#BBF7D0" : "#FED7AA"}`, display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            {papersOk ? <Check size={14} color="#15803D" /> : <AlertCircle size={14} color="#C2410C" />}
+            <span style={{ fontSize: 12, fontWeight: 700, color: papersOk ? "#15803D" : "#C2410C", fontFamily: F }}>
+              {papersOk ? "分卷比重合計 100%" : `分卷合計 ${paperTotal}% · 必須為 100%`}
+            </span>
+          </div>
+        )}
+
+        {papers.length > 0 && (
+          <div style={{ height: 10, borderRadius: 5, overflow: "hidden", display: "flex", background: ERP.colors.border, marginTop: 8 }}>
+            {papers.map((p, i) => {
+              const pct = Number(p.weighting) || 0;
+              const colors = ["#6366F1", "#0891B2", "#D97706", "#059669", "#BE185D"];
+              return pct > 0 ? <div key={i} title={`${p.name_zh_hk || p.name_en} ${pct}%`} style={{ width: `${pct}%`, background: colors[i % colors.length], height: "100%" }} /> : null;
+            })}
+          </div>
+        )}
+
+        {err && <p style={{ margin: "14px 0 0", fontSize: 12, color: ERP.colors.red, fontWeight: 600 }}>{err}</p>}
       </div>
 
-      {/* Footer */}
       <div style={{ padding: "12px 18px", borderTop: `1px solid ${ERP.colors.border}`, display: "flex", gap: 10, justifyContent: "flex-end", background: ERP.colors.surface, flexShrink: 0 }}>
-        <button onClick={onBack} style={{ padding: "8px 18px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "transparent", color: ERP.colors.textSecondary, fontSize: 13, fontFamily: F, cursor: "pointer" }}>
+        <button type="button" onClick={onBack} style={{ padding: "8px 18px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "transparent", color: ERP.colors.textSecondary, fontSize: 13, fontFamily: F, cursor: "pointer" }}>
           取消 Cancel
         </button>
-        <button onClick={handleSave} disabled={!isValid} style={{ padding: "8px 20px", borderRadius: ERP.radius.md, border: "none", background: isValid ? ERP.colors.accent : ERP.colors.border, color: isValid ? "#fff" : ERP.colors.textMuted, fontSize: 13, fontWeight: 700, fontFamily: F, cursor: isValid ? "pointer" : "default", transition: "all 0.15s", boxShadow: isValid ? `0 2px 8px ${ERP.colors.accent}40` : "none", animation: saved ? "wSave 0.3s ease" : "none" }}>
-          {saved ? "✓ 已儲存" : "儲存 Save"}
+        <button type="button" onClick={handleSave} disabled={saving || !termOk || !papersOk} style={{
+          padding: "8px 20px", borderRadius: ERP.radius.md, border: "none",
+          background: termOk && papersOk ? ERP.colors.accent : ERP.colors.border,
+          color: termOk && papersOk ? "#fff" : ERP.colors.textMuted,
+          fontSize: 13, fontWeight: 700, fontFamily: F,
+          cursor: termOk && papersOk && !saving ? "pointer" : "default",
+          boxShadow: termOk && papersOk ? `0 2px 8px ${ERP.colors.accent}40` : "none",
+          animation: saved ? "wSave 0.3s ease" : "none",
+        }}>
+          {saving ? "儲存中…" : saved ? "✓ 已儲存" : "儲存 Save"}
         </button>
       </div>
     </>
@@ -924,7 +1007,7 @@ export const Screen_Subjects: React.FC<Props> = ({
               </div>
               <div style={{ flex: 1, textAlign: "left" as const }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E", fontFamily: F }}>設定測考評分比重</div>
-                <div style={{ fontSize: 11, color: "#B45309", marginTop: 2, fontFamily: F }}>Configure assessment component weights per level</div>
+                <div style={{ fontSize: 11, color: "#B45309", marginTop: 2, fontFamily: F }}>設定上／下學期比重與分卷（閱讀、寫作等）</div>
               </div>
               <div style={{ display: "flex", gap: 4 }}>
                 {WEIGHT_COMPONENTS.map(c => (
@@ -976,6 +1059,12 @@ export const Screen_Subjects: React.FC<Props> = ({
             <WeightsPanel
               subject={catalog.find(s => s.id === selectedId)!}
               onBack={backToEdit}
+              updateUrl={updateUrl}
+              onSaved={(subj) => {
+                setCatalog(prev => prev.map(x =>
+                  (x.dbId && x.dbId === subj.dbId) || x.code === subj.code ? { ...x, ...subj } : x
+                ));
+              }}
             />
           )}
         </div>

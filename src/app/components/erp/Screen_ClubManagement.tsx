@@ -11,6 +11,7 @@ import {
   ArrowLeft, Trash2, Check, ChevronDown, Home, RefreshCw,
   Shield, Star, Award, Zap, Music2, Camera, Monitor,
   Leaf, Heart, Dumbbell, X, AlertTriangle, ClipboardPaste, Layers,
+  Sliders, Trophy, Cloud,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -21,13 +22,25 @@ export interface ClubInfo {
   zhName:        string;
   enName:        string;
   category:      ClubCategory;
+  categories?:   string[];
   teacher:       string;
   teacherId?:    number | null;
   memberCount:   number;
   ongoingEvents: number;
   founded:       string;
   presidentName?: string;
+  achievementLevelId?: number | null;
+  acornWeights?: Record<string, number>;
 }
+
+export type ClubRoleTitles = { t1: string; t2: string; t3: string; t4: string };
+export type ClubAchievementLevel = {
+  id: number;
+  code: string;
+  name_en: string;
+  name_zh_hk: string;
+  base_points?: number;
+};
 
 export interface ClubMember {
   id:         string | number;
@@ -96,12 +109,25 @@ const CLUB_ROSTERS: Record<string, ClubMember[]> = {
   ],
 };
 
-const ROLE_OPTIONS: { role: ClubMember["role"]; stored: string; tier: string; color: string; bg: string; bd: string }[] = [
-  { role:"主席",   stored:"T3 主席 (President)",      tier:"T3", color:"#7C3AED", bg:"#EDE9FE", bd:"#C4B5FD" },
+const DEFAULT_ROLE_TITLES: ClubRoleTitles = {
+  t1: "會員 Member",
+  t2: "幹事 Committee",
+  t3: "副主席 Vice-President",
+  t4: "主席 President",
+};
+
+const ROLE_OPTIONS: { role: ClubMember["role"]; stored: string; tier: "T1" | "T2" | "T3" | "T4"; color: string; bg: string; bd: string }[] = [
+  { role:"主席",   stored:"T4 主席 (President)",       tier:"T4", color:"#7C3AED", bg:"#EDE9FE", bd:"#C4B5FD" },
   { role:"副主席", stored:"T3 副主席 (Vice-President)", tier:"T3", color:"#4F46E5", bg:"#EEF2FF", bd:"#A5B4FC" },
-  { role:"幹事",   stored:"T2 幹事 (Committee)",       tier:"T2", color:"#0891B2", bg:"#E0F2FE", bd:"#7DD3FC" },
-  { role:"會員",   stored:"T1 會員 (Member)",          tier:"T1", color:"#475569", bg:"#F1F5F9", bd:"#CBD5E1" },
+  { role:"幹事",   stored:"T2 幹事 (Committee)",        tier:"T2", color:"#0891B2", bg:"#E0F2FE", bd:"#7DD3FC" },
+  { role:"會員",   stored:"T1 會員 (Member)",           tier:"T1", color:"#475569", bg:"#F1F5F9", bd:"#CBD5E1" },
 ];
+
+function shortTitle(full: string, fallback: string): string {
+  const t = (full || "").trim();
+  if (!t) return fallback;
+  return t.split(/\s+/)[0] || fallback;
+}
 
 function clubClassPal(cls: string) {
   const CLASS_PAL: Record<string, { bg: string; color: string; border: string }> = {
@@ -259,7 +285,7 @@ const AddMemberModal: React.FC<{ clubName: string; onClose: () => void; onAdd: (
 // ─── Club Card ────────────────────────────────────────────────────────────────
 const ClubCard: React.FC<{ club: ClubInfo; onOpen: () => void }> = ({ club, onOpen }) => {
   const F = ERP.font.family;
-  const cs = CATEGORY_STYLE[club.category] ?? CATEGORY_STYLE.arts;
+  const cs = CATEGORY_STYLE[(club.categories?.[0] || club.category) as ClubCategory] ?? CATEGORY_STYLE.arts;
   const roster = CLUB_ROSTERS[String(club.id)] ?? [];
   const presidentName = club.presidentName || roster.find(m => m.role === "主席")?.chName || "";
 
@@ -332,11 +358,16 @@ export const ClubRosterView: React.FC<{
   teachers?: ClubTeacher[];
   acorns?: ClubAcorn[];
   acornIds?: number[];
+  acornWeights?: Record<string, number>;
+  achievementLevels?: ClubAchievementLevel[];
+  achievementLevelId?: number | null;
+  roleTitles?: ClubRoleTitles;
   academicYear?: string;
   eligibleTabs?: EligibleTab[];
   updateUrl?: string;
   addUrl?: string;
   bulkAddUrl?: string;
+  smartImportUrl?: string;
   updateRoleUrl?: string;
   removeUrl?: string;
   flashSuccess?: string;
@@ -346,19 +377,24 @@ export const ClubRosterView: React.FC<{
   members: membersProp,
   teachers = [],
   acorns = [],
-  acornIds = [],
+  acornWeights: acornWeightsProp,
+  achievementLevels = [],
+  achievementLevelId: achievementLevelIdProp = null,
+  roleTitles: roleTitlesProp,
   academicYear = "2025/26",
   eligibleTabs = [],
   updateUrl = "",
   addUrl = "",
   bulkAddUrl = "",
+  smartImportUrl = "",
   updateRoleUrl = "",
   removeUrl = "",
   flashSuccess,
   flashError,
 }) => {
   const F = ERP.font.family;
-  const cs = CATEGORY_STYLE[club.category] ?? CATEGORY_STYLE.arts;
+  const primaryCat = (club.categories?.[0] || club.category || "arts") as ClubCategory;
+  const cs = CATEGORY_STYLE[primaryCat] ?? CATEGORY_STYLE.arts;
   const live = !!updateRoleUrl;
 
   const [search,           setSearch]           = useState("");
@@ -370,15 +406,93 @@ export const ClubRosterView: React.FC<{
   const [syncTs,           setSyncTs]            = useState("剛剛");
   const [members, setMembers] = useState<ClubMember[]>(() => membersProp && membersProp.length ? membersProp : [...(CLUB_ROSTERS[String(club.id)] ?? [])]);
   const [teacherId, setTeacherId] = useState<string>(club.teacherId != null ? String(club.teacherId) : "");
-  const [checkedAcorns, setCheckedAcorns] = useState<number[]>(acornIds);
   const [nameZh, setNameZh] = useState(club.zhName || "");
   const [nameEn, setNameEn] = useState(club.enName || "");
-  const [category, setCategory] = useState<ClubCategory>(club.category || "arts");
+  const [categories, setCategories] = useState<string[]>(() => {
+    if (club.categories && club.categories.length) return [...club.categories];
+    return club.category ? [club.category] : ["arts"];
+  });
+  const [categoryDraft, setCategoryDraft] = useState("");
   const [founded, setFounded] = useState(club.founded || "");
+  const [acornWeights, setAcornWeights] = useState<Record<string, number>>(() => ({
+    ...(club.acornWeights || {}),
+    ...(acornWeightsProp || {}),
+  }));
+  const [acornTags, setAcornTags] = useState<string[]>(() => Object.keys({
+    ...(club.acornWeights || {}),
+    ...(acornWeightsProp || {}),
+  }));
+  const [levelId, setLevelId] = useState<string>(
+    achievementLevelIdProp != null ? String(achievementLevelIdProp)
+      : (club.achievementLevelId != null ? String(club.achievementLevelId) : "")
+  );
+  const [roleTitles, setRoleTitles] = useState<ClubRoleTitles>({
+    ...DEFAULT_ROLE_TITLES,
+    ...(roleTitlesProp || {}),
+  });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState(eligibleTabs[0]?.form || "");
   const [pasteText, setPasteText] = useState("");
   const [parseMsg, setParseMsg] = useState<string | null>(null);
+
+  const rebalanceEvenly = (tags: string[]) => {
+    if (tags.length === 0) { setAcornWeights({}); return; }
+    const base = Math.floor(100 / tags.length);
+    const rem  = 100 - base * tags.length;
+    const w: Record<string, number> = {};
+    tags.forEach((t, i) => { w[t] = base + (i === 0 ? rem : 0); });
+    setAcornWeights(w);
+  };
+
+  const toggleAcornTag = (tag: string) => {
+    setAcornTags(prev => {
+      const next = prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag];
+      rebalanceEvenly(next);
+      return next;
+    });
+  };
+
+  const handleWeightChange = (changedTag: string, newVal: number) => {
+    const clamped = Math.max(0, Math.min(100, newVal));
+    const others = acornTags.filter(t => t !== changedTag);
+    if (others.length === 0) { setAcornWeights({ [changedTag]: 100 }); return; }
+    const remaining = 100 - clamped;
+    const othersOldSum = others.reduce((s, t) => s + (acornWeights[t] ?? 0), 0);
+    const newW: Record<string, number> = { [changedTag]: clamped };
+    let distributed = 0;
+    others.forEach((t, i) => {
+      if (i < others.length - 1) {
+        const share = othersOldSum > 0
+          ? Math.round((acornWeights[t] ?? 0) / othersOldSum * remaining)
+          : Math.round(remaining / others.length);
+        newW[t] = share;
+        distributed += share;
+      } else {
+        newW[t] = Math.max(0, remaining - distributed);
+      }
+    });
+    setAcornWeights(newW);
+  };
+
+  const addCategoryTag = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return;
+    const preset = CAT_FORM_OPTIONS.find(o => o.value === v || o.zh === v || o.en.toLowerCase() === v.toLowerCase());
+    const tag = preset ? preset.value : v;
+    setCategories(prev => prev.includes(tag) ? prev : [...prev, tag]);
+    setCategoryDraft("");
+  };
+
+  const roleLabel = (role: ClubMember["role"]) => {
+    if (role === "主席") return shortTitle(roleTitles.t4, "主席");
+    if (role === "副主席") return shortTitle(roleTitles.t3, "副主席");
+    if (role === "幹事") return shortTitle(roleTitles.t2, "幹事");
+    return shortTitle(roleTitles.t1, "會員");
+  };
+
+  const pendingApi = (feature: string) => {
+    alert(`API Integration Pending · ${feature}`);
+  };
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const enrolledPks = useMemo(
@@ -428,39 +542,17 @@ export const ClubRosterView: React.FC<{
     });
   };
 
-  const handleSmartParse = () => {
-    const lines = pasteText.split(/\n+/).map(l => l.trim()).filter(Boolean);
-    if (lines.length === 0) {
-      setParseMsg("請先貼上學生名單。");
-      return;
-    }
-    let matched = 0;
-    let unmatched = 0;
-    let already = 0;
-    const next = new Set(selected);
-    for (const line of lines) {
-      const parts = line.split(/[,;\t ]+/).map(p => p.trim()).filter(Boolean);
-      const token = parts[0] || "";
-      const nameHint = parts[1] || "";
-      const hit = pool.find(s =>
-        s.student_id === token
-        || String(s.pk || s.id) === token
-        || (!!nameHint && (s.name_zh_hk === nameHint || s.name === nameHint || s.name_en?.toLowerCase() === nameHint.toLowerCase()))
-      );
-      if (!hit) { unmatched++; continue; }
-      const id = hit.pk || hit.id;
-      if (enrolledPks.has(id)) { already++; continue; }
-      next.add(id);
-      matched++;
-    }
-    setSelected(next);
-    setParseMsg(`配對 ${matched} 名可加入學生` + (already ? `；已在名單 ${already}` : "") + (unmatched ? `；未能配對 ${unmatched} 行` : "") + "。");
-  };
-
   const handleBulkSubmit = (e: React.FormEvent) => {
     if (selected.size === 0) {
       e.preventDefault();
-      setParseMsg("請勾選或匯入至少一名學生。");
+      setParseMsg("請勾選至少一名學生。");
+    }
+  };
+
+  const handleSmartImportSubmit = (e: React.FormEvent) => {
+    if (!pasteText.trim()) {
+      e.preventDefault();
+      setParseMsg("請先貼上學生名單文字。");
     }
   };
 
@@ -469,7 +561,7 @@ export const ClubRosterView: React.FC<{
     setMembers(prev => prev.map(m => String(m.id) === memberId ? { ...m, role: newRole, roleStored: stored } : m));
     setOpenRoleId(null);
     setSyncTs("剛剛");
-    showToast(`✓ 職銜已更新為「${newRole}」`);
+    showToast(`✓ 職銜已更新為「${roleLabel(newRole)}」`);
     if (updateRoleUrl) {
       await postForm(updateRoleUrl, { membership_id: memberId, role: stored, academic_year: academicYear });
     }
@@ -614,6 +706,18 @@ export const ClubRosterView: React.FC<{
       {live && (
         <form method="post" action={updateUrl} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <input type="hidden" name="academic_year" value={academicYear} />
+          <input type="hidden" name="categories_submitted" value="1" />
+          <input type="hidden" name="acorn_submitted" value="1" />
+          <input type="hidden" name="achievement_level_id" value={levelId} />
+          {categories.map(c => (
+            <input key={c} type="hidden" name="categories[]" value={c} />
+          ))}
+          {acornTags.map(tag => (
+            <React.Fragment key={tag}>
+              <input type="hidden" name="acorn_tags[]" value={tag} />
+              <input type="hidden" name={`acorn_weights[${tag}]`} value={String(acornWeights[tag] ?? 0)} />
+            </React.Fragment>
+          ))}
 
           {/* ── Basic Info ── */}
           <div style={{ background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.lg, padding: 18, display: "flex", flexDirection: "column", gap: 14, boxShadow: ERP.shadow.xs }}>
@@ -629,14 +733,50 @@ export const ClubRosterView: React.FC<{
                 <span style={fieldLabel}>學會名稱 (英) name_en</span>
                 <input name="name_en" value={nameEn} onChange={e => setNameEn(e.target.value)} style={fieldInput} />
               </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={fieldLabel}>類別 Category</span>
-                <select name="category" value={category} onChange={e => setCategory(e.target.value as ClubCategory)} style={fieldInput}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={fieldLabel}>類別 Categories（多選／自訂標籤）</span>
+                <select
+                  multiple
+                  value={categories}
+                  onChange={e => {
+                    const opts = Array.from(e.target.selectedOptions).map(o => o.value);
+                    setCategories(opts);
+                  }}
+                  style={{ ...fieldInput, minHeight: 110 }}
+                >
                   {CAT_FORM_OPTIONS.map(o => (
                     <option key={o.value} value={o.value}>{o.zh} · {o.en}</option>
                   ))}
+                  {categories.filter(c => !CAT_FORM_OPTIONS.some(o => o.value === c)).map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
                 </select>
-              </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                  {categories.map(c => {
+                    const preset = CAT_FORM_OPTIONS.find(o => o.value === c);
+                    return (
+                      <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, background: "#FFF7ED", border: "1px solid #FED7AA", fontSize: 11, fontWeight: 700, color: "#C2410C" }}>
+                        {preset ? `${preset.zh}` : c}
+                        <button type="button" onClick={() => setCategories(prev => prev.filter(x => x !== c))} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, color: "#C2410C", display: "flex" }}>
+                          <X size={11} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={categoryDraft}
+                    onChange={e => setCategoryDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCategoryTag(categoryDraft); } }}
+                    placeholder="輸入自訂類別後 Enter…"
+                    style={{ ...fieldInput, flex: 1 }}
+                  />
+                  <button type="button" onClick={() => addCategoryTag(categoryDraft)} style={{ padding: "8px 12px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: F }}>
+                    加入標籤
+                  </button>
+                </div>
+              </div>
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={fieldLabel}>成立年份 Established Year</span>
                 <input name="established_year" type="number" min={1900} max={2100} value={founded} onChange={e => setFounded(e.target.value)} style={fieldInput} />
@@ -654,23 +794,171 @@ export const ClubRosterView: React.FC<{
                 {teachers.map(t => <option key={t.id} value={String(t.id)}>{t.label || t.name}</option>)}
               </select>
             </label>
-            {acorns.length > 0 && (
+
+            <div>
+              <div style={{ ...fieldLabel, marginBottom: 8 }}>職銜自訂標題 · Custom Role Titles (T1–T4)</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                {([
+                  ["t1_title", "T1", roleTitles.t1, (v: string) => setRoleTitles(p => ({ ...p, t1: v }))],
+                  ["t2_title", "T2", roleTitles.t2, (v: string) => setRoleTitles(p => ({ ...p, t2: v }))],
+                  ["t3_title", "T3", roleTitles.t3, (v: string) => setRoleTitles(p => ({ ...p, t3: v }))],
+                  ["t4_title", "T4", roleTitles.t4, (v: string) => setRoleTitles(p => ({ ...p, t4: v }))],
+                ] as const).map(([name, tier, val, setVal]) => (
+                  <label key={name} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={fieldLabel}>{tier} 職銜</span>
+                    <input name={name} maxLength={50} value={val} onChange={e => setVal(e.target.value)} style={fieldInput} />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {(acorns.length > 0) && (
               <div>
-                <div style={{ ...fieldLabel, marginBottom: 8 }}>ACORN 預設維度綁定</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                <div style={{ ...fieldLabel, marginBottom: 8 }}>ACORN 預設維度</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {acorns.map(a => {
-                    const checked = checkedAcorns.includes(a.id);
+                    const tag = a.name_zh_hk || a.code;
+                    const selected = acornTags.includes(tag);
+                    const style = (ERP.acornTags as Record<string, { bg: string; color: string; border: string }>)[tag]
+                      || { bg: selected ? "#EDE9FE" : ERP.colors.pageBg, color: selected ? "#6D28D9" : ERP.colors.textMuted, border: selected ? "#C4B5FD" : ERP.colors.border };
                     return (
-                      <label key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: ERP.radius.md, border: `1.5px solid ${checked ? "#C4B5FD" : ERP.colors.border}`, background: checked ? "#EDE9FE" : ERP.colors.pageBg, cursor: "pointer" }}>
-                        <input type="checkbox" name="acorn_ids[]" value={a.id} checked={checked} onChange={() => setCheckedAcorns(prev => prev.includes(a.id) ? prev.filter(x => x !== a.id) : [...prev, a.id])} />
-                        <span style={{ fontSize: 12, fontWeight: 700 }}>{a.name_zh_hk}</span>
-                      </label>
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => toggleAcornTag(tag)}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5,
+                          padding: "6px 12px",
+                          background: selected ? style.bg : ERP.colors.pageBg,
+                          color: selected ? style.color : ERP.colors.textMuted,
+                          border: `1.5px solid ${selected ? style.border : ERP.colors.border}`,
+                          borderRadius: ERP.radius.full, fontSize: 12, fontWeight: 700,
+                          cursor: "pointer", fontFamily: F,
+                        }}
+                      >
+                        {selected && <Check size={11} />}
+                        {tag}
+                      </button>
                     );
                   })}
                 </div>
+                <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 10 }}>
+                  點擊標籤以選取。目前已選：{acornTags.join("、") || "（無）"}
+                </div>
+
+                {acornTags.length > 0 && (
+                  <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${ERP.colors.border}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                      <Sliders size={13} color={ERP.colors.accent} />
+                      <span style={{ fontSize: 12, fontWeight: 800, color: ERP.colors.textPrimary }}>ACORN 權重分配</span>
+                      <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>Weight Distribution · 合計須為 100%</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {acornTags.map(tag => {
+                        const s = (ERP.acornTags as Record<string, { color: string }>)[tag] || { color: ERP.colors.accent };
+                        const val = acornWeights[tag] ?? 0;
+                        return (
+                          <div key={tag}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{tag}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800, fontFamily: ERP.font.mono }}>{val}%</span>
+                            </div>
+                            <input
+                              type="range" min={0} max={100} value={val}
+                              onChange={e => handleWeightChange(tag, Number(e.target.value))}
+                              style={{ width: "100%", accentColor: s.color }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: Object.values(acornWeights).reduce((a, b) => a + b, 0) === 100 ? ERP.colors.success : ERP.colors.red }}>
+                      合計 {Object.values(acornWeights).reduce((a, b) => a + b, 0)}%
+                    </div>
+                  </div>
+                )}
               </div>
             )}
+
+            <div>
+              <div style={{ ...fieldLabel, marginBottom: 8 }}>成就環境級別 · Achievement Level</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                {achievementLevels.map(lv => {
+                  const selected = String(lv.id) === levelId;
+                  return (
+                    <label key={lv.id} style={{
+                      display: "flex", flexDirection: "column", gap: 4, cursor: "pointer",
+                      padding: "12px 10px", borderRadius: ERP.radius.md, textAlign: "center" as const,
+                      border: `1.5px solid ${selected ? ERP.colors.accent : ERP.colors.border}`,
+                      background: selected ? ERP.colors.accentPale : ERP.colors.pageBg,
+                    }}>
+                      <input type="radio" name="achievement_level_id_ui" value={String(lv.id)} checked={selected} onChange={() => setLevelId(String(lv.id))} style={{ accentColor: ERP.colors.accent, alignSelf: "center" }} />
+                      <span style={{ fontSize: 13, fontWeight: 800, color: selected ? ERP.colors.accent : ERP.colors.textPrimary, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                        <Trophy size={12} /> {lv.code}
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.textSecondary }}>{lv.name_zh_hk}</span>
+                      <span style={{ fontSize: 10, color: ERP.colors.textMuted }}>{lv.name_en} · {lv.base_points ?? 0} pts</span>
+                    </label>
+                  );
+                })}
+                {achievementLevels.length === 0 && (
+                  <div style={{ gridColumn: "1 / -1", fontSize: 12, color: ERP.colors.textMuted }}>尚未設定成就級別。請先執行 AchievementLevelSeeder。</div>
+                )}
+              </div>
+            </div>
+
             <button type="submit" style={{ alignSelf: "flex-start", padding: "8px 16px", border: "none", borderRadius: ERP.radius.md, background: cs.accent, color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: F, cursor: "pointer" }}>儲存設定</button>
+          </div>
+        </form>
+      )}
+
+      {(parseMsg || flashSuccess || flashError) && (
+        <div style={{
+          padding: "10px 14px", borderRadius: ERP.radius.md, fontSize: 13, fontWeight: 600,
+          background: flashError ? "#FEE2E2" : "#ECFDF5",
+          color: flashError ? "#B91C1C" : "#065F46",
+          border: `1px solid ${flashError ? "#FCA5A5" : "#6EE7B7"}`,
+        }}>
+          {flashError || flashSuccess || parseMsg}
+        </div>
+      )}
+
+      {live && smartImportUrl && (
+        <form method="post" action={smartImportUrl} onSubmit={handleSmartImportSubmit} style={{
+          background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
+          borderRadius: ERP.radius.lg, padding: "18px 20px", boxShadow: ERP.shadow.xs,
+        }}>
+          <input type="hidden" name="academic_year" value={academicYear} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <Zap size={15} color="#D97706" />
+            <span style={{ fontSize: 13, fontWeight: 800 }}>智能名單匯入</span>
+            <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>Smart Roster Import · backend ID resolve</span>
+          </div>
+          <textarea
+            name="import_text"
+            value={pasteText}
+            onChange={e => setPasteText(e.target.value)}
+            rows={3}
+            placeholder={"S00007, 陳大明\nR123456\n…（後端直接以學號解析，不經前端 DOM 配對）"}
+            style={{
+              width: "100%", boxSizing: "border-box", padding: 12, marginTop: 10,
+              border: `1.5px solid ${ERP.colors.borderStrong}`, borderRadius: ERP.radius.lg,
+              fontFamily: ERP.font.mono, fontSize: 13, resize: "vertical", outline: "none", background: "#FAFBFC",
+            }}
+          />
+          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+            <button type="button" onClick={() => navigator.clipboard.readText().then(t => setPasteText(t)).catch(() => {})} style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: ERP.radius.md,
+              border: `1px solid ${ERP.colors.border}`, background: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer", color: ERP.colors.textSecondary,
+            }}>
+              <ClipboardPaste size={14} /> 貼上
+            </button>
+            <button type="submit" style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: ERP.radius.md,
+              border: "1px solid #FDE68A", background: "#FFFBEB", color: "#92400E", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+            }}>
+              <Zap size={14} /> 智能匯入（後端解析）
+            </button>
           </div>
         </form>
       )}
@@ -681,53 +969,6 @@ export const ClubRosterView: React.FC<{
           {Array.from(selected).map(id => (
             <input key={id} type="hidden" name="student_ids[]" value={String(id)} />
           ))}
-
-          {(parseMsg || flashSuccess || flashError) && (
-            <div style={{
-              marginBottom: 14, padding: "10px 14px", borderRadius: ERP.radius.md, fontSize: 13, fontWeight: 600,
-              background: flashError ? "#FEE2E2" : "#ECFDF5",
-              color: flashError ? "#B91C1C" : "#065F46",
-              border: `1px solid ${flashError ? "#FCA5A5" : "#6EE7B7"}`,
-            }}>
-              {flashError || flashSuccess || parseMsg}
-            </div>
-          )}
-
-          <div style={{
-            background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
-            borderRadius: ERP.radius.lg, padding: "18px 20px", marginBottom: 16, boxShadow: ERP.shadow.xs,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <Zap size={15} color="#D97706" />
-              <span style={{ fontSize: 13, fontWeight: 800 }}>智能名單匯入</span>
-              <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>Smart Roster Import · paste student IDs</span>
-            </div>
-            <textarea
-              value={pasteText}
-              onChange={e => setPasteText(e.target.value)}
-              rows={3}
-              placeholder={"S00007, 陳大明\n…（全校學生均可加入學會）"}
-              style={{
-                width: "100%", boxSizing: "border-box", padding: 12, marginTop: 10,
-                border: `1.5px solid ${ERP.colors.borderStrong}`, borderRadius: ERP.radius.lg,
-                fontFamily: ERP.font.mono, fontSize: 13, resize: "vertical", outline: "none", background: "#FAFBFC",
-              }}
-            />
-            <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-              <button type="button" onClick={() => navigator.clipboard.readText().then(t => setPasteText(t)).catch(() => {})} style={{
-                display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: ERP.radius.md,
-                border: `1px solid ${ERP.colors.border}`, background: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer", color: ERP.colors.textSecondary,
-              }}>
-                <ClipboardPaste size={14} /> 貼上
-              </button>
-              <button type="button" onClick={handleSmartParse} style={{
-                display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: ERP.radius.md,
-                border: "1px solid #FDE68A", background: "#FFFBEB", color: "#92400E", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
-              }}>
-                <Zap size={14} /> 智能解析
-              </button>
-            </div>
-          </div>
 
           <div style={{
             background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
@@ -859,10 +1100,40 @@ export const ClubRosterView: React.FC<{
         </form>
       )}
 
-      {/* ── Search ── */}
-      <div style={{ position:"relative", maxWidth:340 }}>
-        <Search size={14} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:ERP.colors.textMuted, pointerEvents:"none" }} />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋成員姓名、學號…" style={{ width:"100%", padding:"8px 10px 8px 32px", boxSizing:"border-box" as const, borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, background:ERP.colors.surface, color:ERP.colors.textPrimary, fontSize:13, fontFamily:F, outline:"none" }} />
+      {/* ── Roster actions ── */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ position:"relative", maxWidth:340, flex: 1, minWidth: 220 }}>
+          <Search size={14} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:ERP.colors.textMuted, pointerEvents:"none" }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋成員姓名、學號…" style={{ width:"100%", padding:"8px 10px 8px 32px", boxSizing:"border-box" as const, borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, background:ERP.colors.surface, color:ERP.colors.textPrimary, fontSize:13, fontFamily:F, outline:"none" }} />
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() => pendingApi("Clone Previous Year")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
+              borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`,
+              background: "#fff", color: ERP.colors.textSecondary, fontSize: 12.5, fontWeight: 700,
+              fontFamily: F, cursor: "pointer",
+            }}
+          >
+            🔄 從上學年複製名單 (Clone Previous Year)
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-info"
+            onClick={() => pendingApi("eClass Sync")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
+              borderRadius: ERP.radius.md, border: "1px solid #7DD3FC",
+              background: "#F0F9FF", color: "#0369A1", fontSize: 12.5, fontWeight: 700,
+              fontFamily: F, cursor: "pointer",
+            }}
+          >
+            <Cloud size={14} /> ☁️ eClass 系統同步 (eClass Sync)
+          </button>
+        </div>
       </div>
 
       {/* ── Table (scrollable body + sticky header) ── */}
@@ -892,7 +1163,7 @@ export const ClubRosterView: React.FC<{
                     onClick={e => { e.stopPropagation(); setOpenRoleId(isRoleOpen ? null : String(m.id)); setOpenStatusId(null); setConfirmRemoveId(null); }}
                     style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"5px 9px", borderRadius:ERP.radius.md, border:`1.5px solid ${isRoleOpen ? rc.color : rc.bd}`, background: isRoleOpen ? rc.bg : rc.bg, color:rc.color, fontSize:12, fontWeight:700, fontFamily:F, cursor:"pointer", transition:"all 0.12s", boxShadow: isRoleOpen ? `0 0 0 3px ${rc.color}20` : "none" }}>
                     <span style={{ fontSize:9.5, padding:"1px 5px", borderRadius:4, background:`${rc.color}18`, color:rc.color, fontWeight:800 }}>{rc.tier}</span>
-                    {m.role}
+                    {roleLabel(m.role)}
                     <ChevronDown size={11} color={rc.color} style={{ transform: isRoleOpen ? "rotate(180deg)" : "none", transition:"transform 0.15s" }} />
                   </button>
 
@@ -908,7 +1179,7 @@ export const ClubRosterView: React.FC<{
                           onMouseLeave={e => { if (m.role !== opt.role) e.currentTarget.style.background = "transparent"; }}>
                           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                             <span style={{ fontSize:9.5, padding:"1px 6px", borderRadius:4, background:`${opt.color}18`, color:opt.color, fontWeight:800 }}>{opt.tier}</span>
-                            <span style={{ fontSize:13, fontWeight: m.role === opt.role ? 700 : 500, color: m.role === opt.role ? opt.color : ERP.colors.textPrimary }}>{opt.role}</span>
+                            <span style={{ fontSize:13, fontWeight: m.role === opt.role ? 700 : 500, color: m.role === opt.role ? opt.color : ERP.colors.textPrimary }}>{roleLabel(opt.role)}</span>
                           </div>
                           {m.role === opt.role && <Check size={13} color={opt.color} />}
                         </button>
@@ -1074,7 +1345,8 @@ export const Screen_ClubManagement: React.FC<{
   const filtered = clubs.filter(c => {
     const q = search.toLowerCase();
     const matchSearch = !q || c.zhName.includes(search) || c.enName.toLowerCase().includes(q) || c.teacher.includes(search);
-    const matchCat = catFilter === "全部" || c.category === catFilter;
+    const cats = c.categories && c.categories.length ? c.categories : [c.category];
+    const matchCat = catFilter === "全部" || cats.includes(catFilter);
     return matchSearch && matchCat;
   });
 
@@ -1112,7 +1384,7 @@ export const Screen_ClubManagement: React.FC<{
             <input type="hidden" name="academic_year" value={academicYear} />
             <input name="name_zh_hk" placeholder="學會中文名" required style={{ padding:"8px 10px", borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, fontSize:13, fontFamily:F }} />
             <input name="name_en" placeholder="English name" style={{ padding:"8px 10px", borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, fontSize:13, fontFamily:F }} />
-            <select name="category" defaultValue="arts" style={{ padding:"8px 10px", borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, fontSize:13, fontFamily:F }}>
+            <select name="categories[]" defaultValue="arts" style={{ padding:"8px 10px", borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, fontSize:13, fontFamily:F }}>
               {(["arts","tech","sports","service","academic","culture"] as const).map(c => (
                 <option key={c} value={c}>{CAT_ZH[c]}</option>
               ))}

@@ -15,17 +15,24 @@ import {
 type KanbanStatus = "draft" | "active" | "completed";
 type GroupMode    = "teacher" | "system" | "student";
 
-interface Project {
-  id:         string;
+export interface Project {
+  id:         string | number;
   name:       string;
   subjects:   string[];
+  subjectIds?: number[];
   groupMode:  GroupMode;
   deadline:   string;
   teamCount:  number;
   status:     KanbanStatus;
   acornDims:  string[];
+  acornIds?:  number[];
   scaffold:   string;
+  form?:      string;
+  academic_year?: string;
 }
+
+export type ProjectSubjectOpt = { id: number; label: string; name_zh_hk?: string; code?: string };
+export type ProjectAcornOpt = { id: number; code: string; name_en: string; name_zh_hk: string };
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const SUBJECT_OPTIONS = ["數學", "英語文學", "中國語文", "物理", "化學", "生物", "歷史", "地理", "視覺藝術", "音樂"];
@@ -109,8 +116,7 @@ AI 將根據此指令，在學生提交成果時提供個人化回饋。`;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 const AcornChip: React.FC<{ dim: string; small?: boolean }> = ({ dim, small }) => {
-  const t = ERP.acornTags[dim];
-  if (!t) return null;
+  const t = ERP.acornTags[dim] ?? { bg: ERP.colors.accentPale, color: ERP.colors.accent, border: ERP.colors.accentLight, label: dim };
   return (
     <span style={{
       display: "inline-flex", alignItems: "center",
@@ -118,11 +124,11 @@ const AcornChip: React.FC<{ dim: string; small?: boolean }> = ({ dim, small }) =
       borderRadius: 9999, fontSize: small ? 9 : 10, fontWeight: 700,
       background: t.bg, color: t.color, border: `1px solid ${t.border}`,
       fontFamily: ERP.font.family,
-    }}>{t.label}</span>
+    }}>{t.label || dim}</span>
   );
 };
 
-const ProjectCard: React.FC<{ project: Project; onEdit: () => void }> = ({ project, onEdit }) => {
+const ProjectCard: React.FC<{ project: Project; onEdit: () => void; groupsUrl?: string }> = ({ project, onEdit, groupsUrl }) => {
   const gm = GROUP_MODE_CFG[project.groupMode];
   const F  = ERP.font.family;
   return (
@@ -149,6 +155,9 @@ const ProjectCard: React.FC<{ project: Project; onEdit: () => void }> = ({ proje
         {project.subjects.map(s => (
           <span key={s} style={{ fontSize: 10, padding: "1px 6px", borderRadius: ERP.radius.xs, background: ERP.colors.accentPale, color: ERP.colors.accent, fontWeight: 600 }}>{s}</span>
         ))}
+        {project.form && (
+          <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: ERP.radius.xs, background: "#FEF3C7", color: "#92400E", fontWeight: 700, border: "1px solid #FCD34D" }}>{project.form}</span>
+        )}
       </div>
 
       {/* ACORN dims */}
@@ -157,37 +166,95 @@ const ProjectCard: React.FC<{ project: Project; onEdit: () => void }> = ({ proje
       </div>
 
       {/* Meta row */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" as const, gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" as const, gap: 6, marginBottom: groupsUrl ? 10 : 0 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>
             <Users size={10} /> {project.teamCount} 組
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>
-            <Calendar size={10} /> {project.deadline.slice(5)}
+            <Calendar size={10} /> {project.deadline ? project.deadline.slice(5) : "—"}
           </span>
         </div>
         <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 9999, background: gm.bg, color: gm.color }}>{gm.label}</span>
       </div>
+
+      {groupsUrl && (
+        <a
+          href={groupsUrl}
+          onClick={e => e.stopPropagation()}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            width: "100%", boxSizing: "border-box", padding: "7px 10px",
+            borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.accent}55`,
+            background: ERP.colors.accentPale, color: ERP.colors.accent,
+            fontSize: 12, fontWeight: 700, fontFamily: F, textDecoration: "none",
+          }}
+        >
+          <Users size={13} /> 管理分組 Manage Groups
+        </a>
+      )}
     </div>
   );
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-interface Props { lang?: "en" | "zh-HK" }
+interface Props {
+  lang?: "en" | "zh-HK";
+  projects?: Project[];
+  subjects?: ProjectSubjectOpt[];
+  acorns?: ProjectAcornOpt[];
+  academicYear?: string;
+  openForm?: boolean;
+  projectId?: number | null;
+  initialProject?: Project | null;
+  storeUrl?: string;
+  updateUrl?: string;
+  listUrl?: string;
+  groupsUrlBase?: string;
+  flashSuccess?: string;
+  flashError?: string;
+}
 
-export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
-  const [projects, setProjects]   = useState<Project[]>(MOCK_PROJECTS);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editId,    setEditId]    = useState<string | null>(null);
+const FORM_OPTIONS = ["F1", "F2", "F3", "F4", "F5", "F6"];
+
+export const Screen_GroupProjects: React.FC<Props> = ({
+  lang = "zh-HK",
+  projects: projectsProp,
+  subjects: subjectsProp,
+  acorns: acornsProp,
+  academicYear = "2025/26",
+  openForm = false,
+  projectId = null,
+  initialProject = null,
+  storeUrl = "/projects",
+  updateUrl = "/projects/update",
+  listUrl = "/projects",
+  groupsUrlBase = "/projects/groups",
+  flashSuccess,
+  flashError,
+}) => {
+  const live = Array.isArray(projectsProp);
+  const [projects, setProjects]   = useState<Project[]>(() => live ? (projectsProp || []) : MOCK_PROJECTS);
+  const [modalOpen, setModalOpen] = useState(!!openForm || !!initialProject);
+  const [editId,    setEditId]    = useState<string | null>(initialProject ? String(initialProject.id) : (projectId ? String(projectId) : null));
   const [isMobile,  setIsMobile]  = useState(false);
+  const [saving, setSaving] = useState<"draft" | "publish" | null>(null);
+
+  const subjectOptions = subjectsProp && subjectsProp.length
+    ? subjectsProp.map(s => ({ id: s.id, label: s.label || s.name_zh_hk || s.code || String(s.id) }))
+    : SUBJECT_OPTIONS.map((label, i) => ({ id: i + 1, label }));
+  const acornOptions = acornsProp && acornsProp.length
+    ? acornsProp
+    : ACORN_DIMS.map((zh, i) => ({ id: i + 1, code: "", name_en: zh, name_zh_hk: zh }));
 
   // Form state
-  const [fName,      setFName]      = useState("");
-  const [fSubjects,  setFSubjects]  = useState<string[]>([]);
-  const [fGroupMode, setFGroupMode] = useState<GroupMode>("teacher");
-  const [fDeadline,  setFDeadline]  = useState("");
-  const [fScaffold,  setFScaffold]  = useState("");
-  const [fAcorn,     setFAcorn]     = useState<string[]>([]);
+  const [fName,      setFName]      = useState(initialProject?.name || "");
+  const [fForm,      setFForm]      = useState(initialProject?.form || "F3");
+  const [fSubjectIds, setFSubjectIds] = useState<number[]>(initialProject?.subjectIds || []);
+  const [fGroupMode, setFGroupMode] = useState<GroupMode>(initialProject?.groupMode || "teacher");
+  const [fDeadline,  setFDeadline]  = useState(initialProject?.deadline || "");
+  const [fScaffold,  setFScaffold]  = useState(initialProject?.scaffold || "");
+  const [fAcornIds,  setFAcornIds]  = useState<number[]>(initialProject?.acornIds || []);
   const [fSubOpen,   setFSubOpen]   = useState(false);
 
   useEffect(() => {
@@ -197,43 +264,107 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  useEffect(() => {
+    if (live) setProjects(projectsProp || []);
+  }, [live, projectsProp]);
+
   const F = ERP.font.family;
 
   const openCreate = () => {
     setEditId(null);
-    setFName(""); setFSubjects([]); setFGroupMode("teacher");
-    setFDeadline(""); setFScaffold(""); setFAcorn([]);
+    setFName(""); setFForm("F3"); setFSubjectIds([]); setFGroupMode("teacher");
+    setFDeadline(""); setFScaffold(""); setFAcornIds([]);
     setModalOpen(true);
   };
 
   const openEdit = (p: Project) => {
-    setEditId(p.id);
-    setFName(p.name); setFSubjects([...p.subjects]); setFGroupMode(p.groupMode);
-    setFDeadline(p.deadline); setFScaffold(p.scaffold); setFAcorn([...p.acornDims]);
+    setEditId(String(p.id));
+    setFName(p.name);
+    setFForm(p.form || "F3");
+    setFSubjectIds([...(p.subjectIds || [])]);
+    setFGroupMode(p.groupMode);
+    setFDeadline(p.deadline);
+    setFScaffold(p.scaffold);
+    setFAcornIds([...(p.acornIds || [])]);
+    // Resolve subject names → ids when only names present
+    if ((!p.subjectIds || p.subjectIds.length === 0) && p.subjects?.length) {
+      const ids = p.subjects
+        .map(name => subjectOptions.find(s => s.label === name)?.id)
+        .filter((x): x is number => typeof x === "number");
+      setFSubjectIds(ids);
+    }
+    if ((!p.acornIds || p.acornIds.length === 0) && p.acornDims?.length) {
+      const ids = p.acornDims
+        .map(zh => acornOptions.find(a => a.name_zh_hk === zh)?.id)
+        .filter((x): x is number => typeof x === "number");
+      setFAcornIds(ids);
+    }
     setModalOpen(true);
   };
 
-  const handleSave = (publish: boolean) => {
+  const persist = (publish: boolean) => {
+    if (live) {
+      setSaving(publish ? "publish" : "draft");
+      const action = editId ? `${updateUrl}/${editId}` : storeUrl;
+      const fd = document.createElement("form");
+      fd.method = "POST";
+      fd.action = action;
+      const fields: Record<string, string> = {
+        title: fName || "未命名專題",
+        form: fForm || "F3",
+        academic_year: academicYear,
+        assignment_method: GROUP_MODE_CFG[fGroupMode].enLabel,
+        groupMode: fGroupMode,
+        deadline: fDeadline,
+        ai_scaffold_prompt: fScaffold,
+        status: publish ? "in_progress" : "draft",
+        publish: publish ? "1" : "0",
+      };
+      if (editId) fields.id = editId;
+      Object.entries(fields).forEach(([k, v]) => {
+        const i = document.createElement("input");
+        i.type = "hidden"; i.name = k; i.value = v; fd.appendChild(i);
+      });
+      fSubjectIds.forEach(id => {
+        const i = document.createElement("input");
+        i.type = "hidden"; i.name = "subject_ids[]"; i.value = String(id); fd.appendChild(i);
+      });
+      fAcornIds.forEach(id => {
+        const i = document.createElement("input");
+        i.type = "hidden"; i.name = "acorn_ids[]"; i.value = String(id); fd.appendChild(i);
+      });
+      document.body.appendChild(fd);
+      fd.submit();
+      return;
+    }
+
+    const subjectNames = fSubjectIds.map(id => subjectOptions.find(s => s.id === id)?.label || "").filter(Boolean);
+    const acornNames = fAcornIds.map(id => acornOptions.find(a => a.id === id)?.name_zh_hk || "").filter(Boolean);
     const newProject: Project = {
       id: editId ?? `p-${Date.now()}`,
       name: fName || "未命名專題",
-      subjects: fSubjects, groupMode: fGroupMode,
+      subjects: subjectNames.length ? subjectNames : SUBJECT_OPTIONS.filter((_, i) => fSubjectIds.includes(i + 1)),
+      subjectIds: fSubjectIds,
+      groupMode: fGroupMode,
       deadline: fDeadline, scaffold: fScaffold,
-      acornDims: fAcorn, teamCount: 0,
+      acornDims: acornNames.length ? acornNames : ACORN_DIMS.filter((_, i) => fAcornIds.includes(i + 1)),
+      acornIds: fAcornIds,
+      teamCount: 0,
       status: publish ? "active" : "draft",
     };
     if (editId) {
-      setProjects(ps => ps.map(p => p.id === editId ? newProject : p));
+      setProjects(ps => ps.map(p => String(p.id) === editId ? newProject : p));
     } else {
       setProjects(ps => [newProject, ...ps]);
     }
     setModalOpen(false);
   };
 
-  const toggleSubject = (s: string) => setFSubjects(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-  const toggleAcorn   = (d: string) => setFAcorn(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+  const toggleSubject = (id: number) => setFSubjectIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleAcorn   = (id: number) => setFAcornIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const byStatus = (status: KanbanStatus) => projects.filter(p => p.status === status);
+  const selectedSubjectLabels = fSubjectIds.map(id => subjectOptions.find(s => s.id === id)?.label).filter(Boolean) as string[];
 
   const inputStyle: React.CSSProperties = {
     width: "100%", boxSizing: "border-box",
@@ -256,7 +387,7 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
       <div style={{ padding: "16px 24px 14px", flexShrink: 0, borderBottom: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: ERP.colors.textPrimary, letterSpacing: "-0.3px" }}>分組專題</h1>
-          <p style={{ margin: "3px 0 0", fontSize: 12, color: ERP.colors.textMuted }}>Group Projects · 1.E.1 · PBL 協作學習管理</p>
+          <p style={{ margin: "3px 0 0", fontSize: 12, color: ERP.colors.textMuted }}>Group Projects · 1.E.1 · PBL 協作學習管理 · AY {academicYear}</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", background: ERP.colors.pageBg, borderRadius: ERP.radius.sm, border: `1px solid ${ERP.colors.border}` }}>
@@ -274,6 +405,17 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
           </button>
         </div>
       </div>
+
+      {(flashSuccess || flashError) && (
+        <div style={{
+          margin: "10px 24px 0", padding: "10px 14px", borderRadius: ERP.radius.md, fontSize: 13, fontWeight: 600,
+          background: flashError ? "#FEE2E2" : "#ECFDF5",
+          color: flashError ? "#B91C1C" : "#065F46",
+          border: `1px solid ${flashError ? "#FCA5A5" : "#6EE7B7"}`,
+        }}>
+          {flashError || flashSuccess}
+        </div>
+      )}
 
       {/* ── Stats Strip ──────────────────────────────────────────────────── */}
       <div style={{ padding: "10px 24px", flexShrink: 0, display: "flex", gap: 16, borderBottom: `1px solid ${ERP.colors.divider}` }}>
@@ -297,7 +439,6 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
             const cols = byStatus(status);
             return (
               <div key={status}>
-                {/* Column header */}
                 <div style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
                   padding: "8px 12px", borderRadius: `${ERP.radius.md} ${ERP.radius.md} 0 0`,
@@ -315,7 +456,6 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                   }}>{cols.length}</span>
                 </div>
 
-                {/* Drop zone */}
                 <div style={{
                   minHeight: 120, padding: 12,
                   background: cols.length === 0 ? cfg.bg : ERP.colors.pageBg,
@@ -323,7 +463,12 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                   borderTop: `2px solid ${cfg.accent}`,
                 }}>
                   {cols.map(p => (
-                    <ProjectCard key={p.id} project={p} onEdit={() => openEdit(p)} />
+                    <ProjectCard
+                      key={String(p.id)}
+                      project={p}
+                      onEdit={() => openEdit(p)}
+                      groupsUrl={live ? `${groupsUrlBase}/${p.id}` : undefined}
+                    />
                   ))}
                   {cols.length === 0 && (
                     <div style={{ textAlign: "center" as const, padding: "24px 0", color: ERP.colors.textMuted, fontSize: 12 }}>
@@ -340,12 +485,10 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
       {/* ── Modal ─────────────────────────────────────────────────────────── */}
       {modalOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: isMobile ? 0 : "40px 20px", overflow: "auto" }}
-          onClick={e => { if (e.target === e.currentTarget) setModalOpen(false); }}
+          onClick={e => { if (e.target === e.currentTarget) { setModalOpen(false); if (live && openForm) window.location.href = listUrl; } }}
         >
-          {/* Backdrop */}
           <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)", zIndex: -1 }} />
 
-          {/* Dialog */}
           <div style={{
             width: "100%", maxWidth: 600,
             background: ERP.colors.surface, borderRadius: isMobile ? 0 : ERP.radius.xl,
@@ -355,7 +498,6 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
             overflow: "hidden",
           }}>
 
-            {/* Modal header */}
             <div style={{ padding: "18px 20px 14px", borderBottom: `1px solid ${ERP.colors.border}`, flexShrink: 0, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -368,30 +510,36 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                 </div>
                 <p style={{ margin: "4px 0 0 38px", fontSize: 11, color: ERP.colors.textMuted }}>{editId ? "Edit Project" : "Create PBL Project"}</p>
               </div>
-              <button onClick={() => setModalOpen(false)} style={{ background: "none", border: `1px solid ${ERP.colors.border}`, cursor: "pointer", padding: 6, borderRadius: ERP.radius.sm, color: ERP.colors.textMuted, display: "flex" }}>
+              <button onClick={() => { setModalOpen(false); if (live && openForm) window.location.href = listUrl; }} style={{ background: "none", border: `1px solid ${ERP.colors.border}`, cursor: "pointer", padding: 6, borderRadius: ERP.radius.sm, color: ERP.colors.textMuted, display: "flex" }}>
                 <X size={15} />
               </button>
             </div>
 
-            {/* Form body */}
             <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
 
-              {/* Name */}
               <div style={{ marginBottom: 16 }}>
                 <FieldLabel label="專題名稱" sub="Project Title" />
                 <input value={fName} onChange={e => setFName(e.target.value)} placeholder="輸入專題名稱…" style={inputStyle} />
               </div>
 
-              {/* Subjects multi-select */}
+              <div style={{ marginBottom: 16 }}>
+                <FieldLabel label="目標級別" sub="Target Form (students loaded for grouping)" />
+                <select value={fForm} onChange={e => setFForm(e.target.value)} name="form" style={inputStyle}>
+                  {FORM_OPTIONS.map(f => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </div>
+
               <div style={{ marginBottom: 16 }}>
                 <FieldLabel label="關聯科目" sub="Subject Links (multi-select)" />
                 <div style={{ position: "relative" }}>
-                  <button onClick={() => setFSubOpen(o => !o)} style={{
+                  <button type="button" onClick={() => setFSubOpen(o => !o)} style={{
                     ...inputStyle, display: "flex", alignItems: "center", justifyContent: "space-between",
                     cursor: "pointer", textAlign: "left" as const, background: ERP.colors.surface,
                   }}>
-                    <span style={{ color: fSubjects.length ? ERP.colors.textPrimary : ERP.colors.textMuted, fontSize: 13 }}>
-                      {fSubjects.length ? fSubjects.join("、") : "選擇科目…"}
+                    <span style={{ color: selectedSubjectLabels.length ? ERP.colors.textPrimary : ERP.colors.textMuted, fontSize: 13 }}>
+                      {selectedSubjectLabels.length ? selectedSubjectLabels.join("、") : "選擇科目…"}
                     </span>
                     <ChevronDown size={13} color={ERP.colors.textMuted} />
                   </button>
@@ -402,20 +550,17 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                       borderRadius: ERP.radius.md, boxShadow: ERP.shadow.md, zIndex: 10,
                       maxHeight: 200, overflow: "auto",
                     }}>
-                      {SUBJECT_OPTIONS.map(s => (
-                        <div key={s} onClick={() => toggleSubject(s)} style={{
+                      {subjectOptions.map(s => (
+                        <div key={s.id} onClick={() => toggleSubject(s.id)} style={{
                           display: "flex", alignItems: "center", gap: 10, padding: "8px 14px",
                           cursor: "pointer", fontSize: 13, fontFamily: F,
                           color: ERP.colors.textPrimary,
-                          background: fSubjects.includes(s) ? ERP.colors.accentPale : "transparent",
-                        }}
-                          onMouseEnter={e => { if (!fSubjects.includes(s)) (e.currentTarget as HTMLDivElement).style.background = ERP.colors.pageBg; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = fSubjects.includes(s) ? ERP.colors.accentPale : "transparent"; }}
-                        >
-                          <div style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${fSubjects.includes(s) ? ERP.colors.accent : ERP.colors.borderStrong}`, background: fSubjects.includes(s) ? ERP.colors.accent : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            {fSubjects.includes(s) && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900 }}>✓</span>}
+                          background: fSubjectIds.includes(s.id) ? ERP.colors.accentPale : "transparent",
+                        }}>
+                          <div style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${fSubjectIds.includes(s.id) ? ERP.colors.accent : ERP.colors.borderStrong}`, background: fSubjectIds.includes(s.id) ? ERP.colors.accent : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {fSubjectIds.includes(s.id) && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900 }}>✓</span>}
                           </div>
-                          {s}
+                          {s.label}
                         </div>
                       ))}
                     </div>
@@ -423,12 +568,11 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                 </div>
               </div>
 
-              {/* Group Mode */}
               <div style={{ marginBottom: 16 }}>
                 <FieldLabel label="分組模式" sub="Group Assignment Method" />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
                   {(Object.entries(GROUP_MODE_CFG) as [GroupMode, typeof GROUP_MODE_CFG[GroupMode]][]).map(([key, cfg]) => (
-                    <button key={key} onClick={() => setFGroupMode(key)} style={{
+                    <button type="button" key={key} onClick={() => setFGroupMode(key)} style={{
                       padding: "7px 14px", borderRadius: ERP.radius.md, cursor: "pointer",
                       fontSize: 12, fontWeight: 700, fontFamily: F, border: `2px solid ${fGroupMode === key ? cfg.color : ERP.colors.border}`,
                       background: fGroupMode === key ? cfg.bg : ERP.colors.surface,
@@ -442,15 +586,14 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                 </div>
               </div>
 
-              {/* ACORN binding */}
               <div style={{ marginBottom: 16 }}>
                 <FieldLabel label="ACORN 維度綁定" sub="Dimension Tags (select all that apply)" />
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
-                  {ACORN_DIMS.map(d => {
-                    const t       = ERP.acornTags[d];
-                    const checked = fAcorn.includes(d);
+                  {acornOptions.map(a => {
+                    const t       = ERP.acornTags[a.name_zh_hk] ?? { bg: ERP.colors.accentPale, color: ERP.colors.accent, border: ERP.colors.accentLight };
+                    const checked = fAcornIds.includes(a.id);
                     return (
-                      <button key={d} onClick={() => toggleAcorn(d)} style={{
+                      <button type="button" key={a.id} onClick={() => toggleAcorn(a.id)} style={{
                         padding: "4px 10px", borderRadius: 9999, cursor: "pointer",
                         fontSize: 11, fontWeight: 700, fontFamily: F,
                         border: `2px solid ${checked ? t.color : ERP.colors.border}`,
@@ -458,14 +601,13 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                         color: checked ? t.color : ERP.colors.textMuted,
                         transition: "all 0.1s",
                       }}>
-                        {d}
+                        {a.name_zh_hk}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Deadline */}
               <div style={{ marginBottom: 16 }}>
                 <FieldLabel label="提交期限" sub="Submission Deadline" />
                 <div style={{ position: "relative" }}>
@@ -475,7 +617,6 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                 </div>
               </div>
 
-              {/* AI Scaffold — Mod M6a — PROMINENT */}
               <div style={{ marginBottom: 4 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                   <div style={{ width: 22, height: 22, borderRadius: ERP.radius.sm, background: "linear-gradient(135deg, #6366F1, #8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -507,7 +648,7 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
                 />
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-                <button onClick={() => setFScaffold("你認為這個問題的核心假設是什麼？\n你會如何設計實驗來驗證你的想法？\n如果你的假設被推翻了，你下一步會怎麼做？")}
+                <button type="button" onClick={() => setFScaffold("你認為這個問題的核心假設是什麼？\n你會如何設計實驗來驗證你的想法？\n如果你的假設被推翻了，你下一步會怎麼做？")}
                   style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#7C3AED", fontFamily: F, padding: "2px 0" }}>
                   <Sparkles size={10} /> 使用預設蘇格拉底式提示
                 </button>
@@ -515,21 +656,20 @@ export const Screen_GroupProjects: React.FC<Props> = ({ lang = "zh-HK" }) => {
 
             </div>
 
-            {/* Modal footer */}
             <div style={{ padding: "14px 20px", borderTop: `1px solid ${ERP.colors.border}`, flexShrink: 0, display: "flex", gap: 10, justifyContent: "flex-end", background: ERP.colors.surface }}>
-              <button onClick={() => setModalOpen(false)} style={{ padding: "9px 18px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "transparent", color: ERP.colors.textSecondary, fontSize: 13, fontFamily: F, cursor: "pointer" }}>
+              <button type="button" onClick={() => { setModalOpen(false); if (live && openForm) window.location.href = listUrl; }} style={{ padding: "9px 18px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "transparent", color: ERP.colors.textSecondary, fontSize: 13, fontFamily: F, cursor: "pointer" }}>
                 取消
               </button>
-              <button onClick={() => handleSave(false)} style={{ padding: "9px 18px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "transparent", color: ERP.colors.accent, fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer" }}>
-                <Clock size={12} style={{ marginRight: 5, verticalAlign: "middle" }} />儲存草稿
+              <button type="button" disabled={!!saving} onClick={() => persist(false)} style={{ padding: "9px 18px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "transparent", color: ERP.colors.accent, fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer" }}>
+                <Clock size={12} style={{ marginRight: 5, verticalAlign: "middle" }} />{saving === "draft" ? "儲存中…" : "儲存草稿"}
               </button>
-              <button onClick={() => handleSave(true)} style={{
+              <button type="button" disabled={!!saving} onClick={() => persist(true)} style={{
                 padding: "9px 20px", borderRadius: ERP.radius.md, border: "none",
                 background: ERP.colors.accent, color: "#fff", fontSize: 13, fontWeight: 700,
                 fontFamily: F, cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
                 boxShadow: `0 2px 8px ${ERP.colors.accent}40`,
               }}>
-                <Send size={13} /> 發佈專題 Publish
+                <Send size={13} /> {saving === "publish" ? "發佈中…" : "發佈專題 Publish"}
               </button>
             </div>
           </div>

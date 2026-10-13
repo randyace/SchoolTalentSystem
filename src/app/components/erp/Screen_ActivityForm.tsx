@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Activity Create / Edit — full-page form (replaces cramped offcanvas drawer)
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Calendar, Check, ChevronDown, Layers, Plus,
-  Save, UserCog, X, Trophy, Sliders, Users,
+  Save, UserCog, X, Trophy, Sliders, Users, Sparkles, Zap, Upload, ClipboardPaste,
 } from "lucide-react";
 import { ERP, type AcornTagKey } from "./erpTokens";
 
@@ -30,12 +30,22 @@ type AchievementLevel = {
   sub?: string;
 };
 
+type ClubOpt = {
+  id: number;
+  zhName?: string;
+  enName?: string;
+  label?: string;
+  achievementLevelId?: number | null;
+};
+
 type InitialActivity = {
   id?: number;
   name_en?: string;
   name_zh_hk?: string;
   category?: string;
   academic_year?: string;
+  club_id?: number | null;
+  teacher_ids?: number[];
   teacher_in_charge_id?: number | null;
   achievement_level_id?: number | null;
   status?: string;
@@ -49,6 +59,41 @@ type InitialActivity = {
     date?: string;
   }>;
 };
+
+function parseScheduleLocal(text: string): Stage[] {
+  const lines = text.split(/\r?\n+/).map(l => l.trim()).filter(Boolean);
+  const out: Stage[] = [];
+  for (const line of lines) {
+    if (/^(階段|stage|日期|date)/i.test(line)) continue;
+    const parts = line.split(/[\t|,;]+/).map(p => p.trim()).filter(Boolean);
+    if (!parts.length) continue;
+    let date = "";
+    let zh = "";
+    let en = "";
+    for (const p of parts) {
+      if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/.test(p) || /^\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}$/.test(p)) {
+        date = p.replace(/\//g, "-");
+        const m = date.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+        if (m) {
+          let y = Number(m[3]);
+          if (y < 100) y += 2000;
+          date = `${String(y).padStart(4, "0")}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+        }
+        continue;
+      }
+      if (!zh && /[\u4e00-\u9fff]/.test(p)) { zh = p; continue; }
+      if (!en) en = p;
+    }
+    if (!zh && !en) zh = parts[0];
+    out.push({
+      id: `s${Date.now()}-${out.length}`,
+      label: zh || en,
+      labelEn: en || zh,
+      date,
+    });
+  }
+  return out;
+}
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "active", label: "進行中 Active" },
@@ -110,6 +155,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 export const Screen_ActivityForm: React.FC<{
   teachers?: TeacherOpt[];
+  clubs?: ClubOpt[];
   academicYears?: string[];
   targetForms?: string[];
   achievementLevels?: AchievementLevel[];
@@ -117,12 +163,16 @@ export const Screen_ActivityForm: React.FC<{
   rosterUrl?: string;
   storeUrl?: string;
   listUrl?: string;
+  ocrUrl?: string;
+  parseScheduleUrl?: string;
+  parseDocumentUrl?: string;
   activityId?: number | null;
   initialActivity?: InitialActivity | null;
   flashSuccess?: string;
   flashError?: string;
 }> = ({
   teachers = [],
+  clubs = [],
   academicYears = DEFAULT_YEARS,
   targetForms = DEFAULT_FORMS,
   achievementLevels = [],
@@ -130,20 +180,37 @@ export const Screen_ActivityForm: React.FC<{
   rosterUrl = "",
   storeUrl = "/activities/store",
   listUrl = "/activities",
+  ocrUrl = "/activity/ocr",
+  parseScheduleUrl = "/activities/parse-schedule",
+  parseDocumentUrl = "/activities/parse-document",
   activityId = null,
   initialActivity = null,
   flashSuccess,
   flashError,
 }) => {
   const isEdit = !!activityId && activityId > 0;
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const [nameZh, setNameZh] = useState(initialActivity?.name_zh_hk || "");
   const [nameEn, setNameEn] = useState(initialActivity?.name_en || "");
   const [category, setCategory] = useState(initialActivity?.category || "比賽");
   const [year, setYear] = useState(initialActivity?.academic_year || academicYears[0] || "2025/26");
-  const [teacherId, setTeacherId] = useState<string>(
-    initialActivity?.teacher_in_charge_id ? String(initialActivity.teacher_in_charge_id) : ""
+  const [clubId, setClubId] = useState<string>(
+    initialActivity?.club_id ? String(initialActivity.club_id) : ""
   );
+  const [teacherIds, setTeacherIds] = useState<string[]>(() => {
+    if (initialActivity?.teacher_ids?.length) return initialActivity.teacher_ids.map(String);
+    if (initialActivity?.teacher_in_charge_id) return [String(initialActivity.teacher_in_charge_id)];
+    return [];
+  });
   const [forms, setForms] = useState<string[]>(initialActivity?.forms || []);
   const [acornTags, setAcornTags] = useState<AcornTagKey[]>(() => {
     const tags = (initialActivity?.acorn_tags || []) as AcornTagKey[];
@@ -176,6 +243,8 @@ export const Screen_ActivityForm: React.FC<{
       date: s.date || "",
     }));
   });
+  const [schedulePaste, setSchedulePaste] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(flashError || null);
   const [okMsg, setOkMsg] = useState<string | null>(flashSuccess || null);
@@ -244,6 +313,114 @@ export const Screen_ActivityForm: React.FC<{
 
   const goList = () => { window.location.href = listUrl; };
 
+  const applyClubLink = (nextClubId: string) => {
+    setClubId(nextClubId);
+    if (!nextClubId) return;
+    const club = clubs.find(c => String(c.id) === nextClubId);
+    if (club?.achievementLevelId) {
+      setLevelId(String(club.achievementLevelId));
+      setOkMsg("已連結學會並繼承其成就環境級別 (L1–L4)。");
+    } else {
+      setOkMsg("已連結學會 — 儲存後可同步參與名單（名冊同步 API 待接）。");
+    }
+  };
+
+  const toggleTeacher = (id: string) => {
+    setTeacherIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const handleSmartParseSchedule = async () => {
+    const local = parseScheduleLocal(schedulePaste);
+    if (local.length > 0) {
+      setStages(local);
+      setOkMsg(`已智能解析 ${local.length} 個賽程階段。`);
+      setMsg(null);
+      return;
+    }
+    try {
+      const res = await fetch(parseScheduleUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ text: schedulePaste }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const stagesRaw = (json.stages || []) as Array<{ stage_name_zh_hk?: string; stage_name_en?: string; date?: string }>;
+      if (!stagesRaw.length) {
+        setMsg("未能解析賽程，請確認每行包含階段名稱與日期。");
+        return;
+      }
+      setStages(stagesRaw.map((s, i) => ({
+        id: `s${Date.now()}-${i}`,
+        label: s.stage_name_zh_hk || "",
+        labelEn: s.stage_name_en || "",
+        date: s.date || "",
+      })));
+      setOkMsg(`已解析 ${stagesRaw.length} 個賽程階段。`);
+    } catch {
+      setMsg("賽程解析失敗，請重試。");
+    }
+  };
+
+  const handleAiDocument = async (file?: File | null) => {
+    if (!file) {
+      // Demo auto-fill when no file selected
+      setNameZh(prev => prev || "全港科學創意大賽（AI 預填示例）");
+      setNameEn(prev => prev || "HKACE Science Competition (AI Demo)");
+      setCategory("比賽");
+      setAcornTags(["認知", "創意", "協作"]);
+      rebalanceEvenly(["認知", "創意", "協作"]);
+      setStages([
+        { id: `s${Date.now()}-1`, label: "初賽", labelEn: "Heats", date: "" },
+        { id: `s${Date.now()}-2`, label: "決賽", labelEn: "Finals", date: "" },
+      ]);
+      setOkMsg("✨ AI 預填示例已套用（正式上傳將呼叫 OCR / 文件解析 API）。");
+      return;
+    }
+    setAiBusy(true);
+    setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(parseDocumentUrl || ocrUrl, {
+        method: "POST",
+        body: fd,
+        headers: { Accept: "application/json" },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.ok === false) {
+        setMsg(json.message || "AI 文件解析失敗");
+        return;
+      }
+      const ex = json.extracted || {};
+      const title = String(ex.title || ex.name_zh_hk || "");
+      if (title) {
+        setNameZh(title);
+        if (!nameEn) setNameEn(String(ex.name_en || title));
+      }
+      if (ex.category) setCategory(String(ex.category));
+      const tags = (ex.acorn_tags || []) as AcornTagKey[];
+      const validTags = tags.filter(t => ALL_ACORN_TAGS.includes(t));
+      if (validTags.length) {
+        setAcornTags(validTags);
+        rebalanceEvenly(validTags);
+      }
+      const st = (ex.stages || []) as Array<{ stage_name_zh_hk?: string; stage_name_en?: string; date?: string }>;
+      if (st.length) {
+        setStages(st.map((s, i) => ({
+          id: `ai-${Date.now()}-${i}`,
+          label: s.stage_name_zh_hk || "",
+          labelEn: s.stage_name_en || "",
+          date: s.date || "",
+        })));
+      }
+      setOkMsg("✨ 已以 AI 解析結果預填表單，請核對後儲存。");
+    } catch {
+      setMsg("AI 文件解析失敗，請重試。");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!nameZh.trim() && !nameEn.trim()) {
       setMsg("請填寫活動名稱。");
@@ -260,7 +437,8 @@ export const Screen_ActivityForm: React.FC<{
           name_en: nameEn.trim() || nameZh.trim(),
           category,
           academic_year: year,
-          teacher_in_charge_id: teacherId === "" ? null : Number(teacherId),
+          club_id: clubId === "" ? null : Number(clubId),
+          teacher_ids: teacherIds.map(Number).filter(n => n > 0),
           forms,
           stages: stages.map(s => ({
             stage_name_zh_hk: s.label,
@@ -336,8 +514,76 @@ export const Screen_ActivityForm: React.FC<{
           </div>
         )}
 
+        {/* Global AI Document Parse Dropzone */}
+        <div
+          onClick={() => fileRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={e => {
+            e.preventDefault();
+            const f = e.dataTransfer.files?.[0];
+            if (f) handleAiDocument(f);
+          }}
+          style={{
+            marginBottom: 16, padding: "18px 20px", borderRadius: ERP.radius.lg, cursor: "pointer",
+            border: `1.5px dashed ${ERP.colors.accent}`,
+            background: "linear-gradient(135deg, #EEF2FF 0%, #F0FDF4 100%)",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: ERP.radius.md, background: "#fff",
+              border: `1px solid ${ERP.colors.accentLight}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <Sparkles size={18} color={ERP.colors.accent} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: ERP.colors.textPrimary }}>
+                ✨ 上載活動通告 (AI 智能解析預填)
+              </div>
+              <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 2 }}>
+                Upload Circular for AI Auto-fill · Name / ACORN / Schedule
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              disabled={aiBusy}
+              onClick={e => { e.stopPropagation(); handleAiDocument(null); }}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px",
+                borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`,
+                background: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+              }}
+            >
+              <Sparkles size={13} /> 模擬預填
+            </button>
+            <button
+              type="button"
+              disabled={aiBusy}
+              onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px",
+                borderRadius: ERP.radius.md, border: "none",
+                background: ERP.colors.accent, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+              }}
+            >
+              <Upload size={13} /> {aiBusy ? "解析中…" : "選擇檔案"}
+            </button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+            style={{ display: "none" }}
+            onChange={e => handleAiDocument(e.target.files?.[0] || null)}
+          />
+        </div>
+
         <Section label="基本資訊" sub="Basic Info">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
             <Field label="活動名稱（中）" hint="必填">
               <input value={nameZh} onChange={e => setNameZh(e.target.value)} placeholder="例：全港科學創意大賽" style={inputStyle} />
             </Field>
@@ -345,7 +591,30 @@ export const Screen_ActivityForm: React.FC<{
               <input value={nameEn} onChange={e => setNameEn(e.target.value)} placeholder="e.g. HKACE Science Competition" style={inputStyle} />
             </Field>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+
+          <Field label="連結學會 Linked Club" hint="Optional">
+            <div style={{ position: "relative" }}>
+              <select
+                name="club_id"
+                value={clubId}
+                onChange={e => applyClubLink(e.target.value)}
+                style={{ ...inputStyle, paddingRight: 28, appearance: "none" as const, cursor: "pointer" }}
+              >
+                <option value="">— 不連結學會 —</option>
+                {clubs.map(c => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.label || c.zhName || c.enName || `Club #${c.id}`}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+            </div>
+            <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 8 }}>
+              選擇學會將可同步參與名單並繼承其 L1-L4 環境級別 (Link a club to auto-sync roster and inherit achievement levels).
+            </div>
+          </Field>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
             <Field label="活動類別" hint="Type / Category">
               <div style={{ position: "relative" }}>
                 <select
@@ -371,28 +640,52 @@ export const Screen_ActivityForm: React.FC<{
                 <ChevronDown size={13} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
               </div>
             </Field>
-            <Field label="負責教師" hint="Teacher in Charge">
-              <div style={{ position: "relative" }}>
-                <UserCog size={13} color={ERP.colors.textMuted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
-                <select
-                  name="teacher_in_charge_id"
-                  value={teacherId}
-                  onChange={e => setTeacherId(e.target.value)}
-                  style={{ ...inputStyle, paddingLeft: 30, paddingRight: 28, appearance: "none" as const, cursor: "pointer" }}
-                >
-                  <option value="">— 選擇負責教師 —</option>
-                  {teacherOpts.map(t => (
-                    <option key={t.id} value={String(t.id)}>{t.label}</option>
-                  ))}
-                </select>
-                <ChevronDown size={13} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-              </div>
-            </Field>
           </div>
 
-          <Field label="連結級別 Target Forms" hint="F1–F6 / All · 不是班別">
+          <Field label="負責教師（可多選）" hint="Teachers in Charge">
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <UserCog size={13} color={ERP.colors.textMuted} />
+              <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>已選 {teacherIds.length} 位 · 按住 Ctrl/Cmd 或點擊 chip 多選</span>
+            </div>
+            <select
+              name="teacher_ids[]"
+              multiple
+              value={teacherIds}
+              onChange={e => setTeacherIds(Array.from(e.target.selectedOptions).map(o => o.value))}
+              style={{ ...inputStyle, minHeight: 110 }}
+            >
+              {teacherOpts.map(t => (
+                <option key={t.id} value={String(t.id)}>{t.label}</option>
+              ))}
+            </select>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {teacherOpts.map(t => {
+                const id = String(t.id);
+                const on = teacherIds.includes(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleTeacher(id)}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px",
+                      borderRadius: ERP.radius.full, fontSize: 11, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                      border: `1.5px solid ${on ? ERP.colors.accent : ERP.colors.border}`,
+                      background: on ? ERP.colors.accentPale : ERP.colors.pageBg,
+                      color: on ? ERP.colors.accent : ERP.colors.textSecondary,
+                    }}
+                  >
+                    {on && <Check size={10} />}
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <Field label="開放參與級別 Eligible Forms" hint="F1–F6 / All · 不是班別">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {formOptions.map(code => {
+              {(targetForms.length ? targetForms : formOptions).map(code => {
                 const active = forms.includes(code);
                 return (
                   <label
@@ -420,36 +713,120 @@ export const Screen_ActivityForm: React.FC<{
               })}
             </div>
             <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 8 }}>
-              活動以年級（Form）為對象，例如 F3 涵蓋 3A / 3B / 3C。已選：{forms.join("、") || "（無）"}
+              可參與年級（Form），例如 F3 涵蓋 3A / 3B / 3C。已選：{forms.join("、") || "（無）"}
             </div>
           </Field>
         </Section>
 
         <Section label="賽程 / 日程" sub="Sub-events & Schedule">
+          <div style={{
+            marginBottom: 14, padding: 14, borderRadius: ERP.radius.md,
+            border: `1px solid ${ERP.colors.border}`, background: ERP.colors.pageBg,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Zap size={14} color="#D97706" />
+              <span style={{ fontSize: 12, fontWeight: 800 }}>賽程/日程 快速貼上區</span>
+              <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>Paste Schedule from Excel/Word</span>
+            </div>
+            <textarea
+              value={schedulePaste}
+              onChange={e => setSchedulePaste(e.target.value)}
+              rows={3}
+              placeholder={"初賽\tPreliminary\t2025-10-01\n決賽, Final, 2025-10-15"}
+              style={{
+                ...inputStyle, resize: "vertical", fontFamily: ERP.font.mono, fontSize: 12,
+                background: "#FAFBFC", minHeight: 72,
+              }}
+            />
+            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.readText().then(t => setSchedulePaste(t)).catch(() => {})}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px",
+                  borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`,
+                  background: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                }}
+              >
+                <ClipboardPaste size={13} /> 貼上
+              </button>
+              <button
+                type="button"
+                onClick={handleSmartParseSchedule}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px",
+                  borderRadius: ERP.radius.md, border: "1px solid #FDE68A",
+                  background: "#FFFBEB", color: "#92400E", fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                }}
+              >
+                <Zap size={13} /> ⚡ 智能解析 (Smart Parse)
+              </button>
+            </div>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {stages.map((ev, idx) => (
-              <div key={ev.id} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 12px", background: ERP.colors.pageBg,
-                border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md,
-              }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: ERP.radius.sm, flexShrink: 0,
-                  background: ERP.colors.accentPale, border: `1px solid ${ERP.colors.accentLight}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 10, fontWeight: 800, color: ERP.colors.accent,
-                }}>{idx + 1}</div>
-                <input value={ev.label} placeholder="階段名" onChange={e => setStages(p => p.map(s => s.id === ev.id ? { ...s, label: e.target.value } : s))} style={{ ...inputStyle, flex: "0 0 88px", padding: "6px 8px" }} />
-                <input value={ev.labelEn} placeholder="English name" onChange={e => setStages(p => p.map(s => s.id === ev.id ? { ...s, labelEn: e.target.value } : s))} style={{ ...inputStyle, flex: 1, padding: "6px 8px" }} />
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <Calendar size={12} color={ERP.colors.textMuted} />
-                  <input type="date" value={ev.date} onChange={e => setStages(p => p.map(s => s.id === ev.id ? { ...s, date: e.target.value } : s))} style={{ ...inputStyle, width: 150, padding: "6px 8px" }} />
+              <div
+                key={ev.id}
+                className="schedule-row row gx-2 align-items-center flex-nowrap flex-md-wrap"
+                style={{
+                  display: "flex",
+                  flexDirection: isMobile ? "column" : "row",
+                  alignItems: isMobile ? "stretch" : "center",
+                  flexWrap: isMobile ? "wrap" : "nowrap",
+                  gap: 8,
+                  padding: "10px 12px",
+                  background: ERP.colors.pageBg,
+                  border: `1px solid ${ERP.colors.border}`,
+                  borderRadius: ERP.radius.md,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, width: isMobile ? "100%" : "auto", flexShrink: 0 }}>
+                  <div style={{
+                    width: 22, height: 22, borderRadius: ERP.radius.sm, flexShrink: 0,
+                    background: ERP.colors.accentPale, border: `1px solid ${ERP.colors.accentLight}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, fontWeight: 800, color: ERP.colors.accent,
+                  }}>{idx + 1}</div>
+                  <input
+                    value={ev.label}
+                    placeholder="階段名"
+                    onChange={e => setStages(p => p.map(s => s.id === ev.id ? { ...s, label: e.target.value } : s))}
+                    style={{ ...inputStyle, flex: isMobile ? 1 : "0 0 96px", minWidth: isMobile ? 0 : 96, padding: "6px 8px" }}
+                  />
                 </div>
-                <button type="button" onClick={() => setStages(p => p.filter(s => s.id !== ev.id))} style={{
-                  width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
-                  border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.sm,
-                  background: "transparent", color: ERP.colors.textMuted, cursor: "pointer",
-                }}><X size={12} /></button>
+                <input
+                  value={ev.labelEn}
+                  placeholder="English name"
+                  onChange={e => setStages(p => p.map(s => s.id === ev.id ? { ...s, labelEn: e.target.value } : s))}
+                  style={{ ...inputStyle, flex: 1, minWidth: 0, padding: "6px 8px", width: isMobile ? "100%" : undefined }}
+                />
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  width: isMobile ? "100%" : "auto", flexShrink: 0,
+                }}>
+                  <Calendar size={12} color={ERP.colors.textMuted} />
+                  <input
+                    type="date"
+                    value={ev.date}
+                    onChange={e => setStages(p => p.map(s => s.id === ev.id ? { ...s, date: e.target.value } : s))}
+                    style={{
+                      ...inputStyle,
+                      flex: 1,
+                      minWidth: 140,
+                      width: isMobile ? "100%" : 150,
+                      maxWidth: "100%",
+                      padding: "6px 8px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <button type="button" onClick={() => setStages(p => p.filter(s => s.id !== ev.id))} style={{
+                    width: isMobile ? 36 : 28, height: isMobile ? 36 : 28,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.sm,
+                    background: "transparent", color: ERP.colors.textMuted, cursor: "pointer", flexShrink: 0,
+                  }}><X size={12} /></button>
+                </div>
               </div>
             ))}
             <button
