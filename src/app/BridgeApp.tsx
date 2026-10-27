@@ -318,6 +318,22 @@ export interface StsBridgeConfig {
   searchStudentsUrl?: string;
   environmentLevelsUrl?: string;
   tierRolesUrl?: string;
+  /** AI Data Assistant */
+  sessionsUrl?: string;
+  sendUrl?: string;
+  exportDataUrl?: string;
+  exportSessionUrl?: string;
+  importSessionUrl?: string;
+  modelName?: string;
+  initialSessionId?: number | null;
+  /** AI Copywriting Workspace */
+  documentsUrl?: string;
+  generateUrl?: string;
+  rewritePartialUrl?: string;
+  saveVersionUrl?: string;
+  uploadContextUrl?: string;
+  studentContextUrl?: string;
+  metadataUrl?: string;
   /** From system_settings (Settings UI) */
   schoolLogoUrl?: string;
   schoolLogoPath?: string;
@@ -846,10 +862,37 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
       return wrap(nav || "talent-filter", <Screen_TalentFilter />);
 
     case "ai-assistant":
-      return wrap(nav || "ai-data-assistant", <Screen_AIDataAssistant />);
+      return wrap(nav || "ai-data-assistant", (
+        <Screen_AIDataAssistant
+          sessionsUrl={config.sessionsUrl || "/ai-assistant/sessions"}
+          sendUrl={config.sendUrl || "/ai-assistant/send"}
+          exportDataUrl={config.exportDataUrl || "/ai-assistant/export-data"}
+          exportSessionUrl={config.exportSessionUrl || "/ai-assistant/export-session"}
+          importSessionUrl={config.importSessionUrl || "/ai-assistant/import-session"}
+          modelName={config.modelName}
+          initialSessionId={config.initialSessionId ?? null}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />
+      ));
 
     case "ai-workspace":
-      return wrap(nav || "ai-workspace", <Screen_AIWritingWorkspace onBack={() => go("/dashboard")} />);
+      return wrap(
+        nav || "ai-workspace",
+        <Screen_AIWritingWorkspace
+          onBack={() => go("/dashboard")}
+          documentsUrl={config.documentsUrl || "/api/ai-workspace/documents"}
+          generateUrl={config.generateUrl || "/api/ai-workspace/generate"}
+          rewritePartialUrl={config.rewritePartialUrl || "/api/ai-workspace/rewrite-partial"}
+          saveVersionUrl={config.saveVersionUrl || "/api/ai-workspace/save-version"}
+          uploadContextUrl={config.uploadContextUrl || "/api/ai-workspace/upload-context"}
+          studentContextUrl={config.studentContextUrl || "/api/ai-workspace/student-context"}
+          searchStudentsUrl={config.searchStudentsUrl || "/api/students/search"}
+          metadataUrl={config.metadataUrl || "/api/ai-metadata"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />,
+      );
 
     case "system-settings":
       return wrap(

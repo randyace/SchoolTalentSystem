@@ -84,8 +84,8 @@ const NAV_GROUPS: NavGroup[] = [
     id: "ai-operations", zhTitle: "AI 分析與生產", enTitle: "AI Analytics & Production",
     todo: true,
     items: [
-      { id: "ai-workspace",      zhLabel: "AI 文案工作站", enLabel: "AI Writing Workspace", icon: <Sparkles size={15} />, screenId: "1.F.3/6", href: "/ai-workspace", todo: true },
-      { id: "ai-data-assistant", zhLabel: "AI 數據助手",   enLabel: "AI Data Assistant",    icon: <Database size={15} />, screenId: "1.F.AI",  href: "/ai-assistant", todo: true },
+      { id: "ai-workspace",      zhLabel: "AI 文案工作站", enLabel: "AI Writing Workspace", icon: <Sparkles size={15} />, screenId: "1.F.3/6", href: "/ai-workspace" },
+      { id: "ai-data-assistant", zhLabel: "AI 數據助手",   enLabel: "AI Data Assistant",    icon: <Database size={15} />, screenId: "1.F.AI",  href: "/ai-assistant", todo: false },
     ],
   },
   {

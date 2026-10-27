@@ -4,16 +4,31 @@
 // ERP Module 1.F.AI  ·  System Admin > AI Tools
 // Chat-room style interface for database queries, file uploads, and report gen.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ERP } from "./erpTokens";
 import {
   MessageSquare, Plus, Search, Send, Paperclip,
   Download, Database, BarChart2, FileSpreadsheet, Sparkles,
-  ChevronRight, MoreHorizontal, Pin, Archive,
-  CheckCircle2, AlertCircle, Info, Clock,
+  Pin, Archive, Upload,
+  CheckCircle2, Info,
   Table2, Bot, User as UserIcon, X, ChevronDown,
   Filter, RefreshCw, Cpu,
 } from "lucide-react";
+import {
+  fetchSessions,
+  fetchSessionDetail,
+  createSession,
+  sendPrompt,
+  archiveSession,
+  pinSession,
+  importSessionPackage,
+  exportDataHref,
+  exportSessionHref,
+  type AssistantSession,
+  type AssistantMessage,
+  type AssistantStructuredData,
+} from "./aiDataAssistantApi";
+
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const T = {
@@ -56,7 +71,7 @@ type SessionType = "data" | "export" | "filter" | "report";
 type MessageRole = "user" | "ai" | "system";
 
 interface ChatSession {
-  id: string;
+  id: number;
   title: string;
   preview: string;
   date: string;
@@ -73,6 +88,7 @@ interface ChatMessage {
   role: MessageRole;
   content: string;
   timestamp: string;
+  messageId?: number;
   tableData?: TableData;
   exportLabel?: string;
   suggestions?: string[];
@@ -80,112 +96,17 @@ interface ChatMessage {
   isThinking?: boolean;
 }
 
-// ── Mock Sessions ─────────────────────────────────────────────────────────────
-const SESSIONS: ChatSession[] = [
-  {
-    id: "s1", title: "F3 數學科成績分析", type: "data",
-    preview: "已提取 87 名學生成績，低分 14 人已標記",
-    date: "今日 14:32", msgCount: 6, pinned: true,
-  },
-  {
-    id: "s2", title: "籃球隊選拔名單", type: "filter",
-    preview: "按體能評分篩選 F4–F5 學生，共 23 候選人",
-    date: "昨日 09:15", msgCount: 4,
-  },
-  {
-    id: "s3", title: "24/25 服務活動時數匯出", type: "export",
-    preview: "全年級義工時數已整理，Excel 報告已生成",
-    date: "週一 11:40", msgCount: 3,
-  },
-  {
-    id: "s4", title: "年度優秀學生篩選", type: "report",
-    preview: "符合條件 32 人，成就積點 ≥ 200 且全勤",
-    date: "08/12", msgCount: 8,
-  },
-  {
-    id: "s5", title: "F5 英文科成績對比分析", type: "data",
-    preview: "3 年縱向成績趨勢圖及班際對比",
-    date: "08/10", msgCount: 5,
-  },
-  {
-    id: "s6", title: "學生出勤率統計報告", type: "export",
-    preview: "出勤率低於 80% 學生名單及家長聯絡",
-    date: "08/05", msgCount: 4,
-  },
-];
-
-// ── Pre-populated demo conversation ──────────────────────────────────────────
-const FULL_SCORE_TABLE: TableData = {
-  totalCount: 87,
-  cols: [
-    { key: "no",    label: "#",    align: "center", mono: true },
-    { key: "id",    label: "學號",  align: "center", mono: true },
-    { key: "name",  label: "姓名",  align: "left" },
-    { key: "class", label: "班別",  align: "center" },
-    { key: "p1",    label: "卷一",  align: "center", mono: true },
-    { key: "p2",    label: "卷二",  align: "center", mono: true },
-    { key: "total", label: "總分",  align: "center", mono: true },
-    { key: "grade", label: "等級",  align: "center" },
-  ],
-  rows: [
-    { no: 1,  id: "3A01", name: "陳大文", class: "F3A", p1: 76, p2: 81, total: "157/200", grade: "B" },
-    { no: 2,  id: "3A02", name: "李美玲", class: "F3A", p1: 91, p2: 88, total: "179/200", grade: "A" },
-    { no: 3,  id: "3A03", name: "黃志豪", class: "F3A", p1: 55, p2: 49, total: "104/200", grade: "D" },
-    { no: 4,  id: "3A04", name: "張詩敏", class: "F3A", p1: 94, p2: 96, total: "190/200", grade: "A*" },
-    { no: 5,  id: "3A05", name: "林俊傑", class: "F3A", p1: 62, p2: 58, total: "120/200", grade: "C" },
-    { no: 6,  id: "3B01", name: "吳嘉欣", class: "F3B", p1: 83, p2: 79, total: "162/200", grade: "B+" },
-    { no: 7,  id: "3B02", name: "鄭宇翔", class: "F3B", p1: 88, p2: 91, total: "179/200", grade: "A" },
-    { no: 8,  id: "3B03", name: "梁慧雯", class: "F3B", p1: 47, p2: 52, total:  "99/200", grade: "F" },
-  ],
+export type ScreenAIDataAssistantProps = {
+  sessionsUrl?: string;
+  sendUrl?: string;
+  exportDataUrl?: string;
+  exportSessionUrl?: string;
+  importSessionUrl?: string;
+  modelName?: string;
+  initialSessionId?: number | null;
+  csrfName?: string;
+  csrfHash?: string;
 };
-
-const FILTERED_TABLE: TableData = {
-  totalCount: 14,
-  cols: [
-    { key: "no",      label: "#",    align: "center", mono: true },
-    { key: "id",      label: "學號",  align: "center", mono: true },
-    { key: "name",    label: "姓名",  align: "left" },
-    { key: "class",   label: "班別",  align: "center" },
-    { key: "total",   label: "總分",  align: "center", mono: true },
-    { key: "contact", label: "家長聯絡", align: "left", mono: true },
-  ],
-  rows: [
-    { no: 1, id: "3A03", name: "黃志豪", class: "F3A", total: "104/200", contact: "9XXX-XXXX" },
-    { no: 2, id: "3A05", name: "林俊傑", class: "F3A", total: "120/200", contact: "6XXX-XXXX" },
-    { no: 3, id: "3B03", name: "梁慧雯", class: "F3B", total:  "99/200", contact: "5XXX-XXXX" },
-    { no: 4, id: "3C07", name: "何建明", class: "F3C", total: "112/200", contact: "9XXX-XXXX" },
-    { no: 5, id: "3C11", name: "劉佩珊", class: "F3C", total: "107/200", contact: "6XXX-XXXX" },
-  ],
-};
-
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: "m1", role: "user", timestamp: "14:28",
-    content: "請列出 F3 全級數學科 2024/25 上學期考試成績，按班別排序，並顯示每科卷別分數。",
-  },
-  {
-    id: "m2", role: "ai", timestamp: "14:28",
-    content: "已從資料庫提取 F3 數學科成績記錄，共 **87 名學生**（F3A · F3B · F3C 各班）。以下為按班別排序的成績一覽表——表格預覽顯示前 8 行，完整記錄可匯出為 Excel：",
-    tableData: FULL_SCORE_TABLE,
-    exportLabel: "匯出完整成績表 (87 人) 為 Excel",
-    sourceInfo: "資料來源：LALP 成績資料庫 · 上學期期末試 · 更新於 2025-01-15",
-  },
-  {
-    id: "m3", role: "user", timestamp: "14:30",
-    content: "好，請篩選出總分低於 60% (即 120 分以下) 的學生，顯示其姓名、班別、總分及家長聯絡電話。",
-  },
-  {
-    id: "m4", role: "ai", timestamp: "14:31",
-    content: "已篩選出 **14 名**成績低於 60%（120 分以下）的學生。以下為名單預覽（顯示前 5 行，家長聯絡資料已部分脫敏）：",
-    tableData: FILTERED_TABLE,
-    exportLabel: "匯出跟進名單為 Excel (14 人)",
-    suggestions: [
-      "一鍵生成家長通知信件草稿",
-      "為這 14 名學生建立支援計劃",
-      "對比上學年同期成績趨勢",
-    ],
-  },
-];
 
 const SUGGESTED_QUERIES = [
   "各班平均分對比",
@@ -193,6 +114,90 @@ const SUGGESTED_QUERIES = [
   "與上學年同期對比",
   "生成班主任報告",
 ];
+
+const THINKING_STEPS = [
+  "🧠 正在分析您的問題與查詢意圖...",
+  "🔍 正在安全檢索 LALP 資料庫...",
+  "📊 正在整理數據表格與生成分析建議...",
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+export function mapStructuredToTable(sd?: AssistantStructuredData | null): TableData | undefined {
+  if (!sd) return undefined;
+  const cols: TableCol[] = (sd.columns || []).map((c) => {
+    if (typeof c === "string") return { key: c, label: c };
+    return { key: c.key, label: c.label || c.key };
+  });
+  if (cols.length === 0) return undefined;
+  const allRows = (sd.rows || []).map((r) => {
+    const out: Record<string, string | number> = {};
+    for (const col of cols) {
+      const v = r[col.key];
+      out[col.key] = v == null ? "" : (v as string | number);
+    }
+    return out;
+  });
+  const previewN = sd.preview_rows ?? 5;
+  const rows = allRows.slice(0, previewN);
+  const totalCount = sd.total_count ?? allRows.length;
+  return { cols, rows, totalCount };
+}
+
+function formatMsgTime(iso?: string | null): string {
+  if (!iso) return new Date().toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+  try {
+    return new Date(iso).toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return String(iso).slice(0, 5);
+  }
+}
+
+function formatSessionDate(s: AssistantSession): string {
+  if (s.date) return s.date;
+  if (s.updated_at) {
+    try {
+      return new Date(s.updated_at).toLocaleString("zh-HK", {
+        month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+      });
+    } catch {
+      return s.updated_at;
+    }
+  }
+  return "";
+}
+
+function mapApiSession(s: AssistantSession): ChatSession {
+  return {
+    id: Number(s.id),
+    title: s.title || "新對話",
+    preview: s.preview || s.summary || "",
+    date: formatSessionDate(s),
+    type: s.type || "data",
+    msgCount: s.msgCount ?? s.msg_count ?? 0,
+    pinned: !!(s.pinned ?? s.is_pinned),
+  };
+}
+
+function mapApiMessage(m: AssistantMessage): ChatMessage {
+  const roleRaw = (m.role || "").toLowerCase();
+  const role: MessageRole =
+    roleRaw === "user" ? "user" : roleRaw === "system" ? "system" : "ai";
+  const tableData = mapStructuredToTable(m.structured_data);
+  const total = tableData?.totalCount ?? m.structured_data?.total_count;
+  const numericId = typeof m.id === "number" ? m.id : Number(m.id);
+  return {
+    id: String(m.id),
+    messageId: Number.isFinite(numericId) ? numericId : undefined,
+    role,
+    content: m.content || "",
+    timestamp: formatMsgTime(m.created_at),
+    tableData,
+    suggestions: m.suggested_actions?.length ? m.suggested_actions : undefined,
+    exportLabel: tableData
+      ? `📗 匯出完整名單為 Excel (${total ?? tableData.rows.length} 人)`
+      : undefined,
+  };
+}
 
 // ── Sub-component: Data Table ─────────────────────────────────────────────────
 const AiResultTable: React.FC<{ data: TableData }> = ({ data }) => {
@@ -225,7 +230,7 @@ const AiResultTable: React.FC<{ data: TableData }> = ({ data }) => {
           <span style={{ fontSize: 11, fontWeight: 700, color: T.text2, fontFamily: T.font }}>
             查詢結果預覽
           </span>
-          {data.totalCount && (
+          {data.totalCount != null && (
             <span style={{ fontSize: 10, color: T.text4, fontFamily: T.mono }}>
               (顯示 {data.rows.length} / 共 {data.totalCount} 行)
             </span>
@@ -317,7 +322,7 @@ const AiResultTable: React.FC<{ data: TableData }> = ({ data }) => {
       </div>
 
       {/* Footer hint */}
-      {data.totalCount && data.rows.length < data.totalCount && (
+      {data.totalCount != null && data.rows.length < data.totalCount && (
         <div style={{ padding: "6px 14px", background: "#F8FAFC", borderTop: `1px solid ${T.border}`, fontSize: 10, color: T.text4, fontFamily: T.font }}>
           另有 {data.totalCount - data.rows.length} 行未顯示 · 請匯出完整資料
         </div>
@@ -327,28 +332,66 @@ const AiResultTable: React.FC<{ data: TableData }> = ({ data }) => {
 };
 
 // ── Sub-component: Export Button ──────────────────────────────────────────────
-const ExportButton: React.FC<{ label: string }> = ({ label }) => {
+const ExportButton: React.FC<{
+  label: string;
+  messageId?: number;
+  exportDataUrl: string;
+}> = ({ label, messageId, exportDataUrl }) => {
   const [clicked, setClicked] = useState(false);
+  const canExport = messageId != null;
+
+  const openFormat = (format: string) => {
+    if (!canExport) return;
+    setClicked(true);
+    window.open(exportDataHref(exportDataUrl, messageId!, format), "_blank");
+    setTimeout(() => setClicked(false), 2200);
+  };
+
   return (
-    <button
-      onClick={() => { setClicked(true); setTimeout(() => setClicked(false), 2200); }}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 8,
-        padding: "9px 18px", marginTop: 12,
-        background: clicked
-          ? "linear-gradient(135deg, #047857, #059669)"
-          : "linear-gradient(135deg, #059669, #10B981)",
-        border: "none", borderRadius: T.radiusLg,
-        color: "#fff", fontFamily: T.font, fontSize: 13, fontWeight: 700,
-        cursor: "pointer", boxShadow: "0 2px 8px rgba(5,150,105,0.3)",
-        transition: "all 0.2s",
-      }}
-    >
-      {clicked
-        ? <><CheckCircle2 size={15} /> 正在生成… Generating</>
-        : <><FileSpreadsheet size={15} /> {label}</>
-      }
-    </button>
+    <div style={{ marginTop: 12 }}>
+      <button
+        onClick={() => openFormat("xlsx")}
+        disabled={!canExport}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          padding: "9px 18px",
+          background: clicked
+            ? "linear-gradient(135deg, #047857, #059669)"
+            : "linear-gradient(135deg, #059669, #10B981)",
+          border: "none", borderRadius: T.radiusLg,
+          color: "#fff", fontFamily: T.font, fontSize: 13, fontWeight: 700,
+          cursor: canExport ? "pointer" : "default",
+          opacity: canExport ? 1 : 0.6,
+          boxShadow: "0 2px 8px rgba(5,150,105,0.3)",
+          transition: "all 0.2s",
+        }}
+      >
+        {clicked
+          ? <><CheckCircle2 size={15} /> 正在生成… Generating</>
+          : <><FileSpreadsheet size={15} /> {label}</>
+        }
+      </button>
+      {canExport && (
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <a
+            href={exportDataHref(exportDataUrl, messageId!, "pdf")}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 11, color: T.accent, fontFamily: T.font, textDecoration: "none", fontWeight: 600 }}
+          >
+            PDF
+          </a>
+          <a
+            href={exportDataHref(exportDataUrl, messageId!, "docx")}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 11, color: T.accent, fontFamily: T.font, textDecoration: "none", fontWeight: 600 }}
+          >
+            Word
+          </a>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -378,24 +421,6 @@ const SuggestionChips: React.FC<{ items: string[]; onSelect: (s: string) => void
   </div>
 );
 
-// ── Sub-component: Thinking Indicator ────────────────────────────────────────
-const ThinkingDots: React.FC = () => {
-  const dotStyle = (delay: string): React.CSSProperties => ({
-    width: 7, height: 7, borderRadius: "50%",
-    background: T.text4,
-    animation: "aidot 1.1s ease-in-out infinite",
-    animationDelay: delay,
-  });
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 0" }}>
-      <style>{`@keyframes aidot{0%,80%,100%{transform:scale(0.6);opacity:0.4}40%{transform:scale(1);opacity:1}}`}</style>
-      <div style={dotStyle("0s")} />
-      <div style={dotStyle("0.18s")} />
-      <div style={dotStyle("0.36s")} />
-    </div>
-  );
-};
-
 // ── Sub-component: Session type icon ─────────────────────────────────────────
 const SessionIcon: React.FC<{ type: SessionType }> = ({ type }) => {
   const map: Record<SessionType, { icon: React.ReactNode; bg: string; color: string }> = {
@@ -413,7 +438,19 @@ const SessionIcon: React.FC<{ type: SessionType }> = ({ type }) => {
 };
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export const Screen_AIDataAssistant: React.FC = () => {
+export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (props) => {
+  const {
+    sessionsUrl = "/ai-assistant/sessions",
+    sendUrl = "/ai-assistant/send",
+    exportDataUrl = "/ai-assistant/export-data",
+    exportSessionUrl = "/ai-assistant/export-session",
+    importSessionUrl = "/ai-assistant/import-session",
+    modelName,
+    initialSessionId = null,
+    csrfName,
+    csrfHash,
+  } = props;
+
   const F = T.font;
 
   const [isMobile, setIsMobile] = useState(false);
@@ -424,59 +461,171 @@ export const Screen_AIDataAssistant: React.FC = () => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const [activeSession, setActiveSession]   = useState("s1");
-  const [sessions, setSessions]             = useState(SESSIONS);
-  const [messages, setMessages]             = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [sessions, setSessions]             = useState<ChatSession[]>([]);
+  const [messages, setMessages]             = useState<ChatMessage[]>([]);
   const [input, setInput]                   = useState("");
   const [isThinking, setIsThinking]         = useState(false);
   const [showSidebar, setShowSidebar]       = useState(true);
   const [sidebarSearch, setSidebarSearch]   = useState("");
-  const [hovSession, setHovSession]         = useState<string | null>(null);
+  const [hovSession, setHovSession]         = useState<number | null>(null);
   const [attachmentName, setAttachmentName] = useState<string | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [loadError, setLoadError]           = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const mountedRef     = useRef(true);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
-  const handleSend = (text?: string) => {
+  const refreshSessions = useCallback(async () => {
+    const list = await fetchSessions(sessionsUrl);
+    if (!mountedRef.current) return;
+    setSessions(list.map(mapApiSession));
+  }, [sessionsUrl]);
+
+  const loadSession = useCallback(async (id: number) => {
+    const detail = await fetchSessionDetail(sessionsUrl, id);
+    if (!mountedRef.current) return;
+    setActiveSessionId(Number(detail.session.id));
+    setMessages((detail.messages || []).map(mapApiMessage));
+    setSessions((prev) => {
+      const mapped = mapApiSession(detail.session);
+      const exists = prev.some((s) => s.id === mapped.id);
+      return exists ? prev.map((s) => (s.id === mapped.id ? { ...s, ...mapped } : s)) : [mapped, ...prev];
+    });
+  }, [sessionsUrl]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    (async () => {
+      try {
+        await refreshSessions();
+        if (initialSessionId) {
+          await loadSession(initialSessionId);
+        } else {
+          setActiveSessionId(null);
+          setMessages([]);
+        }
+      } catch (e: any) {
+        if (mountedRef.current) setLoadError(e?.message || "無法載入對話");
+      }
+    })();
+    return () => { mountedRef.current = false; };
+  }, [refreshSessions, loadSession, initialSessionId]);
+
+  const handleSend = async (text?: string) => {
     const msg = (text ?? input).trim();
-    if (!msg) return;
+    if (!msg || isThinking) return;
     setInput("");
     setAttachmentName(null);
+    setLoadError(null);
 
-    const userMsg: ChatMessage = {
-      id: `m${Date.now()}`, role: "user",
+    const optimistic: ChatMessage = {
+      id: `local-u-${Date.now()}`,
+      role: "user",
       content: msg,
-      timestamp: new Date().toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }),
+      timestamp: formatMsgTime(),
     };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages((prev) => [...prev, optimistic]);
     setIsThinking(true);
 
-    setTimeout(() => {
-      const aiMsg: ChatMessage = {
-        id: `m${Date.now() + 1}`, role: "ai",
-        content: `已收到您的查詢：「${msg}」\n\n正在存取資料庫並進行分析… 結果將於片刻後顯示。如需進一步篩選或匯出，請直接告知。`,
-        timestamp: new Date().toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }),
-        suggestions: ["匯出為 Excel", "生成摘要報告", "新增篩選條件"],
-      };
-      setMessages(prev => [...prev, aiMsg]);
-      setIsThinking(false);
-    }, 1600);
+    try {
+      const res = await sendPrompt(sendUrl, msg, activeSessionId, csrfName, csrfHash);
+      if (!mountedRef.current) return;
+      const sid = Number(res.session.id);
+      setActiveSessionId(sid);
+      setMessages((prev) => {
+        const withoutOptimistic = prev.filter((m) => m.id !== optimistic.id);
+        return [
+          ...withoutOptimistic,
+          mapApiMessage(res.user_message),
+          mapApiMessage(res.assistant_message),
+        ];
+      });
+      await refreshSessions();
+    } catch (e: any) {
+      if (!mountedRef.current) return;
+      setLoadError(e?.message || "發送失敗");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: "ai",
+          content: `⚠️ ${e?.message || "發送失敗，請稍後再試。"}`,
+          timestamp: formatMsgTime(),
+        },
+      ]);
+    } finally {
+      if (mountedRef.current) setIsThinking(false);
+    }
   };
 
-  const handleNewSession = () => {
-    const newId = `s${Date.now()}`;
-    const newSess: ChatSession = {
-      id: newId, title: "新對話", type: "data",
-      preview: "開始新的數據查詢…",
-      date: "剛剛", msgCount: 0,
-    };
-    setSessions(prev => [newSess, ...prev]);
-    setActiveSession(newId);
-    setMessages([]);
+  const handleNewSession = async () => {
+    try {
+      const s = await createSession(sessionsUrl, csrfName, csrfHash);
+      if (!mountedRef.current) return;
+      const mapped = mapApiSession(s);
+      setSessions((prev) => [mapped, ...prev.filter((x) => x.id !== mapped.id)]);
+      setActiveSessionId(mapped.id);
+      setMessages([]);
+      setLoadError(null);
+    } catch (e: any) {
+      setLoadError(e?.message || "無法建立對話");
+    }
+  };
+
+  const handleSelectSession = async (id: number) => {
+    try {
+      await loadSession(id);
+      setLoadError(null);
+      if (isMobile) setShowSidebar(false);
+    } catch (e: any) {
+      setLoadError(e?.message || "無法載入對話");
+    }
+  };
+
+  const handleArchive = async () => {
+    if (activeSessionId == null) return;
+    try {
+      await archiveSession(sessionsUrl, activeSessionId, csrfName, csrfHash);
+      if (!mountedRef.current) return;
+      setSessions((prev) => prev.filter((s) => s.id !== activeSessionId));
+      setActiveSessionId(null);
+      setMessages([]);
+      setShowExportMenu(false);
+    } catch (e: any) {
+      setLoadError(e?.message || "封存失敗");
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const res = await importSessionPackage(importSessionUrl, file, csrfName, csrfHash);
+      if (!mountedRef.current) return;
+      const mapped = mapApiSession(res.session);
+      setSessions((prev) => [mapped, ...prev.filter((s) => s.id !== mapped.id)]);
+      setActiveSessionId(mapped.id);
+      setMessages((res.messages || []).map(mapApiMessage));
+      setLoadError(null);
+    } catch (e: any) {
+      setLoadError(e?.message || "匯入失敗");
+    }
+  };
+
+  const handleTogglePin = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const isPinned = await pinSession(sessionsUrl, id, csrfName, csrfHash);
+      if (!mountedRef.current) return;
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, pinned: isPinned } : s)));
+    } catch (err: any) {
+      setLoadError(err?.message || "置頂失敗");
+    }
   };
 
   const filteredSessions = sessions.filter(s =>
@@ -485,7 +634,7 @@ export const Screen_AIDataAssistant: React.FC = () => {
 
   const pinnedSessions   = filteredSessions.filter(s => s.pinned);
   const recentSessions   = filteredSessions.filter(s => !s.pinned);
-  const activeSessionObj = sessions.find(s => s.id === activeSession);
+  const activeSessionObj = sessions.find(s => s.id === activeSessionId);
 
   return (
     <div style={{
@@ -535,22 +684,47 @@ export const Screen_AIDataAssistant: React.FC = () => {
               )}
             </div>
 
-            {/* New chat button */}
-            <button
-              onClick={handleNewSession}
-              style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 8,
-                padding: "8px 12px",
-                background: "linear-gradient(135deg, #2563EB, #7C3AED)",
-                border: "none", borderRadius: T.radiusLg,
-                color: "#fff", fontSize: 12.5, fontWeight: 700,
-                cursor: "pointer", fontFamily: F,
-                boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-              }}
-            >
-              <Plus size={14} />
-              新建對話 New Chat
-            </button>
+            {/* New chat + Import */}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={handleNewSession}
+                style={{
+                  flex: 1, display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 12px",
+                  background: "linear-gradient(135deg, #2563EB, #7C3AED)",
+                  border: "none", borderRadius: T.radiusLg,
+                  color: "#fff", fontSize: 12.5, fontWeight: 700,
+                  cursor: "pointer", fontFamily: F,
+                  boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+                }}
+              >
+                <Plus size={14} />
+                新建對話 New Chat
+              </button>
+              <button
+                onClick={() => importInputRef.current?.click()}
+                title="匯入對話封包"
+                style={{
+                  flexShrink: 0, width: 36, height: 36,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: T.surface, border: `1px solid ${T.border}`,
+                  borderRadius: T.radiusLg, cursor: "pointer", color: T.text3,
+                }}
+              >
+                <Upload size={14} />
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".sts-chat,.json,application/json"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void handleImportFile(f);
+                }}
+              />
+            </div>
           </div>
 
           {/* Search */}
@@ -583,10 +757,11 @@ export const Screen_AIDataAssistant: React.FC = () => {
                 {pinnedSessions.map(s => (
                   <SessionRow
                     key={s.id} session={s}
-                    active={activeSession === s.id}
+                    active={activeSessionId === s.id}
                     hovered={hovSession === s.id}
                     onHover={setHovSession}
-                    onClick={() => { setActiveSession(s.id); if (isMobile) setShowSidebar(false); }}
+                    onClick={() => { void handleSelectSession(s.id); }}
+                    onTogglePin={(ev) => { void handleTogglePin(s.id, ev); }}
                   />
                 ))}
               </div>
@@ -599,10 +774,11 @@ export const Screen_AIDataAssistant: React.FC = () => {
               {recentSessions.map(s => (
                 <SessionRow
                   key={s.id} session={s}
-                  active={activeSession === s.id}
+                  active={activeSessionId === s.id}
                   hovered={hovSession === s.id}
                   onHover={setHovSession}
-                  onClick={() => { setActiveSession(s.id); if (isMobile) setShowSidebar(false); }}
+                  onClick={() => { void handleSelectSession(s.id); }}
+                  onTogglePin={(ev) => { void handleTogglePin(s.id, ev); }}
                 />
               ))}
             </div>
@@ -653,20 +829,71 @@ export const Screen_AIDataAssistant: React.FC = () => {
           </div>
 
           {/* Header actions */}
-          <div style={{ display: "flex", gap: 6 }}>
-            {[
-              { icon: <Download size={13} />, label: "匯出對話" },
-              { icon: <Archive size={13} />,  label: "封存" },
-            ].map(btn => (
-              <button key={btn.label} title={btn.label} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", border: `1px solid ${T.border}`, borderRadius: 7, background: "transparent", color: T.text3, fontSize: 11, cursor: "pointer", fontFamily: F }}>
-                {btn.icon}
-                {!isMobile && <span>{btn.label}</span>}
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div style={{ position: "relative" }}>
+              <button
+                title="匯出對話"
+                onClick={() => setShowExportMenu((v) => !v)}
+                disabled={activeSessionId == null}
+                style={{
+                  display: "flex", alignItems: "center", gap: 4, padding: "5px 10px",
+                  border: `1px solid ${T.border}`, borderRadius: 7, background: "transparent",
+                  color: T.text3, fontSize: 11, cursor: activeSessionId == null ? "default" : "pointer",
+                  fontFamily: F, opacity: activeSessionId == null ? 0.5 : 1,
+                }}
+              >
+                <Download size={13} />
+                {!isMobile && <span>匯出對話</span>}
+                <ChevronDown size={12} />
               </button>
-            ))}
+              {showExportMenu && activeSessionId != null && (
+                <div style={{
+                  position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 50,
+                  minWidth: 240, background: T.surface, border: `1px solid ${T.border}`,
+                  borderRadius: 8, boxShadow: T.shadowMd, overflow: "hidden",
+                }}>
+                  <a
+                    href={exportSessionHref(exportSessionUrl, activeSessionId, "package")}
+                    style={{
+                      display: "block", padding: "10px 12px", fontSize: 12, color: T.text2,
+                      textDecoration: "none", fontFamily: F, borderBottom: `1px solid ${T.border}`,
+                    }}
+                    onClick={() => setShowExportMenu(false)}
+                  >
+                    匯出可繼承對話封包 (.sts-chat)
+                  </a>
+                  <a
+                    href={exportSessionHref(exportSessionUrl, activeSessionId, "report")}
+                    style={{
+                      display: "block", padding: "10px 12px", fontSize: 12, color: T.text2,
+                      textDecoration: "none", fontFamily: F,
+                    }}
+                    onClick={() => setShowExportMenu(false)}
+                  >
+                    匯出可讀報告 (.html)
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <button
+              title="封存"
+              onClick={() => { void handleArchive(); }}
+              disabled={activeSessionId == null}
+              style={{
+                display: "flex", alignItems: "center", gap: 4, padding: "5px 10px",
+                border: `1px solid ${T.border}`, borderRadius: 7, background: "transparent",
+                color: T.text3, fontSize: 11, cursor: activeSessionId == null ? "default" : "pointer",
+                fontFamily: F, opacity: activeSessionId == null ? 0.5 : 1,
+              }}
+            >
+              <Archive size={13} />
+              {!isMobile && <span>封存</span>}
+            </button>
 
             <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 7, background: T.emeraldPale, border: `1px solid ${T.emeraldBd}` }}>
               <Cpu size={11} color={T.emerald} />
-              <span style={{ fontSize: 10, fontWeight: 700, color: T.emerald }}>claude-sonnet-5</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: T.emerald }}>{modelName || "GB10"}</span>
             </div>
           </div>
         </div>
@@ -674,15 +901,25 @@ export const Screen_AIDataAssistant: React.FC = () => {
         {/* Messages area */}
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 12px" : "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
 
-          {messages.length === 0 && (
-            <EmptyState onSuggest={q => setInput(q)} />
+          {loadError && (
+            <div style={{
+              padding: "8px 12px", borderRadius: 8, background: T.redPale,
+              border: `1px solid ${T.red}`, color: T.red, fontSize: 12, fontFamily: F,
+            }}>
+              {loadError}
+            </div>
+          )}
+
+          {messages.length === 0 && !isThinking && (
+            <EmptyState onSuggest={(q) => { void handleSend(q); }} />
           )}
 
           {messages.map(msg => (
             <MessageBubble
               key={msg.id}
               msg={msg}
-              onSuggest={q => { setInput(q); textareaRef.current?.focus(); }}
+              exportDataUrl={exportDataUrl}
+              onSuggest={(q) => { void handleSend(q); }}
             />
           ))}
 
@@ -705,13 +942,14 @@ export const Screen_AIDataAssistant: React.FC = () => {
               {SUGGESTED_QUERIES.map(q => (
                 <button
                   key={q}
-                  onClick={() => { setInput(q); textareaRef.current?.focus(); }}
+                  onClick={() => { void handleSend(q); }}
+                  disabled={isThinking}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
                     padding: "5px 11px",
                     border: `1px solid ${T.border}`,
                     borderRadius: 999, background: T.bg,
-                    color: T.text3, fontSize: 11, cursor: "pointer", fontFamily: F,
+                    color: T.text3, fontSize: 11, cursor: isThinking ? "default" : "pointer", fontFamily: F,
                   }}
                 >
                   <Sparkles size={9} color={T.accent} />
@@ -741,7 +979,6 @@ export const Screen_AIDataAssistant: React.FC = () => {
             borderRadius: T.radiusXl,
             transition: "border-color 0.15s",
           }}
-            onFocus={() => {}}
           >
             {/* Paperclip */}
             <button
@@ -776,11 +1013,12 @@ export const Screen_AIDataAssistant: React.FC = () => {
               onKeyDown={e => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleSend();
+                  void handleSend();
                 }
               }}
               placeholder="向 AI 數據助手發送指令，例如：「列出 F3A 最近一次測驗低於 50 分的學生」…"
               rows={2}
+              disabled={isThinking}
               style={{
                 flex: 1, resize: "none", border: "none", outline: "none",
                 background: "transparent", fontSize: 13, fontFamily: F,
@@ -791,18 +1029,18 @@ export const Screen_AIDataAssistant: React.FC = () => {
 
             {/* Send button */}
             <button
-              onClick={() => handleSend()}
-              disabled={!input.trim() && !attachmentName}
+              onClick={() => { void handleSend(); }}
+              disabled={isThinking || (!input.trim() && !attachmentName)}
               style={{
                 flexShrink: 0, width: 36, height: 36,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: input.trim() || attachmentName
+                background: !isThinking && (input.trim() || attachmentName)
                   ? "linear-gradient(135deg, #2563EB, #7C3AED)"
                   : "#E2E8F0",
                 border: "none", borderRadius: 10,
-                cursor: input.trim() || attachmentName ? "pointer" : "default",
+                cursor: !isThinking && (input.trim() || attachmentName) ? "pointer" : "default",
                 color: "#fff", transition: "all 0.15s",
-                boxShadow: input.trim() ? "0 2px 8px rgba(37,99,235,0.28)" : "none",
+                boxShadow: input.trim() && !isThinking ? "0 2px 8px rgba(37,99,235,0.28)" : "none",
               }}
             >
               <Send size={15} style={{ transform: "translateX(1px)" }} />
@@ -823,9 +1061,10 @@ const SessionRow: React.FC<{
   session: ChatSession;
   active: boolean;
   hovered: boolean;
-  onHover: (id: string | null) => void;
+  onHover: (id: number | null) => void;
   onClick: () => void;
-}> = ({ session, active, hovered, onHover, onClick }) => (
+  onTogglePin?: (e: React.MouseEvent) => void;
+}> = ({ session, active, hovered, onHover, onClick, onTogglePin }) => (
   <button
     onClick={onClick}
     onMouseEnter={() => onHover(session.id)}
@@ -852,7 +1091,18 @@ const SessionRow: React.FC<{
           {session.pinned && <span style={{ marginRight: 3 }}>📌</span>}
           {session.title}
         </span>
-        <span style={{ fontSize: 9, color: T.text4, flexShrink: 0 }}>{session.date}</span>
+        <span
+          role="button"
+          title={session.pinned ? "取消置頂" : "置頂"}
+          onClick={onTogglePin}
+          style={{
+            fontSize: 9, color: session.pinned || hovered ? T.accent : T.text4,
+            flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4,
+          }}
+        >
+          {(session.pinned || hovered) && <Pin size={10} />}
+          {session.date}
+        </span>
       </div>
       <div style={{ fontSize: 10.5, color: T.text4, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {session.preview}
@@ -864,8 +1114,9 @@ const SessionRow: React.FC<{
 // ── Message Bubble ────────────────────────────────────────────────────────────
 const MessageBubble: React.FC<{
   msg: ChatMessage;
+  exportDataUrl: string;
   onSuggest: (q: string) => void;
-}> = ({ msg, onSuggest }) => {
+}> = ({ msg, exportDataUrl, onSuggest }) => {
   const isUser = msg.role === "user";
 
   return (
@@ -944,7 +1195,13 @@ const MessageBubble: React.FC<{
           {msg.tableData && <AiResultTable data={msg.tableData} />}
 
           {/* Export button */}
-          {msg.exportLabel && <ExportButton label={msg.exportLabel} />}
+          {msg.exportLabel && (
+            <ExportButton
+              label={msg.exportLabel}
+              messageId={msg.messageId}
+              exportDataUrl={exportDataUrl}
+            />
+          )}
 
           {/* Suggestion chips */}
           {msg.suggestions && (
@@ -957,29 +1214,42 @@ const MessageBubble: React.FC<{
 };
 
 // ── Thinking Bubble ───────────────────────────────────────────────────────────
-const ThinkingBubble: React.FC = () => (
-  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-    <div style={{
-      width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-      background: "linear-gradient(135deg, #5B21B6, #7C3AED)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-    }}>
-      <Bot size={15} color="#fff" />
-    </div>
-    <div style={{
-      padding: "12px 16px",
-      background: T.surface,
-      border: `1px solid ${T.border}`,
-      borderRadius: "4px 14px 14px 14px",
-      boxShadow: T.shadowMd,
-    }}>
-      <div style={{ fontSize: 10, color: T.text4, marginBottom: 6, fontFamily: T.font }}>
-        正在查詢資料庫…
+const ThinkingBubble: React.FC = () => {
+  const [stepIdx, setStepIdx] = useState(0);
+
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      setStepIdx((i) => (i + 1) % THINKING_STEPS.length);
+    }, 1200);
+    return () => window.clearInterval(t);
+  }, []);
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+      <div style={{
+        width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+        background: "linear-gradient(135deg, #5B21B6, #7C3AED)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Bot size={15} color="#fff" />
       </div>
-      <ThinkingDots />
+      <div style={{
+        padding: "12px 16px",
+        background: T.surface,
+        border: `1px solid ${T.border}`,
+        borderRadius: "4px 14px 14px 14px",
+        boxShadow: T.shadowMd,
+        minWidth: 260,
+      }}>
+        <style>{`@keyframes aispin{to{transform:rotate(360deg)}}`}</style>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.text2, fontFamily: T.font }}>
+          <RefreshCw size={14} color={T.purple} style={{ animation: "aispin 1s linear infinite", flexShrink: 0 }} />
+          <span>{THINKING_STEPS[stepIdx]}</span>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ── Empty State ───────────────────────────────────────────────────────────────
 const EmptyState: React.FC<{ onSuggest: (q: string) => void }> = ({ onSuggest }) => {
