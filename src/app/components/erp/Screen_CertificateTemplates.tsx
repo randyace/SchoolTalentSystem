@@ -3,7 +3,7 @@
 // Skeleton cloned from Frame03_ActivityTable via ListingPageShell.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo, useState } from "react";
-import { Copy, Pencil } from "lucide-react";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import {
   EmptyRow, GhostAction, ListingPageShell, ListingTH, listingTD,
@@ -21,6 +21,7 @@ export interface ScreenCertificateTemplatesProps {
   storeUrl?: string;
   editUrlBase?: string;
   cloneUrlBase?: string;
+  deleteUrlBase?: string;
   csrfName?: string;
   csrfHash?: string;
   flashSuccess?: string;
@@ -32,6 +33,7 @@ export const Screen_CertificateTemplates: React.FC<ScreenCertificateTemplatesPro
   storeUrl = "/certificates/store",
   editUrlBase = "/certificates/edit",
   cloneUrlBase = "/certificates/clone",
+  deleteUrlBase = "/certificates/delete",
   csrfName = "csrf_test_name",
   csrfHash = "",
   flashSuccess,
@@ -50,6 +52,15 @@ export const Screen_CertificateTemplates: React.FC<ScreenCertificateTemplatesPro
     );
   }, [templates, q]);
 
+  const appendCsrf = (form: HTMLFormElement) => {
+    if (!csrfHash) return;
+    const csrfInput = document.createElement("input");
+    csrfInput.type = "hidden";
+    csrfInput.name = csrfName;
+    csrfInput.value = csrfHash;
+    form.appendChild(csrfInput);
+  };
+
   const handleNewTemplate = () => {
     const title = window.prompt("範本名稱 (Template Title)：", "新證書範本");
     if (title === null) return;
@@ -61,13 +72,7 @@ export const Screen_CertificateTemplates: React.FC<ScreenCertificateTemplatesPro
     titleInput.name = "title";
     titleInput.value = (title || "").trim();
     form.appendChild(titleInput);
-    if (csrfHash) {
-      const csrfInput = document.createElement("input");
-      csrfInput.type = "hidden";
-      csrfInput.name = csrfName;
-      csrfInput.value = csrfHash;
-      form.appendChild(csrfInput);
-    }
+    appendCsrf(form);
     document.body.appendChild(form);
     form.submit();
   };
@@ -76,13 +81,17 @@ export const Screen_CertificateTemplates: React.FC<ScreenCertificateTemplatesPro
     const form = document.createElement("form");
     form.method = "POST";
     form.action = `${cloneUrlBase.replace(/\/$/, "")}/${id}`;
-    if (csrfHash) {
-      const csrfInput = document.createElement("input");
-      csrfInput.type = "hidden";
-      csrfInput.name = csrfName;
-      csrfInput.value = csrfHash;
-      form.appendChild(csrfInput);
-    }
+    appendCsrf(form);
+    document.body.appendChild(form);
+    form.submit();
+  };
+
+  const submitDelete = (id: number) => {
+    if (!confirm("確定要刪除此證書範本嗎？此動作無法復原。")) return;
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = `${deleteUrlBase.replace(/\/$/, "")}/${id}`;
+    appendCsrf(form);
     document.body.appendChild(form);
     form.submit();
   };
@@ -126,13 +135,35 @@ export const Screen_CertificateTemplates: React.FC<ScreenCertificateTemplatesPro
                   {row.updated_at || "—"}
                 </td>
                 <td style={{ ...listingTD, textAlign: "center" }}>
-                  <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                     <GhostAction href={`${editUrlBase.replace(/\/$/, "")}/${row.id}`}>
                       <Pencil size={11} /> 編輯
                     </GhostAction>
                     <GhostAction onClick={() => submitClone(row.id)}>
                       <Copy size={11} /> 複製
                     </GhostAction>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-link text-danger text-decoration-none btn-delete-template"
+                      data-id={row.id}
+                      onClick={() => submitDelete(row.id)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        padding: "4px 9px",
+                        border: `1px solid ${ERP.colors.border}`,
+                        borderRadius: ERP.radius.sm,
+                        background: "transparent",
+                        color: ERP.colors.red,
+                        cursor: "pointer",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        fontFamily: F,
+                        whiteSpace: "nowrap",
+                        textDecoration: "none",
+                      }}
+                    >
+                      <Trash2 size={11} /> 刪除
+                    </button>
                   </div>
                 </td>
               </tr>

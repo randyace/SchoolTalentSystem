@@ -267,6 +267,7 @@ export interface StsBridgeConfig {
   candidates?: any[];
   addUrl?: string;
   bulkAddUrl?: string;
+  updateEnrollmentUrl?: string;
   eligibleTabs?: any[];
   editUrl?: string;
   saveUrl?: string;
@@ -306,6 +307,17 @@ export interface StsBridgeConfig {
   /** Bulk certificate generator */
   studentsUrlBase?: string;
   generatePdfUrl?: string;
+  /** Achievement review workstation (Screen_BatchOCR) */
+  batchTitle?: string;
+  activityLabel?: string;
+  certs?: any[];
+  initialCertIndex?: number;
+  uploadUrl?: string;
+  extractUrl?: string;
+  saveUrlBase?: string;
+  searchStudentsUrl?: string;
+  environmentLevelsUrl?: string;
+  tierRolesUrl?: string;
   /** From system_settings (Settings UI) */
   schoolLogoUrl?: string;
   schoolLogoPath?: string;
@@ -315,6 +327,7 @@ export interface StsBridgeConfig {
   signatureLine?: string;
   customFields?: Array<{ id: number; field_name: string; display_label: string }>;
   customFieldsUrl?: string;
+  previewUrlBase?: string;
   templateId?: number | null;
   templateTitle?: string;
   saveTemplateUrl?: string;
@@ -323,6 +336,7 @@ export interface StsBridgeConfig {
   /** Certificate template library */
   templates?: Array<{ id: number; title: string; activity_label?: string; updated_at?: string }>;
   cloneUrlBase?: string;
+  deleteUrlBase?: string;
   editUrlBase?: string;
   csrfName?: string;
   csrfHash?: string;
@@ -688,6 +702,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           students={config.students || []}
           eligibleTabs={config.eligibleTabs || []}
           bulkAddUrl={config.bulkAddUrl || ""}
+          updateEnrollmentUrl={config.updateEnrollmentUrl || ""}
           listUrl={config.listUrl || "/activities"}
           editUrl={config.editUrl || "/activities"}
           flashSuccess={config.flashSuccess}
@@ -740,6 +755,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           }))}
           createUrl={config.storeUrl || "/achievements/batch/create"}
           reviewUrlBase={config.editUrlBase || "/achievements/review"}
+          deleteUrl={config.deleteUrl || "/achievements/batch/delete"}
           csrfName={config.csrfName}
           csrfHash={config.csrfHash}
           flashSuccess={config.flashSuccess}
@@ -750,11 +766,28 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
     case "achievement-review":
       return wrap(
         nav || "achievements",
-        <Screen_PhpContent
-          html={config.htmlContent || "<p class=\"text-muted\">尚無內容</p>"}
+        <Screen_BatchOCR
+          live
+          batchId={config.batchId ?? null}
+          batchTitle={config.batchTitle || ""}
+          activityLabel={config.activityLabel || ""}
+          activities={(config.activities || []).map((a: any) => ({
+            id: Number(a.id),
+            label: String(a.label || a.name_zh_hk || a.name_en || `Activity #${a.id}`),
+          }))}
+          initialCerts={(config.certs as any) || []}
+          initialCertIndex={config.initialCertIndex ?? 0}
+          uploadUrl={config.uploadUrl || ""}
+          extractUrl={config.extractUrl || "/achievements/api/extract"}
+          saveUrlBase={config.saveUrlBase || "/achievements/review/save"}
+          searchStudentsUrl={config.searchStudentsUrl || "/api/students/search"}
+          environmentLevelsUrl={config.environmentLevelsUrl || "/api/settings/environment-levels"}
+          tierRolesUrl={config.tierRolesUrl || "/api/settings/tier-roles"}
+          listUrl={config.listUrl || "/achievements"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
           flashSuccess={config.flashSuccess}
           flashError={config.flashError}
-          assets={config.phpAssets || { select2: true }}
         />,
       );
 
@@ -768,6 +801,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           storeUrl={config.storeUrl || "/certificates/store"}
           editUrlBase={config.editUrlBase || "/certificates/edit"}
           cloneUrlBase={config.cloneUrlBase || "/certificates/clone"}
+          deleteUrlBase={config.deleteUrlBase || "/certificates/delete"}
           csrfName={config.csrfName}
           csrfHash={config.csrfHash}
           flashSuccess={config.flashSuccess}
@@ -790,6 +824,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           studentsUrlBase={config.studentsUrlBase || "/certificates/activity-students"}
           generatePdfUrl={config.generatePdfUrl || "/certificates/generate-pdf"}
           customFieldsUrl={config.customFieldsUrl || "/certificates/custom-fields"}
+          previewUrlBase={config.previewUrlBase || "/certificates/preview"}
           schoolLogoUrl={config.schoolLogoUrl || ""}
           schoolLogoPath={config.schoolLogoPath || ""}
           principalName={config.principalName || ""}

@@ -5,9 +5,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from "react";
 import { ERP } from "./erpTokens";
+import { AcornBinding } from "./AcornBinding";
 import {
   Plus, Search, X, ChevronDown, Check, Edit2, Trash2,
-  BookOpen, Tag, ShieldCheck, ArrowLeft,
+  BookOpen, Tag, ArrowLeft,
   Sliders, AlertCircle,
 } from "lucide-react";
 
@@ -107,10 +108,6 @@ function klaStyleFor(s: { kla?: string; kla_color?: string | null }, klas: KlaRe
   return { bg: ERP.colors.accentPale, color: ERP.colors.accent };
 }
 
-function acornStyle(zh: string) {
-  return (ERP.acornTags as Record<string, { bg: string; color: string; border: string }>)[zh]
-    ?? { bg: ERP.colors.accentPale, color: ERP.colors.accent, border: ERP.colors.accentLight };
-}
 interface SubjectForm {
   code: string; zhName: string; enName: string;
   klaId: number | ""; levels: string[]; acornIds: number[];
@@ -923,71 +920,21 @@ export const Screen_Subjects: React.FC<Props> = ({
               )}
             </FormField>
 
-            {/* Divider */}
-            <div style={{ borderTop: `1px solid ${ERP.colors.border}`, margin: "20px 0 18px", position: "relative" }}>
-              <span style={{ position: "absolute", top: -9, left: 0, background: ERP.colors.surface, paddingRight: 10, fontSize: 11, fontWeight: 700, color: ERP.colors.textMuted, letterSpacing: "0.07em", textTransform: "uppercase" as const, display: "flex", alignItems: "center", gap: 5 }}>
-                <ShieldCheck size={11} />ACORN 預設維度綁定 · Default ACORN Binding
-              </span>
+            {/* ACORN — shared Figma component (same as Assessment) */}
+            <div style={{ marginBottom: 24 }}>
+              <AcornBinding
+                showDividerTitle
+                summaryMode="when-selected"
+                inputName="acorn_ids[]"
+                selectedValues={form.acornIds}
+                items={acorns.map(a => ({
+                  value: String(a.id),
+                  nameZh: a.name_zh_hk,
+                  nameEn: a.name_en,
+                }))}
+                onToggle={(value) => toggleAcorn(Number(value))}
+              />
             </div>
-
-            <p style={{ margin: "0 0 12px", fontSize: 11, color: ERP.colors.textMuted, lineHeight: 1.5 }}>
-              選擇此科目自動關聯的 ACORN 評估維度。AI 系統將依據此設定進行成就歸類。
-            </p>
-
-            {/* ACORN checkboxes — 3×2 grid from acorn_dimensions */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 24 }}>
-              {acorns.map(acorn => {
-                const checked = form.acornIds.includes(acorn.id);
-                const st = acornStyle(acorn.name_zh_hk);
-                return (
-                  <label
-                    key={acorn.id}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "9px 10px", borderRadius: ERP.radius.md, textAlign: "left" as const,
-                      background: checked ? st.bg : ERP.colors.pageBg,
-                      border: `1.5px solid ${checked ? st.border : ERP.colors.border}`,
-                      cursor: "pointer", transition: "all 0.12s", fontFamily: F,
-                      boxShadow: checked ? `0 0 0 3px ${st.bg}` : "none",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      name="acorn_ids[]"
-                      value={acorn.id}
-                      checked={checked}
-                      onChange={() => toggleAcorn(acorn.id)}
-                      style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
-                    />
-                    <div style={{
-                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                      background: checked ? st.color : "transparent",
-                      border: `2px solid ${checked ? st.color : ERP.colors.borderStrong}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      transition: "all 0.12s",
-                    }}>
-                      {checked && <Check size={10} color="#fff" strokeWidth={3} />}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: checked ? st.color : ERP.colors.textPrimary, lineHeight: 1 }}>{acorn.name_zh_hk}</div>
-                      <div style={{ fontSize: 9, color: ERP.colors.textMuted, marginTop: 2 }}>{acorn.name_en}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-
-            {form.acornIds.length > 0 && (
-              <div style={{ padding: "8px 12px", background: ERP.colors.accentPale, borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.accentLight}`, marginBottom: 20, display: "flex", gap: 6, flexWrap: "wrap" as const, alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: ERP.colors.accent, fontWeight: 600, whiteSpace: "nowrap" as const }}>已綁定：</span>
-                {form.acornIds.map(id => {
-                  const a = acorns.find(x => x.id === id);
-                  if (!a) return null;
-                  const st = acornStyle(a.name_zh_hk);
-                  return <span key={id} style={{ fontSize: 11, padding: "1px 7px", borderRadius: 9999, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontWeight: 600 }}>{a.name_zh_hk}</span>;
-                })}
-              </div>
-            )}
 
             {/* ── Section 3: Assessment Weights ─────────────────────────── */}
             <div style={{ borderTop: `1px solid ${ERP.colors.border}`, margin: "4px 0 18px", position: "relative" }}>

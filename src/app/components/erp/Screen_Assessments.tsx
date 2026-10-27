@@ -3,7 +3,8 @@
 // List: Subjects-style header + card table. Create/Edit: full-page form.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo, useState } from "react";
-import { ERP } from "./erpTokens";
+import { ERP, type AcornTagKey } from "./erpTokens";
+import { AcornBinding, normalizeAcornTagKeys } from "./AcornBinding";
 import { Plus, Search, ChevronDown, Edit2, Trash2, ArrowLeft, Save, Zap, ClipboardPaste } from "lucide-react";
 
 export interface AssessmentRow {
@@ -16,6 +17,7 @@ export interface AssessmentRow {
   subject_label?: string;
   name: string;
   max_score: number;
+  acorn_tags?: string[];
 }
 
 interface SubjectOpt {
@@ -104,6 +106,7 @@ const emptyForm = (year: string): AssessmentRow => ({
   subject_id: 0,
   name: "",
   max_score: 100,
+  acorn_tags: [],
 });
 
 const COLS = "100px 140px 72px 1.2fr 1.4fr 80px 88px";
@@ -339,11 +342,20 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
 }) => {
   const F = ERP.font.family;
   const years = academicYears.length ? academicYears : [academicYear];
-  const [form, setForm] = useState<AssessmentRow>(initialAssessment ?? emptyForm(academicYear));
+  const [form, setForm] = useState<AssessmentRow>(() => {
+    const base = initialAssessment ?? emptyForm(academicYear);
+    return { ...base, acorn_tags: normalizeAcornTagKeys(base.acorn_tags) };
+  });
+  const [acornTags, setAcornTags] = useState<AcornTagKey[]>(() => normalizeAcornTagKeys(initialAssessment?.acorn_tags));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(flashError || "");
   const isEdit = (assessmentId != null && assessmentId > 0) || form.id > 0;
   const activeSubjects = subjects.filter(s => !s.status || s.status === "active");
+
+  const toggleAcorn = (key: string) => {
+    const k = key as AcornTagKey;
+    setAcornTags(prev => prev.includes(k) ? prev.filter(t => t !== k) : [...prev, k]);
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -373,6 +385,7 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
           subject_id: Number(form.subject_id),
           name: form.name.trim(),
           max_score: max,
+          acorn_tags: acornTags,
         }),
       });
       const json = await res.json();
@@ -390,7 +403,7 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
 
   return (
     <div style={{ height: "100%", overflow: "auto", background: ERP.colors.pageBg, fontFamily: F }}>
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 24px 40px" }}>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "24px 24px 40px" }}>
         <a href={listUrl} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: ERP.colors.textSecondary, textDecoration: "none", marginBottom: 16 }}>
           <ArrowLeft size={14} /> 返回評估項目
         </a>
@@ -441,6 +454,17 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
             <Field label="滿分 Max Score" required>
               <input type="number" min={0.01} step="0.01" value={form.max_score} onChange={e => setForm({ ...form, max_score: Number(e.target.value) })} style={{ ...inputStyle, maxWidth: 200 }} />
             </Field>
+          </Section>
+
+          {/* ACORN — Subjects Figma golden reference via shared AcornBinding */}
+          <Section label="ACORN 預設維度綁定" sub="DEFAULT ACORN BINDING">
+            <AcornBinding
+              selectedValues={acornTags}
+              onToggle={toggleAcorn}
+              inputName="acorn_tags[]"
+              summaryMode="always"
+              hintText="選擇此評估項目自動關聯的 ACORN 評估維度。AI 系統將依據此設定進行成就歸類。"
+            />
           </Section>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>

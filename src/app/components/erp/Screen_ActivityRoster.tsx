@@ -2,14 +2,17 @@
 // Activity Roster — Smart Import + Form/Class checkbox grid + enrolled list
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo, useState } from "react";
-import { ArrowLeft, Check, ClipboardPaste, Layers, Trash2, Users, Zap } from "lucide-react";
+import { ArrowLeft, Check, ClipboardPaste, Layers, Link2, Save, Trash2, Upload, Users, Zap } from "lucide-react";
 import { ERP } from "./erpTokens";
 
 const F = ERP.font.family;
 
+const STUDENT_ROLES = ["Participant", "Helper", "Committee", "Team Leader", "Captain"] as const;
+
 export type RosterStudent = {
   id: number;
   pk?: number;
+  enrollment_id?: number;
   student_id: string;
   name_zh_hk?: string;
   name_en?: string;
@@ -17,6 +20,21 @@ export type RosterStudent = {
   class_name: string;
   class_number?: number;
   form?: string;
+  project_name?: string;
+  specific_award?: string;
+  student_role?: string;
+  proof_path?: string;
+  proof_url?: string;
+};
+
+type PerfDraft = {
+  project_name: string;
+  specific_award: string;
+  student_role: string;
+  proofFile: File | null;
+  clear_proof: boolean;
+  saving: boolean;
+  msg: string | null;
 };
 
 export type EligibleTab = {
@@ -57,6 +75,7 @@ export const Screen_ActivityRoster: React.FC<{
   students?: RosterStudent[];
   eligibleTabs?: EligibleTab[];
   bulkAddUrl?: string;
+  updateEnrollmentUrl?: string;
   listUrl?: string;
   editUrl?: string;
   flashSuccess?: string;
@@ -66,9 +85,10 @@ export const Screen_ActivityRoster: React.FC<{
   activityName = "活動",
   academicYear = "2025/26",
   targetForms = [],
-  students = [],
+  students: studentsProp = [],
   eligibleTabs = [],
   bulkAddUrl = "",
+  updateEnrollmentUrl = "",
   listUrl = "/activities",
   editUrl = "/activities",
   flashSuccess,
@@ -76,7 +96,9 @@ export const Screen_ActivityRoster: React.FC<{
 }) => {
   const aid = activityId && activityId > 0 ? activityId : 0;
   const postBulk = bulkAddUrl || (aid ? `/activities/roster/${aid}/bulk-add` : "");
+  const postUpdate = updateEnrollmentUrl || (aid ? `/activities/roster/${aid}/update-enrollment` : "");
 
+  const [students, setStudents] = useState<RosterStudent[]>(studentsProp);
   const enrolledIds = useMemo(() => new Set(students.map(s => pkOf(s))), [students]);
   const pool = useMemo(() => {
     const all: RosterStudent[] = [];
@@ -90,6 +112,83 @@ export const Screen_ActivityRoster: React.FC<{
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [pasteText, setPasteText] = useState("");
   const [parseMsg, setParseMsg] = useState<string | null>(null);
+  const [perf, setPerf] = useState<Record<number, PerfDraft>>(() => {
+    const init: Record<number, PerfDraft> = {};
+    studentsProp.forEach(s => {
+      init[pkOf(s)] = {
+        project_name: s.project_name || "",
+        specific_award: s.specific_award || "",
+        student_role: s.student_role || "Participant",
+        proofFile: null,
+        clear_proof: false,
+        saving: false,
+        msg: null,
+      };
+    });
+    return init;
+  });
+
+  const patchPerf = (id: number, patch: Partial<PerfDraft>) => {
+    setPerf(prev => ({
+      ...prev,
+      [id]: { ...(prev[id] || {
+        project_name: "", specific_award: "", student_role: "Participant",
+        proofFile: null, clear_proof: false, saving: false, msg: null,
+      }), ...patch },
+    }));
+  };
+
+  const savePerf = async (s: RosterStudent) => {
+    const id = pkOf(s);
+    const draft = perf[id];
+    if (!draft || !postUpdate) return;
+    patchPerf(id, { saving: true, msg: null });
+    try {
+      const fd = new FormData();
+      if (s.enrollment_id) fd.append("enrollment_id", String(s.enrollment_id));
+      fd.append("student_id", String(id));
+      fd.append("project_name", draft.project_name);
+      fd.append("specific_award", draft.specific_award);
+      fd.append("student_role", draft.student_role);
+      if (draft.clear_proof) fd.append("clear_proof", "1");
+      if (draft.proofFile) fd.append("proof_file", draft.proofFile);
+      const res = await fetch(postUpdate, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: fd,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.ok === false) {
+        patchPerf(id, { saving: false, msg: json.message || "儲存失敗" });
+        return;
+      }
+      setStudents(prev => prev.map(row => pkOf(row) === id ? {
+        ...row,
+        project_name: json.project_name ?? draft.project_name,
+        specific_award: json.specific_award ?? draft.specific_award,
+        student_role: json.student_role ?? draft.student_role,
+        proof_path: json.proof_path ?? row.proof_path,
+        proof_url: json.proof_url ?? row.proof_url,
+      } : row));
+      patchPerf(id, {
+        saving: false,
+        proofFile: null,
+        clear_proof: false,
+        project_name: json.project_name ?? draft.project_name,
+        specific_award: json.specific_award ?? draft.specific_award,
+        student_role: json.student_role ?? draft.student_role,
+        msg: "已儲存",
+      });
+    } catch {
+      patchPerf(id, { saving: false, msg: "儲存失敗，請重試。" });
+    }
+  };
+
+  const cellInput: React.CSSProperties = {
+    width: "100%", padding: "6px 8px", fontSize: 12, fontFamily: F,
+    border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.sm,
+    background: "#fff", color: ERP.colors.textPrimary, boxSizing: "border-box",
+  };
 
   const activeTabData = eligibleTabs.find(t => t.form === activeTab) || eligibleTabs[0];
 
@@ -360,56 +459,149 @@ export const Screen_ActivityRoster: React.FC<{
         borderRadius: ERP.radius.lg, overflow: "hidden", boxShadow: ERP.shadow.xs,
       }}>
         <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 800, borderBottom: `1px solid ${ERP.colors.border}` }}>
-          已報名名單 Current Roster
+          已報名名單 · 參賽表現 Current Roster & Performance
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: ERP.colors.pageBg, textAlign: "left" as const }}>
-              {["班別", "學號", "中文姓名", "英文姓名", "班號", "操作 Action"].map(h => (
-                <th key={h} style={{ padding: "10px 14px", fontWeight: 700, color: ERP.colors.textSecondary, borderBottom: `1px solid ${ERP.colors.border}` }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {students.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ padding: "28px 14px", textAlign: "center", color: ERP.colors.textMuted }}>
-                  尚未有學生報名此活動。請使用上方智能匯入或年級分頁勾選。
-                </td>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 980 }}>
+            <thead>
+              <tr style={{ background: ERP.colors.pageBg, textAlign: "left" as const }}>
+                {["班別", "學生", "參賽作品 Project", "具體獎項 Award", "參與角色 Role", "證明文件 Proof", "操作"].map(h => (
+                  <th key={h} style={{ padding: "10px 12px", fontWeight: 700, color: ERP.colors.textSecondary, borderBottom: `1px solid ${ERP.colors.border}`, whiteSpace: "nowrap" as const }}>{h}</th>
+                ))}
               </tr>
-            )}
-            {students.map(s => (
-              <tr key={s.id}>
-                <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.border}` }}>{s.class_name || "—"}</td>
-                <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.border}`, fontFamily: ERP.font.mono }}>{s.student_id}</td>
-                <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.border}`, fontWeight: 700 }}>{s.name_zh_hk || "—"}</td>
-                <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.border}`, color: ERP.colors.textSecondary }}>{s.name_en || "—"}</td>
-                <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.border}` }}>{s.class_number || "—"}</td>
-                <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.border}` }}>
-                  {aid > 0 && (
-                    <form
-                      action={`/activities/roster/${aid}/remove/${s.id}`}
-                      method="POST"
-                      style={{ display: "inline" }}
-                      onSubmit={e => { if (!window.confirm("確定要移除此學生嗎？(Are you sure?)")) e.preventDefault(); }}
-                    >
-                      <button type="submit" style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        padding: "5px 10px",
-                        border: `1px solid ${ERP.colors.red}44`,
-                        borderRadius: ERP.radius.md,
-                        background: ERP.colors.redLight, color: ERP.colors.red,
-                        fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+            </thead>
+            <tbody>
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ padding: "28px 14px", textAlign: "center", color: ERP.colors.textMuted }}>
+                    尚未有學生報名此活動。請使用上方智能匯入或年級分頁勾選。
+                  </td>
+                </tr>
+              )}
+              {students.map(s => {
+                const id = pkOf(s);
+                const d = perf[id] || {
+                  project_name: s.project_name || "",
+                  specific_award: s.specific_award || "",
+                  student_role: s.student_role || "Participant",
+                  proofFile: null,
+                  clear_proof: false,
+                  saving: false,
+                  msg: null,
+                };
+                const proofUrl = d.clear_proof ? "" : (s.proof_url || "");
+                return (
+                  <tr key={id}>
+                    <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top" }}>
+                      <div style={{ fontWeight: 700 }}>{s.class_name || "—"}</div>
+                      <div style={{ fontSize: 11, color: ERP.colors.textMuted, fontFamily: ERP.font.mono }}>{s.student_id}</div>
+                    </td>
+                    <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top" }}>
+                      <div style={{ fontWeight: 700 }}>{s.name_zh_hk || s.name || "—"}</div>
+                      <div style={{ fontSize: 11, color: ERP.colors.textMuted }}>{s.name_en || ""}{s.class_number ? ` · #${s.class_number}` : ""}</div>
+                    </td>
+                    <td style={{ padding: "8px 10px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top", minWidth: 140 }}>
+                      <input
+                        value={d.project_name}
+                        onChange={e => patchPerf(id, { project_name: e.target.value, msg: null })}
+                        placeholder="作品名稱"
+                        style={cellInput}
+                      />
+                    </td>
+                    <td style={{ padding: "8px 10px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top", minWidth: 130 }}>
+                      <input
+                        value={d.specific_award}
+                        onChange={e => patchPerf(id, { specific_award: e.target.value, msg: null })}
+                        placeholder="Champion / Silver…"
+                        style={cellInput}
+                      />
+                    </td>
+                    <td style={{ padding: "8px 10px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top", minWidth: 120 }}>
+                      <select
+                        value={d.student_role}
+                        onChange={e => patchPerf(id, { student_role: e.target.value, msg: null })}
+                        style={{ ...cellInput, cursor: "pointer" }}
+                      >
+                        {STUDENT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: "8px 10px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top", minWidth: 160 }}>
+                      <label style={{
+                        display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 8px",
+                        borderRadius: ERP.radius.sm, border: `1px dashed ${ERP.colors.border}`,
+                        fontSize: 11, fontWeight: 700, color: ERP.colors.textSecondary, cursor: "pointer", background: ERP.colors.pageBg,
                       }}>
-                        <Trash2 size={12} /> 移除
-                      </button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                        <Upload size={11} />
+                        {d.proofFile ? d.proofFile.name.slice(0, 18) : "上傳"}
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          style={{ display: "none" }}
+                          onChange={e => patchPerf(id, { proofFile: e.target.files?.[0] || null, clear_proof: false, msg: null })}
+                        />
+                      </label>
+                      {proofUrl && !d.proofFile && (
+                        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                          <a href={proofUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: ERP.colors.accent, textDecoration: "none" }}>
+                            <Link2 size={11} /> 檢視
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => patchPerf(id, { clear_proof: true, msg: null })}
+                            style={{ border: "none", background: "transparent", color: ERP.colors.red, fontSize: 11, cursor: "pointer", fontFamily: F }}
+                          >
+                            清除
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "8px 10px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top", whiteSpace: "nowrap" as const }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                        <button
+                          type="button"
+                          disabled={d.saving || !postUpdate}
+                          onClick={() => savePerf(s)}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "5px 10px", border: "none", borderRadius: ERP.radius.md,
+                            background: ERP.colors.accent, color: "#fff",
+                            fontSize: 12, fontWeight: 700, fontFamily: F, cursor: d.saving ? "wait" : "pointer",
+                            opacity: d.saving ? 0.7 : 1,
+                          }}
+                        >
+                          <Save size={12} /> {d.saving ? "…" : "儲存"}
+                        </button>
+                        {aid > 0 && (
+                          <form
+                            action={`/activities/roster/${aid}/remove/${s.id}`}
+                            method="POST"
+                            onSubmit={e => { if (!window.confirm("確定要移除此學生嗎？(Are you sure?)")) e.preventDefault(); }}
+                          >
+                            <button type="submit" style={{
+                              display: "inline-flex", alignItems: "center", gap: 5,
+                              padding: "5px 10px",
+                              border: `1px solid ${ERP.colors.red}44`,
+                              borderRadius: ERP.radius.md,
+                              background: ERP.colors.redLight, color: ERP.colors.red,
+                              fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                            }}>
+                              <Trash2 size={12} /> 移除
+                            </button>
+                          </form>
+                        )}
+                        {d.msg && (
+                          <span style={{ fontSize: 11, color: d.msg.includes("失敗") ? ERP.colors.red : ERP.colors.success, fontWeight: 600 }}>
+                            {d.msg}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

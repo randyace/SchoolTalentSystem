@@ -59,6 +59,13 @@ type InitialActivity = {
     stage_name_en?: string;
     date?: string;
   }>;
+  organizer?: string;
+  co_organizer?: string;
+  competition_track?: string;
+  venue?: string;
+  external_url?: string;
+  issue_date?: string;
+  signatory_name_title?: string;
 };
 
 function parseScheduleLocal(text: string): Stage[] {
@@ -253,6 +260,13 @@ export const Screen_ActivityForm: React.FC<{
   });
   const [deletedSchedules, setDeletedSchedules] = useState<number[]>([]);
   const [schedulePaste, setSchedulePaste] = useState("");
+  const [organizer, setOrganizer] = useState(initialActivity?.organizer || "");
+  const [coOrganizer, setCoOrganizer] = useState(initialActivity?.co_organizer || "");
+  const [competitionTrack, setCompetitionTrack] = useState(initialActivity?.competition_track || "");
+  const [venue, setVenue] = useState(initialActivity?.venue || "");
+  const [externalUrl, setExternalUrl] = useState(initialActivity?.external_url || "");
+  const [issueDate, setIssueDate] = useState(initialActivity?.issue_date || "");
+  const [signatory, setSignatory] = useState(initialActivity?.signatory_name_title || "");
   const [aiBusy, setAiBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(flashError || null);
@@ -470,6 +484,13 @@ export const Screen_ActivityForm: React.FC<{
           acorn_weights: acornWeights,
           achievement_level_id: levelId === "" ? null : Number(levelId),
           status,
+          organizer: organizer.trim(),
+          co_organizer: coOrganizer.trim(),
+          competition_track: competitionTrack.trim(),
+          venue: venue.trim(),
+          external_url: externalUrl.trim(),
+          issue_date: issueDate.trim(),
+          signatory_name_title: signatory.trim(),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -754,6 +775,72 @@ export const Screen_ActivityForm: React.FC<{
               可參與年級（Form），例如 F3 涵蓋 3A / 3B / 3C。已選：{forms.join("、") || "（無）"}
             </div>
           </Field>
+        </Section>
+
+        <Section label="外部 / 官方資料" sub="External / Official Details">
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+            <Field label="主辦機構 Organizer" hint="必填（校外比賽）">
+              <input
+                value={organizer}
+                onChange={e => setOrganizer(e.target.value)}
+                placeholder="例：香港科技創新協會"
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="協辦機構 Co-organizer" hint="Optional">
+              <input
+                value={coOrganizer}
+                onChange={e => setCoOrganizer(e.target.value)}
+                placeholder="例：教育局"
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+            <Field label="比賽組別 / 項目 Competition Track" hint="Optional">
+              <input
+                value={competitionTrack}
+                onChange={e => setCompetitionTrack(e.target.value)}
+                placeholder="例：初中組 · STEM 發明"
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="地點 Venue">
+              <input
+                value={venue}
+                onChange={e => setVenue(e.target.value)}
+                placeholder="例：香港會議展覽中心"
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+          <Field label="官方網址 External URL" hint="Optional">
+            <input
+              type="url"
+              value={externalUrl}
+              onChange={e => setExternalUrl(e.target.value)}
+              placeholder="https://"
+              style={inputStyle}
+            />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+            <Field label="證書簽發日期 Issue Date">
+              <input
+                type="date"
+                value={issueDate}
+                onChange={e => setIssueDate(e.target.value)}
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="簽發人姓名及職銜 Signatory" hint="Optional">
+              <input
+                value={signatory}
+                onChange={e => setSignatory(e.target.value)}
+                placeholder="例：陳大文 主席"
+                style={inputStyle}
+              />
+            </Field>
+          </div>
         </Section>
 
         <Section label="賽程 / 日程" sub="Sub-events & Schedule">
