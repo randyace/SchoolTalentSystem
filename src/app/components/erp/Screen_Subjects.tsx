@@ -1009,10 +1009,10 @@ export const Screen_Subjects: React.FC<Props> = ({
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E", fontFamily: F }}>設定測考評分比重</div>
                 <div style={{ fontSize: 11, color: "#B45309", marginTop: 2, fontFamily: F }}>設定上／下學期比重與分卷（閱讀、寫作等）</div>
               </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {WEIGHT_COMPONENTS.map(c => (
-                  <div key={c.key} title={c.zhLabel} style={{ width: 8, height: 28, borderRadius: 3, background: c.color, opacity: 0.75 }} />
-                ))}
+              <div style={{ display: "flex", gap: 4 }} aria-hidden>
+                <div title="上學期 Term 1" style={{ width: 8, height: 28, borderRadius: 3, background: "#6366F1", opacity: 0.85 }} />
+                <div title="下學期 Term 2" style={{ width: 8, height: 28, borderRadius: 3, background: "#059669", opacity: 0.85 }} />
+                <div title="分卷 Sub-papers" style={{ width: 8, height: 28, borderRadius: 3, background: "#D97706", opacity: 0.75 }} />
               </div>
             </button>
 

@@ -92,8 +92,8 @@ const NAV_GROUPS: NavGroup[] = [
     id: "activities-talent", zhTitle: "活動與人才", enTitle: "Activities & Talent",
     items: [
       { id: "activities",       zhLabel: "活動／比賽／事件", enLabel: "Activities / Events",  icon: <CalendarDays size={15} />, screenId: "1.D.1", href: "/activity" },
-      { id: "achievements",     zhLabel: "成就與證書",       enLabel: "Achievements & Certs", icon: <Award size={15} />,        screenId: "1.D.4", href: "/certificate", todo: true },
-      { id: "group-awards",     zhLabel: "證書批量建立",     enLabel: "Bulk Certificate Gen", icon: <Layers size={15} />,       screenId: "1.D.4B", href: "/certificate", todo: true },
+      { id: "achievements",     zhLabel: "成就與證書",       enLabel: "Achievements & Certs", icon: <Award size={15} />,        screenId: "1.D.4", href: "/achievements", todo: false },
+      { id: "group-awards",     zhLabel: "證書範本管理",     enLabel: "Certificate Templates", icon: <Layers size={15} />,       screenId: "1.D.4B", href: "/certificates", todo: false },
       { id: "talent-filter",    zhLabel: "人才篩選與匯出",   enLabel: "Talent Pool & Filter", icon: <Users size={15} />,        screenId: "1.D.5", href: "/talent", todo: true },
       { id: "exemplar-library", zhLabel: "成果課件庫",       enLabel: "Exemplar Library",     icon: <FolderOpen size={15} />,   screenId: "1.D.7", href: "/dashboard", todo: true },
       { id: "club-management",  zhLabel: "學會管理",         enLabel: "Club & Society Mgmt",  icon: <Users size={15} />,        screenId: "1.D.8", href: "/clubs" },
@@ -109,6 +109,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "system-admin", zhTitle: "系統管理", enTitle: "System Admin",
     items: [
+      { id: "system-settings",   zhLabel: "系統設定",         enLabel: "System Settings",      icon: <Settings    size={15} />, screenId: "1.F.S",   href: "/settings" },
       { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings", todo: true },
       { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster", todo: true },
       { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/ai-workspace", todo: true },

@@ -15,6 +15,9 @@ import { Screen_ApprovalInbox } from "./components/erp/Screen_ApprovalInbox";
 import { Screen_TalentFilter } from "./components/erp/Screen_TalentFilter";
 import { Screen_BatchOCR } from "./components/erp/Screen_BatchOCR";
 import { Screen_BulkGroupAward } from "./components/erp/Screen_BulkGroupAward";
+import { Screen_CertificateTemplates } from "./components/erp/Screen_CertificateTemplates";
+import { Screen_Achievements } from "./components/erp/Screen_Achievements";
+import { Screen_SystemSettings } from "./components/erp/Screen_SystemSettings";
 import { Screen_AIDataAssistant } from "./components/erp/Screen_AIDataAssistant";
 import { Screen_AIWritingWorkspace } from "./components/erp/Screen_AIWritingWorkspace";
 import { Screen_SystemAdminHome } from "./components/erp/Screen_SystemAdminHome";
@@ -22,6 +25,8 @@ import { Screen_APIDocs } from "./components/erp/Screen_APIDocs";
 import { Frame03_ActivityTable } from "./components/erp/Frame03_ActivityTable";
 import { Screen_ActivityForm } from "./components/erp/Screen_ActivityForm";
 import { Screen_ActivityRoster } from "./components/erp/Screen_ActivityRoster";
+import { Screen_ActivityWalkIns } from "./components/erp/Screen_ActivityWalkIns";
+import { Screen_ActivityAttendance } from "./components/erp/Screen_ActivityAttendance";
 import { Screen_ScoreEntry } from "./components/erp/Screen_ScoreEntry";
 import { Screen_Assessments } from "./components/erp/Screen_Assessments";
 import { Screen01_Dashboard } from "./components/lalp/Screen01_Dashboard";
@@ -31,6 +36,7 @@ import { Screen_Staff } from "./components/erp/Screen_Staff";
 import { Screen_ClubManagement, ClubRosterView } from "./components/erp/Screen_ClubManagement";
 import { Screen_GroupProjects } from "./components/erp/Screen_GroupProjects";
 import { Screen_ProjectGroups } from "./components/erp/Screen_ProjectGroups";
+import { Screen_PhpContent, type PhpContentAssets } from "./components/erp/Screen_PhpContent";
 
 export type StsBridgePage =
   | "dashboard"
@@ -46,13 +52,19 @@ export type StsBridgePage =
   | "activities"
   | "activity-form"
   | "activity-roster"
+  | "activity-walkins"
+  | "activity-attendance"
   | "approvals"
+  | "achievements"
+  | "achievement-review"
   | "certificates"
   | "certificate-bulk"
+  | "certificate-templates"
   | "talent"
   | "ai-assistant"
   | "ai-workspace"
   | "settings"
+  | "system-settings"
   | "api-docs"
   | "scores"
   | "assessments"
@@ -66,6 +78,9 @@ export interface StsBridgeConfig {
   page: StsBridgePage;
   activeNavId?: string;
   title?: string;
+  /** Legacy CI4 HTML fragment rendered inside AppShell (no second layout). */
+  htmlContent?: string;
+  phpAssets?: PhpContentAssets;
   currentUser?: {
     id?: number;
     name?: string;
@@ -231,12 +246,21 @@ export interface StsBridgeConfig {
   storeUrl?: string;
   updateUrl?: string;
   editUrlBase?: string;
+  scanUrl?: string;
+  schedulesUrlBase?: string;
   activities?: any[];
   activityId?: number | null;
   initialActivity?: any;
   targetForms?: string[];
   achievementLevels?: any[];
   enrollmentCount?: number;
+  walkInCount?: number;
+  walkInsUrl?: string;
+  walkIns?: any[];
+  attendanceUrl?: string;
+  groupedRecords?: Record<string, any[]>;
+  totalCount?: number;
+  enrollUrl?: string;
   rosterUrl?: string;
   activityName?: string;
   students?: any[];
@@ -279,6 +303,38 @@ export interface StsBridgeConfig {
   createGroupUrl?: string;
   assignUrl?: string;
   removeUrl?: string;
+  /** Bulk certificate generator */
+  studentsUrlBase?: string;
+  generatePdfUrl?: string;
+  /** From system_settings (Settings UI) */
+  schoolLogoUrl?: string;
+  schoolLogoPath?: string;
+  principalName?: string;
+  principalTitle?: string;
+  schoolName?: string;
+  signatureLine?: string;
+  customFields?: Array<{ id: number; field_name: string; display_label: string }>;
+  customFieldsUrl?: string;
+  templateId?: number | null;
+  templateTitle?: string;
+  saveTemplateUrl?: string;
+  bgImageUrl?: string;
+  initialConfig?: Record<string, unknown> | null;
+  /** Certificate template library */
+  templates?: Array<{ id: number; title: string; activity_label?: string; updated_at?: string }>;
+  cloneUrlBase?: string;
+  editUrlBase?: string;
+  csrfName?: string;
+  csrfHash?: string;
+  /** Achievement batch listing */
+  batches?: Array<{
+    id: number;
+    title: string;
+    activity_label?: string;
+    total_files?: number;
+    reviewed_count?: number;
+    status?: string;
+  }>;
 }
 
 declare global {
@@ -539,6 +595,9 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           smartImportUrl={config.smartImportUrl || ""}
           updateRoleUrl={config.updateRoleUrl || ""}
           removeUrl={config.removeUrl || ""}
+          scanUrl={config.scanUrl || "/api/attendance/scan"}
+          walkInCount={config.walkInCount ?? 0}
+          walkInsUrl={config.walkInsUrl || ""}
           flashSuccess={config.flashSuccess}
           flashError={config.flashError}
         />
@@ -588,6 +647,8 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           activities={config.activities as any}
           createUrl={config.createUrl || "/activities/create"}
           editUrlBase={config.editUrlBase || "/activities/edit"}
+          scanUrl={config.scanUrl || "/api/attendance/scan"}
+          schedulesUrlBase={config.schedulesUrlBase || "/api/attendance/schedules"}
         />
       ));
 
@@ -600,6 +661,9 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           targetForms={config.targetForms}
           achievementLevels={config.achievementLevels || []}
           enrollmentCount={config.enrollmentCount ?? 0}
+          walkInCount={config.walkInCount ?? 0}
+          walkInsUrl={config.walkInsUrl || ""}
+          attendanceUrl={config.attendanceUrl || ""}
           rosterUrl={config.rosterUrl || ""}
           storeUrl={config.storeUrl || "/activities/store"}
           listUrl={config.listUrl || "/activities"}
@@ -608,6 +672,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           parseDocumentUrl={config.parseDocumentUrl || "/activities/parse-document"}
           activityId={config.activityId ?? null}
           initialActivity={config.initialActivity}
+          scanUrl={config.scanUrl || "/api/attendance/scan"}
           flashSuccess={config.flashSuccess}
           flashError={config.flashError}
         />
@@ -630,14 +695,117 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         />
       ));
 
+    case "activity-walkins":
+      return wrap(nav || "activities", (
+        <Screen_ActivityWalkIns
+          activityId={config.activityId ?? null}
+          activityName={config.activityName || ""}
+          walkIns={config.walkIns || []}
+          enrollUrl={config.enrollUrl || ""}
+          rosterUrl={config.rosterUrl || "/activities"}
+          editUrl={config.editUrl || "/activities"}
+          listUrl={config.listUrl || "/activities"}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
+    case "activity-attendance":
+      return wrap(nav || "activities", (
+        <Screen_ActivityAttendance
+          activityId={config.activityId ?? null}
+          activityName={config.activityName || ""}
+          academicYear={config.academicYear}
+          groupedRecords={config.groupedRecords || {}}
+          totalCount={config.totalCount ?? 0}
+          editUrl={config.editUrl || "/activities"}
+          rosterUrl={config.rosterUrl || ""}
+          listUrl={config.listUrl || "/activities"}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
     case "approvals":
       return wrap(nav || "approval-inbox", <Screen_ApprovalInbox />);
+
+    case "achievements":
+      return wrap(
+        nav || "achievements",
+        <Screen_Achievements
+          batches={config.batches || []}
+          activities={(config.activities || []).map((a: any) => ({
+            id: Number(a.id),
+            label: String(a.label || a.name_zh_hk || a.name_en || `Activity #${a.id}`),
+          }))}
+          createUrl={config.storeUrl || "/achievements/batch/create"}
+          reviewUrlBase={config.editUrlBase || "/achievements/review"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />,
+      );
+
+    case "achievement-review":
+      return wrap(
+        nav || "achievements",
+        <Screen_PhpContent
+          html={config.htmlContent || "<p class=\"text-muted\">尚無內容</p>"}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+          assets={config.phpAssets || { select2: true }}
+        />,
+      );
 
     case "certificates":
       return wrap(nav || "achievements", <Screen_BatchOCR />);
 
+    case "certificate-templates":
+      return wrap(nav || "group-awards", (
+        <Screen_CertificateTemplates
+          templates={(config.templates as any) || []}
+          storeUrl={config.storeUrl || "/certificates/store"}
+          editUrlBase={config.editUrlBase || "/certificates/edit"}
+          cloneUrlBase={config.cloneUrlBase || "/certificates/clone"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
     case "certificate-bulk":
-      return wrap(nav || "group-awards", <Screen_BulkGroupAward onBack={() => go("/certificates")} />);
+      return wrap(nav || "group-awards", (
+        <Screen_BulkGroupAward
+          onBack={() => go(config.listUrl || "/certificates")}
+          activities={(config.activities || []).map((a: any) => ({
+            id: Number(a.id),
+            label: String(a.label || a.name_zh_hk || a.name_en || `Activity #${a.id}`),
+            name_zh_hk: a.name_zh_hk,
+            name_en: a.name_en,
+            academic_year: String(a.academic_year || ""),
+            start_date: String(a.start_date || ""),
+          }))}
+          studentsUrlBase={config.studentsUrlBase || "/certificates/activity-students"}
+          generatePdfUrl={config.generatePdfUrl || "/certificates/generate-pdf"}
+          customFieldsUrl={config.customFieldsUrl || "/certificates/custom-fields"}
+          schoolLogoUrl={config.schoolLogoUrl || ""}
+          schoolLogoPath={config.schoolLogoPath || ""}
+          principalName={config.principalName || ""}
+          principalTitle={config.principalTitle || "校長 Principal"}
+          schoolName={config.schoolName || "School Talent System"}
+          signatureLine={config.signatureLine || "_______________________"}
+          customFields={config.customFields || []}
+          templateId={config.templateId ?? null}
+          templateTitle={config.templateTitle || ""}
+          saveTemplateUrl={config.saveTemplateUrl || ""}
+          bgImageUrl={config.bgImageUrl || ""}
+          initialConfig={(config.initialConfig as any) || null}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
 
     case "talent":
       return wrap(nav || "talent-filter", <Screen_TalentFilter />);
@@ -648,10 +816,29 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
     case "ai-workspace":
       return wrap(nav || "ai-workspace", <Screen_AIWritingWorkspace onBack={() => go("/dashboard")} />);
 
+    case "system-settings":
+      return wrap(
+        nav || "system-settings",
+        <Screen_SystemSettings
+          schoolName={config.schoolName || ""}
+          principalName={config.principalName || ""}
+          principalTitle={config.principalTitle || ""}
+          logoUrl={config.schoolLogoUrl || ""}
+          logoPath={config.schoolLogoPath || ""}
+          updateUrl={config.storeUrl || "/settings/update"}
+          overviewUrl={config.listUrl || "/admin/settings"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />,
+      );
+
     case "settings":
       return wrap(nav || "system-admin-home", (
         <Screen_SystemAdminHome onNavigate={(id) => {
           const map: Record<string, string> = {
+            "system-settings": "/settings",
             "data-import": "/roster",
             "api-docs": "/api/docs",
             "prompt-portal": "/ai-workspace",

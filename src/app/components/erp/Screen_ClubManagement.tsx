@@ -11,8 +11,9 @@ import {
   ArrowLeft, Trash2, Check, ChevronDown, Home, RefreshCw,
   Shield, Star, Award, Zap, Music2, Camera, Monitor,
   Leaf, Heart, Dumbbell, X, AlertTriangle, ClipboardPaste, Layers,
-  Sliders, Trophy, Cloud,
+  Sliders, Trophy, Cloud, QrCode,
 } from "lucide-react";
+import { AttendanceScanner } from "./AttendanceScanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ClubCategory = "arts" | "tech" | "sports" | "service" | "academic" | "culture";
@@ -370,6 +371,9 @@ export const ClubRosterView: React.FC<{
   smartImportUrl?: string;
   updateRoleUrl?: string;
   removeUrl?: string;
+  scanUrl?: string;
+  walkInCount?: number;
+  walkInsUrl?: string;
   flashSuccess?: string;
   flashError?: string;
 }> = ({
@@ -389,6 +393,9 @@ export const ClubRosterView: React.FC<{
   smartImportUrl = "",
   updateRoleUrl = "",
   removeUrl = "",
+  scanUrl = "/api/attendance/scan",
+  walkInCount = 0,
+  walkInsUrl = "",
   flashSuccess,
   flashError,
 }) => {
@@ -434,6 +441,7 @@ export const ClubRosterView: React.FC<{
   const [activeTab, setActiveTab] = useState(eligibleTabs[0]?.form || "");
   const [pasteText, setPasteText] = useState("");
   const [parseMsg, setParseMsg] = useState<string | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const rebalanceEvenly = (tags: string[]) => {
     if (tags.length === 0) { setAcornWeights({}); return; }
@@ -697,9 +705,38 @@ export const ClubRosterView: React.FC<{
             </div>
           </div>
 
-          <button onClick={() => setShowAddModal(true)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:ERP.radius.md, border:"none", background:`linear-gradient(135deg, ${cs.accent}, ${cs.accent}CC)`, color:"#fff", fontSize:13, fontWeight:700, fontFamily:F, cursor:"pointer", boxShadow:`0 2px 10px ${cs.accent}40` }}>
-            <UserPlus size={14} />+ 加入學生 Add Student
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
+            <button
+              type="button"
+              onClick={() => setQrOpen(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: ERP.radius.md,
+                border: "1px solid #99F6E4", background: "#F0FDFA",
+                color: "#0F766E", fontSize: 13, fontWeight: 700, fontFamily: F, cursor: "pointer",
+              }}
+            >
+              <QrCode size={14} /> 📱 QR 簽到
+                </button>
+            {walkInCount > 0 && walkInsUrl && (
+              <a
+                href={walkInsUrl}
+                className="btn btn-danger"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: ERP.radius.md,
+                  border: "1px solid #FECACA", background: "#DC2626", color: "#fff",
+                  fontSize: 13, fontWeight: 800, fontFamily: F, textDecoration: "none",
+                  boxShadow: "0 2px 8px rgba(220,38,38,0.35)",
+                }}
+              >
+                🚨 未報名學生 ({walkInCount})
+              </a>
+            )}
+            <button onClick={() => setShowAddModal(true)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:ERP.radius.md, border:"none", background:`linear-gradient(135deg, ${cs.accent}, ${cs.accent}CC)`, color:"#fff", fontSize:13, fontWeight:700, fontFamily:F, cursor:"pointer", boxShadow:`0 2px 10px ${cs.accent}40` }}>
+              <UserPlus size={14} />+ 加入學生 Add Student
+            </button>
+          </div>
         </div>
       </div>
 
@@ -760,10 +797,10 @@ export const ClubRosterView: React.FC<{
                         <button type="button" onClick={() => setCategories(prev => prev.filter(x => x !== c))} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, color: "#C2410C", display: "flex" }}>
                           <X size={11} />
                         </button>
-                      </span>
+                </span>
                     );
                   })}
-                </div>
+              </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
                     value={categoryDraft}
@@ -774,15 +811,15 @@ export const ClubRosterView: React.FC<{
                   />
                   <button type="button" onClick={() => addCategoryTag(categoryDraft)} style={{ padding: "8px 12px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: F }}>
                     加入標籤
-                  </button>
-                </div>
-              </div>
+              </button>
+            </div>
+          </div>
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={fieldLabel}>成立年份 Established Year</span>
                 <input name="established_year" type="number" min={1900} max={2100} value={founded} onChange={e => setFounded(e.target.value)} style={fieldInput} />
               </label>
-            </div>
-          </div>
+        </div>
+      </div>
 
           {/* ── Year Settings ── */}
           <div style={{ background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.lg, padding: 18, display: "flex", flexDirection: "column", gap: 14, boxShadow: ERP.shadow.xs }}>
@@ -1103,8 +1140,8 @@ export const ClubRosterView: React.FC<{
       {/* ── Roster actions ── */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ position:"relative", maxWidth:340, flex: 1, minWidth: 220 }}>
-          <Search size={14} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:ERP.colors.textMuted, pointerEvents:"none" }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋成員姓名、學號…" style={{ width:"100%", padding:"8px 10px 8px 32px", boxSizing:"border-box" as const, borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, background:ERP.colors.surface, color:ERP.colors.textPrimary, fontSize:13, fontFamily:F, outline:"none" }} />
+        <Search size={14} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:ERP.colors.textMuted, pointerEvents:"none" }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋成員姓名、學號…" style={{ width:"100%", padding:"8px 10px 8px 32px", boxSizing:"border-box" as const, borderRadius:ERP.radius.md, border:`1px solid ${ERP.colors.border}`, background:ERP.colors.surface, color:ERP.colors.textPrimary, fontSize:13, fontFamily:F, outline:"none" }} />
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button
@@ -1287,6 +1324,16 @@ export const ClubRosterView: React.FC<{
           </div>
         </div>
       </div>
+
+      <AttendanceScanner
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        entityType="club"
+        entityId={Number(club.id) || 0}
+        entityLabel={nameZh || club.zhName || "學會例會"}
+        scanUrl={scanUrl}
+        schedules={[]}
+      />
     </div>
   );
 };
@@ -1394,9 +1441,9 @@ export const Screen_ClubManagement: React.FC<{
             </button>
           </form>
         ) : (
-          <button style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", border:"none", borderRadius:ERP.radius.md, background:"linear-gradient(135deg, #F97316, #EF4444)", color:"#fff", fontSize:13, fontWeight:700, fontFamily:F, cursor:"pointer", boxShadow:"0 2px 10px rgba(249,115,22,0.40)" }}>
-            <UserPlus size={14} />新增學會
-          </button>
+        <button style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", border:"none", borderRadius:ERP.radius.md, background:"linear-gradient(135deg, #F97316, #EF4444)", color:"#fff", fontSize:13, fontWeight:700, fontFamily:F, cursor:"pointer", boxShadow:"0 2px 10px rgba(249,115,22,0.40)" }}>
+          <UserPlus size={14} />新增學會
+        </button>
         )}
       </div>
 

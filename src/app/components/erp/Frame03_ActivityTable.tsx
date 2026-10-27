@@ -5,15 +5,17 @@
 import React, { useState, useEffect } from "react";
 import {
   Search, ChevronDown, ChevronLeft, ChevronRight,
-  Plus, Download, Filter, Pencil, Eye, X, Users,
+  Plus, Download, Filter, Pencil, X, Users,
   Save, ChevronRight as CRight, SlidersHorizontal,
   Upload, FileUp, Calendar, QrCode, Sparkles,
 } from "lucide-react";
 import { ERP, type AcornTagKey, type StatusKey } from "./erpTokens";
+import { AttendanceScanner } from "./AttendanceScanner";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 interface Activity {
   id: string;
+  dbId?: number;
   name: string;
   nameEn: string;
   category: string;
@@ -506,10 +508,14 @@ export const Frame03_ActivityTable: React.FC<{
   activities?: Activity[];
   createUrl?: string;
   editUrlBase?: string;
+  scanUrl?: string;
+  schedulesUrlBase?: string;
 }> = ({
   activities,
   createUrl = "/activities/create",
   editUrlBase = "/activities/edit",
+  scanUrl = "/api/attendance/scan",
+  schedulesUrlBase = "/api/attendance/schedules",
 }) => {
   const catalog = activities !== undefined ? activities : ACTIVITIES;
 
@@ -546,9 +552,8 @@ export const Frame03_ActivityTable: React.FC<{
   ]);
   const [dragOver, setDragOver] = useState(false);
 
-  // QR Sign-in modal
-  const [qrActive, setQrActive]           = useState(false);
-  const [qrStageLabel, setQrStageLabel]   = useState("");
+  // QR Attendance scanner
+  const [qrTarget, setQrTarget] = useState<{ id: number; label: string } | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -680,9 +685,10 @@ export const Frame03_ActivityTable: React.FC<{
     }, 1800);
   };
 
-  const openQr = (stageLabel: string) => {
-    setQrStageLabel(stageLabel);
-    setQrActive(true);
+  const openQr = (act: Activity) => {
+    const id = Number((act as Activity & { dbId?: number }).dbId ?? act.id);
+    if (!Number.isFinite(id) || id <= 0) return;
+    setQrTarget({ id, label: act.name || act.nameEn || `活動 #${id}` });
   };
 
   const statusCounts = {
@@ -952,6 +958,7 @@ export const Frame03_ActivityTable: React.FC<{
                           <Pencil size={11} /> 編輯
                         </button>
                         <button
+                          onClick={() => openQr(act)}
                           style={{
                             display: "inline-flex", alignItems: "center", gap: "4px",
                             padding: "4px 9px",
@@ -962,7 +969,7 @@ export const Frame03_ActivityTable: React.FC<{
                             fontFamily: ERP.font.family, whiteSpace: "nowrap",
                           }}
                         >
-                          <Eye size={11} /> 查看
+                          <QrCode size={11} /> QR 簽到
                         </button>
                       </div>
                     </div>
@@ -1121,17 +1128,18 @@ export const Frame03_ActivityTable: React.FC<{
                             <Pencil size={11} />
                             編輯
                           </button>
-                          {/* View button */}
+                          {/* QR Attendance */}
                           <button
-                            onMouseEnter={() => setHoveredBtn(`view-${act.id}`)}
+                            onClick={() => openQr(act)}
+                            onMouseEnter={() => setHoveredBtn(`qr-${act.id}`)}
                             onMouseLeave={() => setHoveredBtn(null)}
                             style={{
                               display: "inline-flex", alignItems: "center", gap: "4px",
                               padding: "4px 9px",
-                              border: `1px solid ${hoveredBtn === `view-${act.id}` ? ERP.colors.accent : ERP.colors.border}`,
+                              border: `1px solid ${hoveredBtn === `qr-${act.id}` ? "#0F766E" : ERP.colors.border}`,
                               borderRadius: ERP.radius.sm,
-                              background: hoveredBtn === `view-${act.id}` ? ERP.colors.accentPale : "transparent",
-                              color: hoveredBtn === `view-${act.id}` ? ERP.colors.accent : ERP.colors.textSecondary,
+                              background: hoveredBtn === `qr-${act.id}` ? "#F0FDFA" : "transparent",
+                              color: hoveredBtn === `qr-${act.id}` ? "#0F766E" : ERP.colors.textSecondary,
                               cursor: "pointer",
                               fontSize: "11px", fontWeight: 600,
                               fontFamily: ERP.font.family,
@@ -1139,8 +1147,8 @@ export const Frame03_ActivityTable: React.FC<{
                               whiteSpace: "nowrap",
                             }}
                           >
-                            <Eye size={11} />
-                            查看
+                            <QrCode size={11} />
+                            QR 簽到
                           </button>
                         </div>
                       </td>
@@ -1220,190 +1228,16 @@ export const Frame03_ActivityTable: React.FC<{
         )}
       </div>
 
-    {/* ── QR Sign-in Modal ─────────────────────────────────────────── */}
-    {qrActive && (
-      <>
-        {/* Backdrop */}
-        <div
-          onClick={() => setQrActive(false)}
-          style={{
-            position: "fixed", inset: 0,
-            background: "rgba(0,0,0,0.65)",
-            zIndex: 700,
-          }}
-        />
-
-        {/* Modal card */}
-        <div style={{
-          position: "fixed",
-          top: "50%", left: "50%",
-          transform: "translate(-50%,-50%)",
-          width: "min(440px, 92vw)",
-          background: "#fff",
-          borderRadius: "20px",
-          boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
-          zIndex: 710,
-          overflow: "hidden",
-        }}>
-          {/* Purple header */}
-          <div style={{
-            background: "linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)",
-            padding: "20px 24px 18px",
-            display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-          }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "9px", marginBottom: "4px" }}>
-                <QrCode size={20} color="#fff" />
-                <span style={{ fontSize: "17px", fontWeight: 800, color: "#fff", fontFamily: ERP.font.family }}>
-                  QR 簽到啟動中
-                </span>
-                <span style={{ fontSize: "10px", fontWeight: 600, color: "#C4B5FD", background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: "999px" }}>
-                  LIVE
-                </span>
-              </div>
-              <div style={{ fontSize: "12px", color: "#DDD6FE", fontFamily: ERP.font.family }}>
-                {qrStageLabel} · 請將此 QR code 投影給學生掃描
-              </div>
-            </div>
-            <button
-              onClick={() => setQrActive(false)}
-              style={{
-                width: "28px", height: "28px", flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: "rgba(255,255,255,0.15)", border: "none",
-                borderRadius: "50%", color: "#fff", cursor: "pointer",
-              }}
-            >
-              <X size={14} />
-            </button>
-          </div>
-
-          {/* Body */}
-          <div style={{ padding: "24px", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px" }}>
-
-            {/* Simulated QR code grid */}
-            <div style={{
-              width: "200px", height: "200px",
-              border: "4px solid #1E1B4B",
-              borderRadius: "12px",
-              padding: "12px",
-              background: "#fff",
-              position: "relative",
-              boxShadow: "0 8px 24px rgba(124,58,237,0.18)",
-            }}>
-              {/* Finder pattern corners */}
-              {[
-                { top: 0, left: 0 },
-                { top: 0, right: 0 },
-                { bottom: 0, left: 0 },
-              ].map((pos, i) => (
-                <div key={i} style={{
-                  position: "absolute",
-                  width: "44px", height: "44px",
-                  ...pos,
-                  border: "6px solid #1E1B4B",
-                  borderRadius: "6px",
-                }}>
-                  <div style={{ position: "absolute", inset: "6px", background: "#1E1B4B", borderRadius: "2px" }} />
-                </div>
-              ))}
-
-              {/* Simulated data modules — pseudo-random grid */}
-              <div style={{
-                position: "absolute",
-                top: "16px", left: "16px", right: "16px", bottom: "16px",
-                display: "grid",
-                gridTemplateColumns: "repeat(13, 1fr)",
-                gridTemplateRows: "repeat(13, 1fr)",
-                gap: "1px",
-              }}>
-                {Array.from({ length: 169 }).map((_, k) => {
-                  const col = k % 13, row = Math.floor(k / 13);
-                  const inFinder = (col < 4 && row < 4) || (col > 8 && row < 4) || (col < 4 && row > 8);
-                  const on = !inFinder && ((k * 1103515245 + 12345) & 0x1) === 0;
-                  return (
-                    <div key={k} style={{
-                      background: on ? "#1E1B4B" : "transparent",
-                      borderRadius: "1px",
-                    }} />
-                  );
-                })}
-              </div>
-
-              {/* Centre logo overlay */}
-              <div style={{
-                position: "absolute",
-                top: "50%", left: "50%",
-                transform: "translate(-50%,-50%)",
-                width: "36px", height: "36px",
-                background: "#7C3AED", borderRadius: "8px",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 2px 8px rgba(124,58,237,0.5)",
-              }}>
-                <QrCode size={18} color="#fff" />
-              </div>
-            </div>
-
-            {/* Stage label */}
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "16px", fontWeight: 800, color: "#1E1B4B", fontFamily: ERP.font.family }}>
-                {qrStageLabel}
-              </div>
-              <div style={{ fontSize: "12px", color: ERP.colors.textMuted, fontFamily: ERP.font.family, marginTop: "3px" }}>
-                使用學校 App 掃描上方 QR Code 即可簽到
-              </div>
-            </div>
-
-            {/* Reverse sign-in info box */}
-            <div style={{
-              width: "100%",
-              background: "#F5F3FF", border: "1px solid #C4B5FD",
-              borderRadius: "12px", padding: "14px 16px",
-              display: "flex", gap: "12px", alignItems: "flex-start",
-            }}>
-              <span style={{ fontSize: "22px", flexShrink: 0 }}>🔄</span>
-              <div>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#4C1D95", fontFamily: ERP.font.family, marginBottom: "4px" }}>
-                  逆向簽到 Reverse Sign-in 已啟用
-                </div>
-                <div style={{ fontSize: "11px", color: "#6D28D9", fontFamily: ERP.font.family, lineHeight: 1.7 }}>
-                  不在名單上的學生掃碼後，系統會自動產生「加入申請」。
-                  負責老師批准後即正式計入出席紀錄，無需手動新增。
-                </div>
-              </div>
-            </div>
-
-            {/* Action row */}
-            <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-              <button
-                onClick={() => setQrActive(false)}
-                style={{
-                  flex: 1, padding: "11px",
-                  border: `1px solid ${ERP.colors.border}`, borderRadius: "10px",
-                  background: "transparent", color: ERP.colors.textSecondary,
-                  cursor: "pointer", fontSize: "13px", fontWeight: 600,
-                  fontFamily: ERP.font.family,
-                }}
-              >
-                關閉 Close
-              </button>
-              <button
-                style={{
-                  flex: 2, padding: "11px",
-                  border: "none", borderRadius: "10px",
-                  background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)", color: "#fff",
-                  cursor: "pointer", fontSize: "13px", fontWeight: 700,
-                  fontFamily: ERP.font.family,
-                  boxShadow: "0 4px 14px rgba(124,58,237,0.35)",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                }}
-              >
-                <QrCode size={15} /> 全螢幕顯示 Fullscreen
-              </button>
-            </div>
-          </div>
-        </div>
-      </>
+    {qrTarget && (
+      <AttendanceScanner
+        open={!!qrTarget}
+        onClose={() => setQrTarget(null)}
+        entityType="activity"
+        entityId={qrTarget.id}
+        entityLabel={qrTarget.label}
+        scanUrl={scanUrl}
+        schedulesUrl={`${schedulesUrlBase}/${qrTarget.id}`}
+      />
     )}
     </div>
     </>

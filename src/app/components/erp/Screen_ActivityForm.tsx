@@ -4,9 +4,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Calendar, Check, ChevronDown, Layers, Plus,
-  Save, UserCog, X, Trophy, Sliders, Users, Sparkles, Zap, Upload, ClipboardPaste,
+  Save, UserCog, X, Trophy, Sliders, Users, Sparkles, Zap, Upload, ClipboardPaste, QrCode,
 } from "lucide-react";
 import { ERP, type AcornTagKey } from "./erpTokens";
+import { AttendanceScanner } from "./AttendanceScanner";
 
 const F = ERP.font.family;
 
@@ -18,7 +19,7 @@ type TeacherOpt = {
   role?: string;
   label?: string;
 };
-type Stage = { id: string; label: string; labelEn: string; date: string };
+type Stage = { id: string; dbId?: number; label: string; labelEn: string; date: string };
 
 type AchievementLevel = {
   id: number;
@@ -160,6 +161,9 @@ export const Screen_ActivityForm: React.FC<{
   targetForms?: string[];
   achievementLevels?: AchievementLevel[];
   enrollmentCount?: number;
+  walkInCount?: number;
+  walkInsUrl?: string;
+  attendanceUrl?: string;
   rosterUrl?: string;
   storeUrl?: string;
   listUrl?: string;
@@ -168,6 +172,7 @@ export const Screen_ActivityForm: React.FC<{
   parseDocumentUrl?: string;
   activityId?: number | null;
   initialActivity?: InitialActivity | null;
+  scanUrl?: string;
   flashSuccess?: string;
   flashError?: string;
 }> = ({
@@ -177,6 +182,9 @@ export const Screen_ActivityForm: React.FC<{
   targetForms = DEFAULT_FORMS,
   achievementLevels = [],
   enrollmentCount = 0,
+  walkInCount = 0,
+  walkInsUrl = "",
+  attendanceUrl = "",
   rosterUrl = "",
   storeUrl = "/activities/store",
   listUrl = "/activities",
@@ -185,6 +193,7 @@ export const Screen_ActivityForm: React.FC<{
   parseDocumentUrl = "/activities/parse-document",
   activityId = null,
   initialActivity = null,
+  scanUrl = "/api/attendance/scan",
   flashSuccess,
   flashError,
 }) => {
@@ -230,24 +239,25 @@ export const Screen_ActivityForm: React.FC<{
   });
   const [stages, setStages] = useState<Stage[]>(() => {
     const src = initialActivity?.stages || [];
-    if (src.length === 0) {
-      return [
-        { id: "s1", label: "初賽", labelEn: "Preliminary", date: "" },
-        { id: "s2", label: "決賽", labelEn: "Final", date: "" },
-      ];
-    }
-    return src.map((s, i) => ({
-      id: String(s.id || `s${i}`),
-      label: s.stage_name_zh_hk || "",
-      labelEn: s.stage_name_en || "",
-      date: s.date || "",
-    }));
+    // One-off / new activities: empty schedule list — never seed 初賽/決賽.
+    return src.map((s, i) => {
+      const dbId = typeof s.id === "number" && s.id > 0 ? s.id : undefined;
+      return {
+        id: dbId ? `db-${dbId}` : `s${i}-${Date.now()}`,
+        dbId,
+        label: s.stage_name_zh_hk || "",
+        labelEn: s.stage_name_en || "",
+        date: s.date || "",
+      };
+    });
   });
+  const [deletedSchedules, setDeletedSchedules] = useState<number[]>([]);
   const [schedulePaste, setSchedulePaste] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(flashError || null);
   const [okMsg, setOkMsg] = useState<string | null>(flashSuccess || null);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const teacherOpts = useMemo(() => {
     return (teachers || []).map(t => {
@@ -369,10 +379,12 @@ export const Screen_ActivityForm: React.FC<{
       setCategory("比賽");
       setAcornTags(["認知", "創意", "協作"]);
       rebalanceEvenly(["認知", "創意", "協作"]);
+      // Demo only — do not persist unless user keeps rows and saves.
       setStages([
         { id: `s${Date.now()}-1`, label: "初賽", labelEn: "Heats", date: "" },
         { id: `s${Date.now()}-2`, label: "決賽", labelEn: "Finals", date: "" },
       ]);
+      setDeletedSchedules([]);
       setOkMsg("✨ AI 預填示例已套用（正式上傳將呼叫 OCR / 文件解析 API）。");
       return;
     }
@@ -421,6 +433,13 @@ export const Screen_ActivityForm: React.FC<{
     }
   };
 
+  const removeStage = (ev: Stage) => {
+    if (ev.dbId && ev.dbId > 0) {
+      setDeletedSchedules(prev => (prev.includes(ev.dbId!) ? prev : [...prev, ev.dbId!]));
+    }
+    setStages(p => p.filter(s => s.id !== ev.id));
+  };
+
   const handleSave = async () => {
     if (!nameZh.trim() && !nameEn.trim()) {
       setMsg("請填寫活動名稱。");
@@ -441,10 +460,12 @@ export const Screen_ActivityForm: React.FC<{
           teacher_ids: teacherIds.map(Number).filter(n => n > 0),
           forms,
           stages: stages.map(s => ({
+            id: s.dbId || undefined,
             stage_name_zh_hk: s.label,
             stage_name_en: s.labelEn,
             date: s.date,
           })),
+          deleted_schedules: deletedSchedules,
           acorn_tags: acornTags,
           acorn_weights: acornWeights,
           achievement_level_id: levelId === "" ? null : Number(levelId),
@@ -484,23 +505,40 @@ export const Screen_ActivityForm: React.FC<{
           <ArrowLeft size={13} /> 返回活動總表
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: ERP.radius.md,
-            background: isEdit ? ERP.colors.accentPale : ERP.colors.successLight,
-            border: `1px solid ${isEdit ? ERP.colors.accentLight : "#6EE7B7"}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            {isEdit ? <Layers size={18} color={ERP.colors.accent} /> : <Plus size={18} color={ERP.colors.success} />}
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: ERP.colors.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" as const }}>
-              {isEdit ? "編輯活動 Edit Activity" : "新增活動 Create Activity"}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: ERP.radius.md,
+              background: isEdit ? ERP.colors.accentPale : ERP.colors.successLight,
+              border: `1px solid ${isEdit ? ERP.colors.accentLight : "#6EE7B7"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {isEdit ? <Layers size={18} color={ERP.colors.accent} /> : <Plus size={18} color={ERP.colors.success} />}
             </div>
-            <h1 style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 800, color: ERP.colors.textPrimary }}>
-              {nameZh || nameEn || (isEdit ? `活動 #${activityId}` : "填寫活動資料")}
-            </h1>
+            <div>
+              <div style={{ fontSize: 11, color: ERP.colors.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" as const }}>
+                {isEdit ? "編輯活動 Edit Activity" : "新增活動 Create Activity"}
+              </div>
+              <h1 style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 800, color: ERP.colors.textPrimary }}>
+                {nameZh || nameEn || (isEdit ? `活動 #${activityId}` : "填寫活動資料")}
+              </h1>
+            </div>
           </div>
+          {isEdit && (
+            <button
+              type="button"
+              onClick={() => setQrOpen(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: ERP.radius.md,
+                border: "1px solid #99F6E4", background: "#F0FDFA",
+                color: "#0F766E", fontWeight: 700, fontSize: 13,
+                cursor: "pointer", fontFamily: F,
+              }}
+            >
+              <QrCode size={15} /> 📱 QR 簽到
+            </button>
+          )}
         </div>
 
         {(okMsg || msg) && (
@@ -765,10 +803,24 @@ export const Screen_ActivityForm: React.FC<{
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Track DB schedule deletions for backend sync */}
+            {deletedSchedules.map(id => (
+              <input key={`del-${id}`} type="hidden" name="deleted_schedules[]" value={id} />
+            ))}
+            {stages.length === 0 && (
+              <div style={{
+                padding: "14px 12px", textAlign: "center" as const, fontSize: 12,
+                color: ERP.colors.textMuted, border: `1px dashed ${ERP.colors.border}`,
+                borderRadius: ERP.radius.md, background: "#FAFBFC",
+              }}>
+                尚未設定賽程階段（單次活動可留空）。可新增階段，或貼上文字後智能解析。
+              </div>
+            )}
             {stages.map((ev, idx) => (
               <div
                 key={ev.id}
                 className="schedule-row row gx-2 align-items-center flex-nowrap flex-md-wrap"
+                data-schedule-id={ev.dbId || ""}
                 style={{
                   display: "flex",
                   flexDirection: isMobile ? "column" : "row",
@@ -820,7 +872,7 @@ export const Screen_ActivityForm: React.FC<{
                       boxSizing: "border-box",
                     }}
                   />
-                  <button type="button" onClick={() => setStages(p => p.filter(s => s.id !== ev.id))} style={{
+                  <button type="button" onClick={() => removeStage(ev)} title="刪除階段" style={{
                     width: isMobile ? 36 : 28, height: isMobile ? 36 : 28,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.sm,
@@ -969,18 +1021,53 @@ export const Screen_ActivityForm: React.FC<{
                 }}>{enrollmentCount}</span>
               </div>
               {isEdit && rosterUrl ? (
-                <a href={rosterUrl} style={{
-                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 10,
-                  width: "100%", boxSizing: "border-box", padding: "9px 14px",
-                  borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.accentLight}`,
-                  background: ERP.colors.accentPale, color: ERP.colors.accent,
-                  fontSize: 13, fontWeight: 700, fontFamily: F, textDecoration: "none",
-                }}>
-                  <Users size={14} /> 管理名單
-                </a>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                  <a href={rosterUrl} style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    width: "100%", boxSizing: "border-box", padding: "9px 14px",
+                    borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.accentLight}`,
+                    background: ERP.colors.accentPale, color: ERP.colors.accent,
+                    fontSize: 13, fontWeight: 700, fontFamily: F, textDecoration: "none",
+                  }}>
+                    <Users size={14} /> 管理名單
+                  </a>
+                  {walkInCount > 0 && walkInsUrl && (
+                    <a
+                      href={walkInsUrl}
+                      className="btn btn-danger"
+                      style={{
+                        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        width: "100%", boxSizing: "border-box", padding: "9px 14px",
+                        borderRadius: ERP.radius.md, border: "1px solid #FECACA",
+                        background: "#DC2626", color: "#fff",
+                        fontSize: 13, fontWeight: 800, fontFamily: F, textDecoration: "none",
+                        boxShadow: "0 2px 8px rgba(220,38,38,0.35)",
+                        animation: "walkInPulse 1.6s ease-in-out infinite",
+                      }}
+                    >
+                      🚨 未報名學生 ({walkInCount})
+                    </a>
+                  )}
+                  {attendanceUrl && (
+                    <a
+                      href={attendanceUrl}
+                      className="btn btn-outline-success w-100 mt-2"
+                      style={{
+                        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        width: "100%", boxSizing: "border-box", padding: "9px 14px", marginTop: 0,
+                        borderRadius: ERP.radius.md, border: "1.5px solid #6EE7B7",
+                        background: "#ECFDF5", color: "#047857",
+                        fontSize: 13, fontWeight: 800, fontFamily: F, textDecoration: "none",
+                      }}
+                    >
+                      📅 簽到紀錄 (Attendance Records)
+                    </a>
+                  )}
+                </div>
               ) : (
                 <div style={{ marginTop: 8, fontSize: 11, color: ERP.colors.textMuted }}>儲存活動後即可管理參與名單。</div>
               )}
+              <style>{`@keyframes walkInPulse { 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.015); } }`}</style>
             </div>
           </div>
         </Section>
@@ -1007,6 +1094,18 @@ export const Screen_ActivityForm: React.FC<{
           </button>
         </div>
       </div>
+
+      {isEdit && activityId != null && activityId > 0 && (
+        <AttendanceScanner
+          open={qrOpen}
+          onClose={() => setQrOpen(false)}
+          entityType="activity"
+          entityId={activityId}
+          entityLabel={nameZh || nameEn || `活動 #${activityId}`}
+          scanUrl={scanUrl}
+          schedulesUrl={`/api/attendance/schedules/${activityId}`}
+        />
+      )}
     </div>
   );
 };
