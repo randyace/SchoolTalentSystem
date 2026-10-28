@@ -926,89 +926,16 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
     setAiHighlight(true);
   }, [envOptions, tierOptions, searchStudentsUrl, activeIdx]);
 
-  /** Process one live file: upload → OCR in background (does not block dropzone). */
-  const processLiveFile = useCallback(async (file: File, selectWhenDone: boolean) => {
-    tempIdSeq.current += 1;
-    const tempId = Date.now() * 100 + tempIdSeq.current;
-    const placeholder: CertData = {
-      id: tempId,
-      studentZh: "上傳中…",
-      studentEn: file.name.replace(/\.[^.]+$/, ""),
-      classCode: "—",
-      event: "—",
-      award: "—",
-      level: "—",
-      tier: "—",
-      date: "",
-      hours: "",
-      confidence: 0,
-      matchConf: 0,
-    };
-
-    const targetIdx = await new Promise<number>((resolve) => {
-      setDynCerts(prev => {
-        resolve(prev.length);
-        return [...prev, placeholder];
-      });
-    });
-    setForms(prev => [...prev, { level: "", tier: "", title: "", award: "", hours: "", date: "" }]);
-    setScanningIds(prev => new Set([...prev, tempId]));
-    if (selectWhenDone) setActiveIdx(targetIdx);
-
+  /** Run GB10 OCR for one persisted achievement card. */
+  const runOcrForAchievement = useCallback(async (
+    dbId: number,
+    imageUrl: string,
+    selectWhenDone: boolean,
+  ) => {
+    const gatewayTimeoutMsg =
+      "AI 伺服器運算逾時 (504)。請嘗試上傳較小檔案，或稍後再試。";
+    setScanningIds(prev => new Set([...prev, dbId]));
     try {
-      // multipart/form-data — NEVER set Content-Type manually (browser must add boundary)
-      const fd = new FormData();
-      // CI4: getFile('cert_files') / getFileMultiple('cert_files') / getFile('file')
-      fd.append("cert_files", file, file.name);
-      fd.append("cert_files[]", file, file.name);
-      fd.append("file", file, file.name);
-      const gatewayTimeoutMsg =
-        "AI 伺服器運算逾時 (504)。請嘗試上傳較小檔案，或稍後再試。";
-
-      const upRes = await fetch(uploadUrl, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          // Intentionally omit Content-Type so the browser sets multipart boundary
-        },
-        body: fd,
-      });
-      if (upRes.status === 504 || upRes.status === 502 || upRes.status === 524) {
-        throw new Error(gatewayTimeoutMsg);
-      }
-      const upJson = await upRes.json().catch(() => ({}));
-      if (!upRes.ok || !upJson.ok) throw new Error(upJson.message || `上傳失敗 (${upRes.status})`);
-      const item = upJson.item || (upJson.items && upJson.items[0]);
-      if (!item?.id) throw new Error("上傳回應缺少成就 ID");
-
-      const dbId = Number(item.id);
-      const imageUrl = String(item.image_url || "");
-
-      // Resolve possibly-shifted index after concurrent appends
-      const idxAfterUpload = await new Promise<number>((resolve) => {
-        setDynCerts(prev => {
-          const found = prev.findIndex(c => c.id === tempId);
-          resolve(found >= 0 ? found : targetIdx);
-          return prev.map(c => c.id === tempId ? {
-            ...c,
-            id: dbId,
-            dbId,
-            imageUrl,
-            studentZh: "OCR 掃描中…",
-          } : c);
-        });
-      });
-
-      setScanningIds(prev => {
-        const n = new Set(prev);
-        n.delete(tempId);
-        n.add(dbId);
-        return n;
-      });
-
-      // OCR can take 60–120s on GB10 — do not abort early in the browser
       const exController = typeof AbortController !== "undefined" ? new AbortController() : null;
       const exTimer = exController
         ? window.setTimeout(() => exController.abort(), 130_000)
@@ -1036,21 +963,24 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
         throw new Error(gatewayTimeoutMsg);
       }
       const exJson = await exRes.json().catch(() => ({}));
+      if (exRes.status === 413) {
+        throw new Error(
+          String(exJson.message || "檔案過大 (超過 4MB) 且自動壓縮失敗，請手動壓縮後再上載。")
+        );
+      }
       if (!exRes.ok || exJson.status !== "success") {
         throw new Error(exJson.message || "AI 萃取失敗");
       }
 
       const idxFinal = await new Promise<number>((resolve) => {
         setDynCerts(prev => {
-          const found = prev.findIndex(c => c.id === dbId || c.dbId === dbId || c.id === tempId);
-          resolve(found >= 0 ? found : idxAfterUpload);
+          const found = prev.findIndex(c => c.id === dbId || c.dbId === dbId);
+          resolve(found >= 0 ? found : 0);
           return prev;
         });
       });
 
       const ocrData = exJson.data || {};
-      // Let applyOcrToForm hydrate from matched_student (full entity) — do not pass a
-      // bare id that would short-circuit lookup and leave the chip as "待配對".
       await applyOcrToForm(idxFinal, ocrData, {
         id: dbId,
         dbId,
@@ -1059,26 +989,192 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
         matchConf: Number(exJson.matchConf || ocrData.matchConf || 0),
         fieldConf: ocrData.field_confidence || exJson.meta?.fields,
       });
+      if (selectWhenDone) setActiveIdx(idxFinal);
+    } catch (err: any) {
+      const msg = String(err?.message || "OCR 失敗");
+      setDynCerts(prev => prev.map(c => (c.id === dbId || c.dbId === dbId)
+        ? { ...c, studentZh: "失敗", event: msg }
+        : c));
+      throw err;
+    } finally {
       setScanningIds(prev => {
         const n = new Set(prev);
         n.delete(dbId);
-        n.delete(tempId);
         return n;
       });
-      if (selectWhenDone) setActiveIdx(idxFinal);
+    }
+  }, [extractUrl, applyOcrToForm]);
+
+  /**
+   * Process one live file: upload → expand multi-page PDF pages into cards → OCR each.
+   * A 10-page PDF becomes 10 separate actionable queue cards.
+   */
+  const processLiveFile = useCallback(async (file: File, selectWhenDone: boolean) => {
+    tempIdSeq.current += 1;
+    const tempId = Date.now() * 100 + tempIdSeq.current;
+    const baseLabel = file.name.replace(/\.[^.]+$/, "");
+    const placeholder: CertData = {
+      id: tempId,
+      studentZh: "上傳中…",
+      studentEn: baseLabel,
+      classCode: "—",
+      event: "—",
+      award: "—",
+      level: "—",
+      tier: "—",
+      date: "",
+      hours: "",
+      confidence: 0,
+      matchConf: 0,
+    };
+
+    const targetIdx = await new Promise<number>((resolve) => {
+      setDynCerts(prev => {
+        resolve(prev.length);
+        return [...prev, placeholder];
+      });
+    });
+    setForms(prev => [...prev, { level: "", tier: "", title: "", award: "", hours: "", date: "" }]);
+    setScanningIds(prev => new Set([...prev, tempId]));
+    if (selectWhenDone) setActiveIdx(targetIdx);
+
+    try {
+      const fd = new FormData();
+      fd.append("cert_files", file, file.name);
+      fd.append("cert_files[]", file, file.name);
+      fd.append("file", file, file.name);
+      fd.append("certificate_file", file, file.name);
+      const gatewayTimeoutMsg =
+        "AI 伺服器運算逾時 (504)。請嘗試上傳較小檔案，或稍後再試。";
+
+      const upRes = await fetch(uploadUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: fd,
+      });
+      if (upRes.status === 504 || upRes.status === 502 || upRes.status === 524) {
+        throw new Error(gatewayTimeoutMsg);
+      }
+      if (upRes.status === 413) {
+        const errJson = await upRes.json().catch(() => ({}));
+        throw new Error(String(errJson.message || "檔案過大，請壓縮後再上載。"));
+      }
+      const upJson = await upRes.json().catch(() => ({}));
+      if (!upRes.ok || (upJson.ok === false)) {
+        throw new Error(upJson.message || `上傳失敗 (${upRes.status})`);
+      }
+
+      // Backend may return 1..N files after multi-page PDF split
+      const rawItems: any[] = Array.isArray(upJson.files) && upJson.files.length
+        ? upJson.files
+        : (Array.isArray(upJson.items) && upJson.items.length
+          ? upJson.items
+          : (upJson.item ? [upJson.item] : []));
+      const items = rawItems.filter((it) => it && (it.id != null || it.file_id != null));
+      if (items.length === 0) throw new Error("上傳回應缺少成就 ID");
+
+      const mapped = items.map((it, i) => {
+        const dbId = Number(it.id ?? it.file_id);
+        const imageUrl = String(it.image_url || it.url || "");
+        const pageLabel = String(it.file_name || it.fileName || `${baseLabel}_Page_${i + 1}`);
+        const card: CertData = {
+          id: dbId,
+          dbId,
+          imageUrl,
+          studentZh: "OCR 掃描中…",
+          studentEn: pageLabel.replace(/\.[^.]+$/, ""),
+          classCode: "—",
+          event: items.length > 1 ? `第 ${i + 1} / ${items.length} 頁` : "—",
+          award: "—",
+          level: "—",
+          tier: "—",
+          date: "",
+          hours: "",
+          confidence: 0,
+          matchConf: 0,
+        };
+        return card;
+      });
+
+      // Expand: replace upload placeholder with page #1, append pages #2..N
+      await new Promise<void>((resolve) => {
+        setDynCerts(prev => {
+          const found = prev.findIndex(c => c.id === tempId);
+          if (found < 0) {
+            resolve();
+            return [...prev, ...mapped];
+          }
+          const next = [...prev];
+          next[found] = mapped[0];
+          next.splice(found + 1, 0, ...mapped.slice(1));
+          resolve();
+          return next;
+        });
+        setForms(prev => {
+          const blank = { level: "", tier: "", title: "", award: "", hours: "", date: "" };
+          if (mapped.length <= 1) return prev;
+          // placeholder already added one blank form — add N-1 more
+          return [...prev, ...Array.from({ length: mapped.length - 1 }, () => ({ ...blank }))];
+        });
+      });
+
+      setScanningIds(prev => {
+        const n = new Set(prev);
+        n.delete(tempId);
+        mapped.forEach(c => n.add(Number(c.dbId ?? c.id)));
+        return n;
+      });
+
+      if (selectWhenDone) {
+        const firstIdx = await new Promise<number>((resolve) => {
+          setDynCerts(prev => {
+            const found = prev.findIndex(c => c.id === mapped[0].id || c.dbId === mapped[0].dbId);
+            resolve(found >= 0 ? found : targetIdx);
+            return prev;
+          });
+        });
+        setActiveIdx(firstIdx);
+      }
+
+      if (items.length > 1) {
+        setPipelineMsg(`已拆分多頁 PDF 為 ${items.length} 份文件，開始 OCR…`);
+        setTimeout(() => setPipelineMsg(null), 3500);
+      }
+
+      // OCR each page sequentially to avoid saturating GB10
+      let firstErr: string | null = null;
+      for (let i = 0; i < mapped.length; i++) {
+        const card = mapped[i];
+        const dbId = Number(card.dbId ?? card.id);
+        try {
+          await runOcrForAchievement(dbId, String(card.imageUrl || ""), selectWhenDone && i === 0);
+        } catch (e: any) {
+          if (!firstErr) firstErr = String(e?.message || "OCR 失敗");
+        }
+      }
+      if (firstErr) {
+        setPipelineMsg(firstErr);
+        setTimeout(() => setPipelineMsg(null), /超過\s*4MB|壓縮失敗|413/i.test(firstErr) ? 8000 : 4000);
+      }
     } catch (err: any) {
+      const msg = String(err?.message || "處理失敗");
+      const isPayload = /超過\s*4MB|壓縮失敗|縮小檔案|413/i.test(msg);
       setDynCerts(prev => prev.map(c => (c.id === tempId || c.dbId === tempId)
-        ? { ...c, studentZh: "失敗", event: err?.message || "處理失敗" }
+        ? { ...c, studentZh: "失敗", event: msg }
         : c));
       setScanningIds(prev => {
         const n = new Set(prev);
         n.delete(tempId);
         return n;
       });
-      setPipelineMsg(err?.message || "處理失敗");
-      setTimeout(() => setPipelineMsg(null), 4000);
+      setPipelineMsg(msg);
+      setTimeout(() => setPipelineMsg(null), isPayload ? 8000 : 4000);
     }
-  }, [uploadUrl, extractUrl, applyOcrToForm]);
+  }, [uploadUrl, runOcrForAchievement]);
 
   // Dropzone: never locked — each file gets its own upload+OCR pipeline in parallel
   const processDroppedFiles = useCallback((files: FileList | File[]) => {
@@ -1287,6 +1383,11 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
         throw new Error(gatewayTimeoutMsg);
       }
       const exJson = await exRes.json().catch(() => ({}));
+      if (exRes.status === 413) {
+        throw new Error(
+          String(exJson.message || "檔案過大 (超過 4MB) 且自動壓縮失敗，請手動壓縮後再上載。")
+        );
+      }
       if (!exRes.ok || exJson.status !== "success") {
         throw new Error(exJson.message || "AI 萃取失敗");
       }
@@ -1303,8 +1404,10 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
       setPipelineMsg("✅ 重新掃描完成");
       setTimeout(() => setPipelineMsg(null), 2500);
     } catch (err: any) {
-      setPipelineMsg(err?.message || "重新掃描失敗");
-      setTimeout(() => setPipelineMsg(null), 4000);
+      const msg = String(err?.message || "重新掃描失敗");
+      const isPayload = /超過\s*4MB|壓縮失敗|縮小檔案|413/i.test(msg);
+      setPipelineMsg(msg);
+      setTimeout(() => setPipelineMsg(null), isPayload ? 8000 : 4000);
     } finally {
       setRescanning(false);
       setScanningIds(prev => {

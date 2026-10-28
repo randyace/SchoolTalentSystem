@@ -19,6 +19,7 @@ import {
   fetchSessionDetail,
   createSession,
   sendPrompt,
+  uploadChatContext,
   archiveSession,
   pinSession,
   importSessionPackage,
@@ -99,6 +100,7 @@ interface ChatMessage {
 export type ScreenAIDataAssistantProps = {
   sessionsUrl?: string;
   sendUrl?: string;
+  uploadContextUrl?: string;
   exportDataUrl?: string;
   exportSessionUrl?: string;
   importSessionUrl?: string;
@@ -107,6 +109,8 @@ export type ScreenAIDataAssistantProps = {
   csrfName?: string;
   csrfHash?: string;
 };
+
+type PendingFile = { id: string; file: File };
 
 const SUGGESTED_QUERIES = [
   "各班平均分對比",
@@ -442,6 +446,7 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
   const {
     sessionsUrl = "/ai-assistant/sessions",
     sendUrl = "/ai-assistant/send",
+    uploadContextUrl = "/ai-assistant/api/upload-context",
     exportDataUrl = "/ai-assistant/export-data",
     exportSessionUrl = "/ai-assistant/export-session",
     importSessionUrl = "/ai-assistant/import-session",
@@ -469,7 +474,7 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
   const [showSidebar, setShowSidebar]       = useState(true);
   const [sidebarSearch, setSidebarSearch]   = useState("");
   const [hovSession, setHovSession]         = useState<number | null>(null);
-  const [attachmentName, setAttachmentName] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles]     = useState<PendingFile[]>([]);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [loadError, setLoadError]           = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -518,24 +523,72 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
     return () => { mountedRef.current = false; };
   }, [refreshSessions, loadSession, initialSessionId]);
 
+  const removePendingFile = (id: string) => {
+    setPendingFiles((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const addPendingFiles = (list: FileList | File[] | null) => {
+    if (!list) return;
+    const arr = Array.from(list);
+    const allowed = /\.(jpe?g|png|pdf|xlsx|csv|txt|md)$/i;
+    const next: PendingFile[] = [];
+    for (const f of arr) {
+      if (!allowed.test(f.name)) {
+        setLoadError(`不支援的檔案類型：${f.name}`);
+        continue;
+      }
+      if (f.size > 10 * 1024 * 1024) {
+        setLoadError(`檔案過大（上限 10MB）：${f.name}`);
+        continue;
+      }
+      next.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, file: f });
+    }
+    if (next.length) {
+      setPendingFiles((prev) => [...prev, ...next].slice(0, 8));
+      setLoadError(null);
+    }
+  };
+
   const handleSend = async (text?: string) => {
     const msg = (text ?? input).trim();
-    if (!msg || isThinking) return;
+    const filesToSend = pendingFiles.map((p) => p.file);
+    if ((!msg && filesToSend.length === 0) || isThinking) return;
+
+    const displayMsg = msg || (filesToSend.length
+      ? `（已附加 ${filesToSend.length} 個檔案）請分析附件內容`
+      : "");
     setInput("");
-    setAttachmentName(null);
+    const attachedSnapshot = [...pendingFiles];
+    setPendingFiles([]);
     setLoadError(null);
 
     const optimistic: ChatMessage = {
       id: `local-u-${Date.now()}`,
       role: "user",
-      content: msg,
+      content: attachedSnapshot.length
+        ? `${displayMsg}\n📎 ${attachedSnapshot.map((p) => p.file.name).join(", ")}`
+        : displayMsg,
       timestamp: formatMsgTime(),
     };
     setMessages((prev) => [...prev, optimistic]);
     setIsThinking(true);
 
     try {
-      const res = await sendPrompt(sendUrl, msg, activeSessionId, csrfName, csrfHash);
+      // 1) Pre-process attachments on CI4 (ViT-safe images / extracted text)
+      let attachments: Awaited<ReturnType<typeof uploadChatContext>> | null = null;
+      if (filesToSend.length > 0) {
+        attachments = await uploadChatContext(uploadContextUrl, filesToSend, csrfName, csrfHash);
+      }
+
+      // 2) Send multimodal chat turn
+      const res = await sendPrompt(
+        sendUrl,
+        displayMsg,
+        activeSessionId,
+        csrfName,
+        csrfHash,
+        attachments,
+      );
       if (!mountedRef.current) return;
       const sid = Number(res.session.id);
       setActiveSessionId(sid);
@@ -550,6 +603,8 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
       await refreshSessions();
     } catch (e: any) {
       if (!mountedRef.current) return;
+      // Restore chips so user can retry
+      setPendingFiles(attachedSnapshot);
       setLoadError(e?.message || "發送失敗");
       setMessages((prev) => [
         ...prev,
@@ -959,14 +1014,41 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
             </div>
           )}
 
-          {/* Attachment preview */}
-          {attachmentName && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginBottom: 8, background: T.accentPale, border: `1px solid ${T.accentBd}`, borderRadius: 8 }}>
-              <FileSpreadsheet size={13} color={T.accent} />
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: T.accent, flex: 1 }}>{attachmentName}</span>
-              <button onClick={() => setAttachmentName(null)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
-                <X size={12} color={T.accent} />
-              </button>
+          {/* Attachment preview chips */}
+          {pendingFiles.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {pendingFiles.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    maxWidth: "100%", padding: "5px 8px 5px 10px",
+                    background: T.accentPale, border: `1px solid ${T.accentBd}`, borderRadius: 999,
+                  }}
+                >
+                  <FileSpreadsheet size={12} color={T.accent} style={{ flexShrink: 0 }} />
+                  <span style={{
+                    fontSize: 11.5, fontWeight: 600, color: T.accent,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180,
+                  }}>
+                    {p.file.name}
+                  </span>
+                  <button
+                    type="button"
+                    title="移除"
+                    onClick={() => removePendingFile(p.id)}
+                    disabled={isThinking}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 18, height: 18, borderRadius: 999,
+                      background: "rgba(37,99,235,0.12)", border: "none",
+                      cursor: isThinking ? "default" : "pointer", padding: 0, flexShrink: 0,
+                    }}
+                  >
+                    <X size={11} color={T.accent} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -982,13 +1064,17 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
           >
             {/* Paperclip */}
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              title="上傳附件"
+              title="上傳附件（PDF / 圖像 / Excel / CSV / TXT）"
+              disabled={isThinking}
               style={{
                 flexShrink: 0, width: 34, height: 34,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: "transparent", border: `1px solid ${T.border}`,
-                borderRadius: 8, cursor: "pointer", color: T.text3,
+                background: pendingFiles.length ? T.accentPale : "transparent",
+                border: `1px solid ${pendingFiles.length ? T.accentBd : T.border}`,
+                borderRadius: 8, cursor: isThinking ? "default" : "pointer",
+                color: pendingFiles.length ? T.accent : T.text3,
                 transition: "all 0.12s",
               }}
             >
@@ -997,11 +1083,12 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv,.pdf"
+              multiple
+              accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png,.txt,.md,image/jpeg,image/png,application/pdf"
               style={{ display: "none" }}
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (f) setAttachmentName(f.name);
+              onChange={(e) => {
+                addPendingFiles(e.target.files);
+                e.target.value = "";
               }}
             />
 
@@ -1029,16 +1116,17 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
 
             {/* Send button */}
             <button
+              type="button"
               onClick={() => { void handleSend(); }}
-              disabled={isThinking || (!input.trim() && !attachmentName)}
+              disabled={isThinking || (!input.trim() && pendingFiles.length === 0)}
               style={{
                 flexShrink: 0, width: 36, height: 36,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: !isThinking && (input.trim() || attachmentName)
+                background: !isThinking && (input.trim() || pendingFiles.length > 0)
                   ? "linear-gradient(135deg, #2563EB, #7C3AED)"
                   : "#E2E8F0",
                 border: "none", borderRadius: 10,
-                cursor: !isThinking && (input.trim() || attachmentName) ? "pointer" : "default",
+                cursor: !isThinking && (input.trim() || pendingFiles.length > 0) ? "pointer" : "default",
                 color: "#fff", transition: "all 0.15s",
                 boxShadow: input.trim() && !isThinking ? "0 2px 8px rgba(37,99,235,0.28)" : "none",
               }}

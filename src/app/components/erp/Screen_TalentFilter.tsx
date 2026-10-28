@@ -3,14 +3,15 @@
 // 人才篩選與匯出 — Talent Pool & Filtering
 // ERP Module 1.D.5  ·  Activities & Talent
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import * as XLSX from "xlsx";
 import { ERP } from "./erpTokens";
 import {
-  Search, ChevronDown, Download, FileSpreadsheet,
-  SlidersHorizontal, X, Check, ExternalLink,
-  ChevronUp, ChevronRight, Users, Sparkles,
+  Search, ChevronDown, FileSpreadsheet,
+  X, Check, ExternalLink,
+  ChevronUp, Users, Sparkles,
   Trophy, BookOpen, Palette, Heart, Cpu, Star,
-  FileDown, Filter, ArrowUpDown, Layers,
+  Filter, ArrowUpDown, Layers, Loader2,
 } from "lucide-react";
 
 // ── Tokens ─────────────────────────────────────────────────────────────────────
@@ -51,6 +52,18 @@ const CATS: Record<CatKey, { label: string; labelEn: string; icon: React.ReactNo
 
 const CAT_KEYS = Object.keys(CATS) as CatKey[];
 
+/** API Chinese acorn tag → UI CatKey */
+const TAG_ZH_TO_KEY: Record<string, CatKey> = {
+  體育: "sports",
+  學術: "academic",
+  藝術: "arts",
+  服務: "service",
+  STEM: "stem",
+  領導: "leadership",
+};
+
+const yearUiToApi = (y: string) => y.replace("-", "/");
+
 // ── Student data ────────────────────────────────────────────────────────────────
 interface TalentStudent {
   id: string;
@@ -58,37 +71,44 @@ interface TalentStudent {
   nameEn: string;
   class: string;
   cats: CatKey[];
+  acornTagsZh: string[];
   activityCount: number;
   pts: number;
   latestActivity: string;
-  latestActivityEn: string;
-  yearJoined: "2025-26" | "2024-25" | "2023-24";
+  yearJoined: string;
 }
 
-const STUDENTS: TalentStudent[] = [
-  { id: "t01", nameZh: "陳大文", nameEn: "Chan Tai Man",    class: "F3A", cats: ["sports","academic"],            activityCount: 6,  pts: 220, latestActivity: "南區中學校際足球賽",      latestActivityEn: "South District Football",     yearJoined: "2025-26" },
-  { id: "t02", nameZh: "李美玲", nameEn: "Lee Mei Ling",    class: "F3A", cats: ["arts","service"],               activityCount: 5,  pts: 180, latestActivity: "聯校音樂比賽",            latestActivityEn: "Joint-School Music Festival", yearJoined: "2025-26" },
-  { id: "t03", nameZh: "黃志豪", nameEn: "Wong Chi Ho",     class: "F3A", cats: ["sports","stem"],                activityCount: 4,  pts: 160, latestActivity: "全港 STEM 創新大賽",      latestActivityEn: "HK STEM Innovation Challenge",yearJoined: "2025-26" },
-  { id: "t04", nameZh: "張詩敏", nameEn: "Cheung Sze Man",  class: "F3A", cats: ["academic","leadership","service"],activityCount:7,  pts: 290, latestActivity: "全港中學生辯論比賽",      latestActivityEn: "HK Secondary Debate",         yearJoined: "2025-26" },
-  { id: "t05", nameZh: "林俊傑", nameEn: "Lam Chun Kit",    class: "F3A", cats: ["sports"],                       activityCount: 3,  pts: 90,  latestActivity: "校際籃球比賽",            latestActivityEn: "Inter-School Basketball",     yearJoined: "2025-26" },
-  { id: "t06", nameZh: "吳嘉欣", nameEn: "Ng Ka Yan",       class: "F3A", cats: ["arts","academic"],              activityCount: 5,  pts: 200, latestActivity: "視覺藝術創作展",          latestActivityEn: "Visual Arts Exhibition",      yearJoined: "2025-26" },
-  { id: "t07", nameZh: "鄭宇翔", nameEn: "Cheng Yu Cheung", class: "F3B", cats: ["stem","academic"],              activityCount: 6,  pts: 240, latestActivity: "程式設計金獎",            latestActivityEn: "Programming Gold Award",      yearJoined: "2025-26" },
-  { id: "t08", nameZh: "梁慧雯", nameEn: "Leung Wai Man",   class: "F3B", cats: ["service","leadership"],         activityCount: 8,  pts: 310, latestActivity: "學生會主席",              latestActivityEn: "Student Union President",     yearJoined: "2025-26" },
-  { id: "t09", nameZh: "何建明", nameEn: "Ho Kin Ming",     class: "F3B", cats: ["sports","service"],             activityCount: 4,  pts: 130, latestActivity: "社區服務義工計劃",        latestActivityEn: "Community Service Programme", yearJoined: "2025-26" },
-  { id: "t10", nameZh: "劉佩珊", nameEn: "Lau Pui Shan",    class: "F3B", cats: ["arts","leadership","service"],  activityCount: 6,  pts: 250, latestActivity: "戲劇表演",                latestActivityEn: "Drama Performance",           yearJoined: "2025-26" },
-  { id: "t11", nameZh: "楊浩然", nameEn: "Yeung Ho Yin",    class: "F3B", cats: ["stem","sports"],                activityCount: 5,  pts: 195, latestActivity: "機械人比賽",              latestActivityEn: "Robotics Competition",        yearJoined: "2025-26" },
-  { id: "t12", nameZh: "蔡曉彤", nameEn: "Choi Hiu Tung",   class: "F3B", cats: ["academic","arts"],              activityCount: 4,  pts: 170, latestActivity: "全港中學作文比賽",        latestActivityEn: "HK Essay Competition",        yearJoined: "2025-26" },
-  { id: "t13", nameZh: "許志遠", nameEn: "Hui Chi Yuen",    class: "F1A", cats: ["academic"],                     activityCount: 2,  pts: 60,  latestActivity: "數學奧林匹克",            latestActivityEn: "Mathematics Olympiad",        yearJoined: "2025-26" },
-  { id: "t14", nameZh: "羅雅雯", nameEn: "Lo Nga Man",      class: "F1A", cats: ["arts","service"],               activityCount: 3,  pts: 100, latestActivity: "合唱比賽",                latestActivityEn: "Choir Competition",           yearJoined: "2025-26" },
-  { id: "t15", nameZh: "謝家豪", nameEn: "Tse Ka Ho",       class: "F2A", cats: ["sports","leadership"],          activityCount: 5,  pts: 185, latestActivity: "體育委員",                latestActivityEn: "Sports Prefect",              yearJoined: "2025-26" },
-  { id: "t16", nameZh: "馮紫晴", nameEn: "Fung Zi Ching",   class: "F2A", cats: ["academic","stem","arts"],       activityCount: 7,  pts: 300, latestActivity: "科學展覽優異獎",          latestActivityEn: "Science Fair Merit Award",    yearJoined: "2025-26" },
-  { id: "t17", nameZh: "陳志明", nameEn: "Chan Chi Ming",   class: "F4A", cats: ["sports","service","leadership"],activityCount: 9,  pts: 340, latestActivity: "校隊隊長",                latestActivityEn: "School Team Captain",         yearJoined: "2024-25" },
-  { id: "t18", nameZh: "陳美兒", nameEn: "Chan Mei Yi",     class: "F4B", cats: ["arts","academic"],              activityCount: 4,  pts: 145, latestActivity: "鋼琴比賽銀獎",            latestActivityEn: "Piano Competition Silver",    yearJoined: "2024-25" },
-  { id: "t19", nameZh: "李明峰", nameEn: "Lee Ming Fung",   class: "F5A", cats: ["stem","academic","leadership"], activityCount: 8,  pts: 320, latestActivity: "IEEE 青年工程師獎",       latestActivityEn: "IEEE Young Engineer Award",   yearJoined: "2024-25" },
-  { id: "t20", nameZh: "李明達", nameEn: "Lee Ming Tat",    class: "F5B", cats: ["service","leadership"],         activityCount: 6,  pts: 210, latestActivity: "義工領袖培訓計劃",        latestActivityEn: "Volunteer Leadership Prog.",  yearJoined: "2024-25" },
-  { id: "t21", nameZh: "鄭家樂", nameEn: "Cheng Ka Lok",    class: "F2B", cats: ["sports","arts"],                activityCount: 3,  pts: 110, latestActivity: "田徑比賽",                latestActivityEn: "Athletics Meet",              yearJoined: "2025-26" },
-  { id: "t22", nameZh: "黃美儀", nameEn: "Wong Mei Yee",    class: "F4A", cats: ["academic","service"],           activityCount: 5,  pts: 190, latestActivity: "化學奧林匹克",            latestActivityEn: "Chemistry Olympiad",          yearJoined: "2024-25" },
-];
+interface TalentPoolApiRow {
+  id: number | string;
+  name_zh?: string;
+  name_en?: string;
+  class_code?: string;
+  acorn_tags?: string[];
+  activity_count?: number;
+  total_points?: number;
+  latest_activity?: string;
+  academic_year?: string;
+}
+
+function mapApiStudent(row: TalentPoolApiRow): TalentStudent {
+  const tagsZh = Array.isArray(row.acorn_tags) ? row.acorn_tags : [];
+  const cats = tagsZh
+    .map((t) => TAG_ZH_TO_KEY[t])
+    .filter((k): k is CatKey => Boolean(k));
+  const yearRaw = String(row.academic_year || "").replace("/", "-");
+  return {
+    id: String(row.id),
+    nameZh: String(row.name_zh || ""),
+    nameEn: String(row.name_en || ""),
+    class: String(row.class_code || "—"),
+    cats,
+    acornTagsZh: tagsZh,
+    activityCount: Number(row.activity_count || 0),
+    pts: Number(row.total_points || 0),
+    latestActivity: String(row.latest_activity || "—"),
+    yearJoined: yearRaw || "",
+  };
+}
 
 // ── Class color palette ─────────────────────────────────────────────────────────
 const CLS_PAL: Record<string, { bg: string; color: string; bd: string }> = {
@@ -133,74 +153,57 @@ const BreadthBar: React.FC<{ cats: CatKey[] }> = ({ cats }) => (
   </div>
 );
 
-// ── Export dropdown ─────────────────────────────────────────────────────────────
-const ExportButton: React.FC<{ selectedCount: number; totalCount: number }> = ({ selectedCount, totalCount }) => {
-  const [open, setOpen] = useState(false);
-  const [exported, setExported] = useState<string | null>(null);
+// ── Export button (SheetJS) ─────────────────────────────────────────────────────
+const ExportButton: React.FC<{ onExport: () => void; disabled?: boolean }> = ({ onExport, disabled }) => {
+  const [exported, setExported] = useState(false);
 
-  const doExport = (label: string) => {
-    setOpen(false);
-    setExported(label);
-    setTimeout(() => setExported(null), 2800);
+  const handleClick = () => {
+    if (disabled) return;
+    onExport();
+    setExported(true);
+    setTimeout(() => setExported(false), 2800);
   };
 
   return (
     <div style={{ position: "relative" }}>
       {exported && (
         <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, background: "#0F172A", color: "#fff", fontSize: 11, fontWeight: 600, padding: "7px 14px", borderRadius: T.radius, whiteSpace: "nowrap", zIndex: 300, boxShadow: T.shadowMd, display: "flex", alignItems: "center", gap: 6 }}>
-          <Check size={12} color="#4ADE80" /> {exported} 匯出完成
+          <Check size={12} color="#4ADE80" /> Excel 匯出完成
         </div>
       )}
 
       <button
-        onClick={() => setOpen(v => !v)}
+        type="button"
+        onClick={handleClick}
+        disabled={disabled}
+        title="⬇️ 匯出 Excel"
         style={{
           display: "flex", alignItems: "center", gap: 7,
           padding: "8px 16px",
           background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
           border: "none", borderRadius: T.radius,
           color: "#fff", fontSize: 13, fontWeight: 700,
-          cursor: "pointer", fontFamily: T.font,
+          cursor: disabled ? "not-allowed" : "pointer", fontFamily: T.font,
           boxShadow: "0 2px 8px rgba(5,150,105,0.35)",
           transition: "all 0.12s",
+          opacity: disabled ? 0.55 : 1,
         }}
       >
         <FileSpreadsheet size={15} />
-        匯出 Excel
-        <ChevronDown size={13} style={{ transition: "transform 0.15s", transform: open ? "rotate(180deg)" : "none" }} />
+        ⬇️ 匯出 Excel
       </button>
-
-      {open && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 200 }} />
-          <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, boxShadow: T.shadowMd, zIndex: 250, minWidth: 220, overflow: "hidden" }}>
-            {[
-              { label: `匯出全部 ${totalCount} 人`, icon: <FileDown size={13} />, sub: "Export All Students" },
-              { label: `匯出已選 ${selectedCount} 人`, icon: <Check size={13} />, sub: "Export Selected" },
-              { label: "匯出為 CSV", icon: <FileSpreadsheet size={13} />, sub: "Export as CSV" },
-            ].map((opt, i) => (
-              <button
-                key={opt.label}
-                onClick={() => doExport(opt.label)}
-                disabled={opt.label.includes("已選") && selectedCount === 0}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", border: "none", borderBottom: i < 2 ? `1px solid ${T.border}` : "none", background: "transparent", color: selectedCount === 0 && opt.label.includes("已選") ? T.text4 : T.text1, cursor: selectedCount === 0 && opt.label.includes("已選") ? "not-allowed" : "pointer", fontFamily: T.font, textAlign: "left" }}
-              >
-                <span style={{ color: T.emerald, flexShrink: 0 }}>{opt.icon}</span>
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{opt.label}</div>
-                  <div style={{ fontSize: 10, color: T.text4 }}>{opt.sub}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 };
 
 // ── Main component ──────────────────────────────────────────────────────────────
-export const Screen_TalentFilter: React.FC = () => {
+export interface ScreenTalentFilterProps {
+  studentsUrl?: string;
+}
+
+export const Screen_TalentFilter: React.FC<ScreenTalentFilterProps> = ({
+  studentsUrl = "/api/talent-pool/students",
+}) => {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -210,41 +213,86 @@ export const Screen_TalentFilter: React.FC = () => {
   }, []);
 
   // Filters
-  const [yearFilter, setYearFilter]     = useState<string>("2025-26");
-  const [yearOpen, setYearOpen]         = useState(false);
-  const [activeCats, setActiveCats]     = useState<Set<CatKey>>(new Set());
-  const [search, setSearch]             = useState("");
-  const [sortCol, setSortCol]           = useState<"name" | "pts" | "count" | "breadth">("pts");
-  const [sortAsc, setSortAsc]           = useState(false);
+  const [yearFilter, setYearFilter]           = useState<string>("2025-26");
+  const [yearOpen, setYearOpen]               = useState(false);
+  const [activeCategories, setActiveCategories] = useState<CatKey[]>([]);
+  const [filterLogic, setFilterLogic]         = useState<"OR" | "AND">("OR");
+  const [search, setSearch]                   = useState("");
+  const [minPoints, setMinPoints]             = useState(0);
+  const [sortCol, setSortCol]                 = useState<"name" | "pts" | "count" | "breadth">("pts");
+  const [sortAsc, setSortAsc]                 = useState(false);
 
-  // Selection — pre-seeded to demonstrate working checkbox logic
-  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set(["t04", "t08", "t17"]));
+  // Live data — selection starts empty (no mock pre-seed)
+  const [students, setStudents]         = useState<TalentStudent[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [loadError, setLoadError]       = useState<string | null>(null);
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
 
-  // Filter panel (mobile)
-  const [showFilters, setShowFilters]   = useState(false);
+  const toggleCat = (k: CatKey) => setActiveCategories(prev =>
+    prev.includes(k) ? prev.filter(c => c !== k) : [...prev, k]
+  );
 
-  const toggleCat = (k: CatKey) => setActiveCats(prev => {
-    const n = new Set(prev);
-    n.has(k) ? n.delete(k) : n.add(k);
-    return n;
-  });
+  // Fetch talent pool when academic year changes
+  useEffect(() => {
+    let cancelled = false;
+    const ctrl = new AbortController();
 
-  // Derived filtered + sorted list
-  const filtered = useMemo(() => {
-    let list = STUDENTS.filter(s => {
-      if (s.yearJoined !== yearFilter && yearFilter !== "all") {
-        // keep students from selected year or later (cumulative view)
-        const yrs = YEAR_OPTIONS;
-        const idx = yrs.indexOf(yearFilter as string);
-        const sIdx = yrs.indexOf(s.yearJoined);
-        if (sIdx > idx) return false;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      setSelectedIds(new Set());
+      try {
+        const url = new URL(studentsUrl, window.location.origin);
+        url.searchParams.set("academic_year", yearUiToApi(yearFilter));
+        const res = await fetch(url.toString(), {
+          headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin",
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (json?.status === "error") {
+          throw new Error(String(json.message || "載入失敗"));
+        }
+        const rows: TalentPoolApiRow[] = Array.isArray(json?.data) ? json.data : [];
+        setStudents(rows.map(mapApiStudent));
+      } catch (err) {
+        if (cancelled || (err as Error)?.name === "AbortError") return;
+        setStudents([]);
+        setLoadError(err instanceof Error ? err.message : "無法載入人才名單");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      if (activeCats.size > 0 && !s.cats.some(c => activeCats.has(c))) return false;
-      if (search.trim()) {
-        const kw = search.trim().toLowerCase();
-        if (!s.nameZh.includes(search) && !s.nameEn.toLowerCase().includes(kw) && !s.class.toLowerCase().includes(kw)) return false;
+    })();
+
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [studentsUrl, yearFilter]);
+
+  // Client-side: category (OR/AND), search, min points + sort
+  const filteredStudents = useMemo(() => {
+    const searchQuery = search.trim();
+    let list = students.filter(student => {
+      const matchSearch = !searchQuery ||
+        student.nameZh.includes(searchQuery) ||
+        student.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        student.class.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchPoints = student.pts >= minPoints;
+
+      let matchCategory = true;
+      if (activeCategories.length > 0) {
+        if (filterLogic === "OR") {
+          matchCategory = activeCategories.some(tag => student.cats.includes(tag));
+        } else {
+          matchCategory = activeCategories.every(tag => student.cats.includes(tag));
+        }
       }
-      return true;
+
+      return matchSearch && matchPoints && matchCategory;
     });
 
     list = [...list].sort((a, b) => {
@@ -257,7 +305,48 @@ export const Screen_TalentFilter: React.FC = () => {
     });
 
     return list;
-  }, [yearFilter, activeCats, search, sortCol, sortAsc]);
+  }, [students, search, minPoints, activeCategories, filterLogic, sortCol, sortAsc]);
+
+  const filtered = filteredStudents;
+  const selectedRowKeys = useMemo(() => Array.from(selectedIds), [selectedIds]);
+
+  const activeCategory = useMemo(() => {
+    if (activeCategories.length === 0) return "全部";
+    const tags = activeCategories.map(k => CATS[k].label).join("+");
+    return activeCategories.length > 1 ? `${tags}_${filterLogic}` : tags;
+  }, [activeCategories, filterLogic]);
+
+  const handleExportExcel = useCallback(() => {
+    const dataToExport = selectedRowKeys.length > 0
+      ? filteredStudents.filter(s => selectedRowKeys.includes(s.id))
+      : filteredStudents;
+
+    if (dataToExport.length === 0) {
+      alert("沒有可匯出的資料");
+      return;
+    }
+
+    const excelData = dataToExport.map((student, index) => ({
+      排名: index + 1,
+      班別: student.class,
+      中文姓名: student.nameZh,
+      英文姓名: student.nameEn,
+      參與類別: (student.acornTagsZh.length
+        ? student.acornTagsZh
+        : student.cats.map(c => CATS[c].label)
+      ).join(", "),
+      活動總數: student.activityCount,
+      總積分: student.pts,
+      最近活動: student.latestActivity,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "學生人才庫");
+
+    const today = new Date().toISOString().split("T")[0];
+    XLSX.writeFile(workbook, `STS_人才匯出_${activeCategory}_${today}.xlsx`);
+  }, [selectedRowKeys, filteredStudents, activeCategory]);
 
   const allSelected   = filtered.length > 0 && filtered.every(s => selectedIds.has(s.id));
   const someSelected  = !allSelected && filtered.some(s => selectedIds.has(s.id));
@@ -275,15 +364,19 @@ export const Screen_TalentFilter: React.FC = () => {
     else { setSortCol(col); setSortAsc(false); }
   };
 
-  // Category stats for the summary bar
-  const catCounts = useMemo(() =>
-    CAT_KEYS.map(k => ({ key: k, count: filtered.filter(s => s.cats.includes(k)).length })),
-  [filtered]);
+  // Summary echoes ONLY user-selected categories (not all tags in the result set)
+  const activeCatCounts = useMemo(() =>
+    activeCategories.map(k => ({
+      key: k,
+      count: filteredStudents.filter(s => s.cats.includes(k)).length,
+    })),
+  [activeCategories, filteredStudents]);
 
   const F = T.font;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: isMobile ? "auto" : "100%", minHeight: isMobile ? "100%" : undefined, background: T.bg, fontFamily: F, overflow: isMobile ? "visible" : "hidden" }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ══════════════════════════════════════════════════════════════════
           PAGE HEADER
@@ -303,7 +396,7 @@ export const Screen_TalentFilter: React.FC = () => {
           <div style={{ flex: 1 }} />
 
           {/* Export button */}
-          <ExportButton selectedCount={selectedIds.size} totalCount={filtered.length} />
+          <ExportButton onExport={handleExportExcel} disabled={loading || filtered.length === 0} />
         </div>
       </div>
 
@@ -351,30 +444,71 @@ export const Screen_TalentFilter: React.FC = () => {
             )}
           </div>
 
+          {/* Min points */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 10.5, color: T.text4, fontWeight: 600, whiteSpace: "nowrap" }}>最低積點</span>
+            <input
+              type="number"
+              min={0}
+              step={10}
+              value={minPoints}
+              onChange={e => setMinPoints(Math.max(0, Number(e.target.value) || 0))}
+              style={{ width: 64, padding: "6px 8px", border: `1px solid ${T.border}`, borderRadius: T.radius, fontSize: 12.5, fontFamily: F, color: T.text1, background: T.bg, outline: "none" }}
+            />
+          </div>
+
           {/* Divider */}
           <div style={{ width: 1, height: 24, background: T.border, flexShrink: 0 }} />
 
-          {/* Category toggle chips */}
+          {/* Category toggle chips + AND/OR logic */}
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 10.5, color: T.text4, fontWeight: 600, whiteSpace: "nowrap" }}>類別：</span>
+            <span style={{ fontSize: 10.5, color: T.text4, fontWeight: 600, whiteSpace: "nowrap" }}>類別篩選：</span>
 
-            {/* All chip */}
-            <button
-              onClick={() => setActiveCats(new Set())}
+            {/* AND/OR segmented control (empty activeCategories = All) */}
+            <div
+              role="group"
+              aria-label="類別邏輯"
               style={{
-                padding: "4px 11px", border: `1.5px solid ${activeCats.size === 0 ? T.text2 : T.border}`,
-                borderRadius: 999, fontSize: 11, fontWeight: activeCats.size === 0 ? 700 : 500,
-                background: activeCats.size === 0 ? T.text1 : "transparent",
-                color: activeCats.size === 0 ? "#fff" : T.text3,
-                cursor: "pointer", fontFamily: F, transition: "all 0.12s",
+                display: "inline-flex", alignItems: "stretch",
+                border: `1px solid ${T.border}`, borderRadius: 999,
+                overflow: "hidden", background: T.bg, flexShrink: 0,
+                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                opacity: activeCategories.length < 2 ? 0.55 : 1,
               }}
+              title={activeCategories.length < 2 ? "選取兩個或以上類別後，AND/OR 才會生效" : undefined}
             >
-              全部 All
-            </button>
+              {([
+                { id: "OR" as const, label: "滿足任一 (OR)" },
+                { id: "AND" as const, label: "滿足全部 (AND)" },
+              ]).map((opt, i) => {
+                const on = filterLogic === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setFilterLogic(opt.id)}
+                    style={{
+                      padding: "4px 11px",
+                      border: "none",
+                      borderLeft: i > 0 ? `1px solid ${T.border}` : "none",
+                      background: on ? T.blue : "transparent",
+                      color: on ? "#fff" : T.text3,
+                      fontSize: 10.5, fontWeight: on ? 700 : 500,
+                      cursor: "pointer", fontFamily: F, whiteSpace: "nowrap",
+                      transition: "all 0.12s",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ width: 1, height: 18, background: T.border, flexShrink: 0, margin: "0 2px" }} />
 
             {CAT_KEYS.map(k => {
               const c = CATS[k];
-              const active = activeCats.has(k);
+              const active = activeCategories.includes(k);
               return (
                 <button
                   key={k}
@@ -399,24 +533,52 @@ export const Screen_TalentFilter: React.FC = () => {
           </div>
 
           {/* Active filter count badge */}
-          {activeCats.size > 0 && (
-            <button onClick={() => setActiveCats(new Set())} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, border: `1px solid ${T.borderStrong}`, background: T.bg, color: T.text3, fontSize: 10.5, fontWeight: 600, cursor: "pointer", fontFamily: F, whiteSpace: "nowrap" }}>
-              <X size={10} /> 清除 {activeCats.size} 個篩選
+          {activeCategories.length > 0 && (
+            <button onClick={() => setActiveCategories([])} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, border: `1px solid ${T.borderStrong}`, background: T.bg, color: T.text3, fontSize: 10.5, fontWeight: 600, cursor: "pointer", fontFamily: F, whiteSpace: "nowrap" }}>
+              <X size={10} /> 清除 {activeCategories.length} 個篩選
             </button>
           )}
         </div>
 
-        {/* Category distribution summary */}
-        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 10, color: T.text4 }}>顯示 {filtered.length} 人：</span>
-          {catCounts.filter(c => c.count > 0).map(({ key: k, count }) => {
-            const c = CATS[k];
-            return (
-              <div key={k} style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 999, background: c.bg, border: `1px solid ${c.bd}`, fontSize: 10, fontWeight: 700, color: c.color }}>
-                {c.icon} {c.label} {count}
-              </div>
-            );
-          })}
+        {/* Filter confirmation summary — subdued; only echoes activeCategories */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          marginTop: 8, padding: "7px 10px",
+          background: T.bg, borderRadius: T.radius,
+          border: `1px solid ${T.border}`,
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.text3, whiteSpace: "nowrap" }}>
+            顯示 {filteredStudents.length} 人
+            {activeCategories.length > 0 && (
+              <span style={{ fontWeight: 500, color: T.text4, marginLeft: 4 }}>
+                （{filterLogic === "AND" ? "需滿足全部選取類別" : "需滿足任一選取類別"}）
+              </span>
+            )}
+          </span>
+
+          {activeCategories.length === 0 ? (
+            <span style={{ fontSize: 10.5, color: T.text4 }}>顯示全部類別</span>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 10.5, color: T.text4, whiteSpace: "nowrap" }}>已套用篩選結果分佈：</span>
+              {activeCatCounts.map(({ key: k, count }) => {
+                const c = CATS[k];
+                return (
+                  <span
+                    key={k}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "2px 8px", borderRadius: 999,
+                      background: c.bg, border: `1px solid ${c.bd}`,
+                      fontSize: 10, fontWeight: 700, color: c.color,
+                    }}
+                  >
+                    {c.icon} {c.label} {count}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -501,7 +663,25 @@ export const Screen_TalentFilter: React.FC = () => {
           </thead>
 
           <tbody>
-            {filtered.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={9} style={{ padding: "64px 0", textAlign: "center", color: T.text4, fontSize: 13, fontFamily: F }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                    <Loader2 size={28} color={T.blue} style={{ animation: "spin 0.8s linear infinite" }} />
+                    <div>載入人才名單中…</div>
+                  </div>
+                </td>
+              </tr>
+            ) : loadError ? (
+              <tr>
+                <td colSpan={9} style={{ padding: "48px 0", textAlign: "center", color: T.red, fontSize: 13, fontFamily: F }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <Filter size={32} color={T.redBd} />
+                    <div>載入失敗：{loadError}</div>
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={9} style={{ padding: "48px 0", textAlign: "center", color: T.text4, fontSize: 13, fontFamily: F }}>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
@@ -606,9 +786,6 @@ export const Screen_TalentFilter: React.FC = () => {
                       <div style={{ fontSize: 11.5, color: T.text2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }} title={s.latestActivity}>
                         {s.latestActivity}
                       </div>
-                      <div style={{ fontSize: 10, color: T.text4, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>
-                        {s.latestActivityEn}
-                      </div>
                     </td>
                   )}
 
@@ -636,8 +813,12 @@ export const Screen_TalentFilter: React.FC = () => {
           <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>已選取 <strong style={{ color: "#60A5FA" }}>{selectedIds.size}</strong> 位學生</span>
           <div style={{ flex: 1 }} />
           <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 12, color: "#94A3B8", background: "none", border: "none", cursor: "pointer", fontFamily: F }}>取消選取</button>
-          <button style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: T.emerald, border: "none", borderRadius: T.radius, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: F, boxShadow: "0 2px 8px rgba(5,150,105,0.4)" }}>
-            <FileSpreadsheet size={14} /> 匯出已選 {selectedIds.size} 人
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: T.emerald, border: "none", borderRadius: T.radius, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: F, boxShadow: "0 2px 8px rgba(5,150,105,0.4)" }}
+          >
+            <FileSpreadsheet size={14} /> ⬇️ 匯出已選 {selectedIds.size} 人
           </button>
           <button style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#7C3AED", border: "none", borderRadius: T.radius, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: F }}>
             <Layers size={14} /> 批量生成證書

@@ -20,7 +20,6 @@ import { Screen_Assessments }     from "../components/erp/Screen_Assessments";
 import { Screen_DiagnosticDashboard } from "../components/erp/Screen_DiagnosticDashboard";
 import { Screen_RolesPositions }  from "../components/erp/Screen_RolesPositions";
 import { Screen_GroupProjects }   from "../components/erp/Screen_GroupProjects";
-import { Screen_StudentProfile }  from "../components/erp/Screen_StudentProfile";
 import { Screen_QRSignIn }        from "../components/erp/Screen_QRSignIn";
 import { Screen_BulkGroupAward }  from "../components/erp/Screen_BulkGroupAward";
 import { Screen_AIWritingWorkspace } from "../components/erp/Screen_AIWritingWorkspace";
@@ -186,13 +185,6 @@ export const TeacherPortal: React.FC = () => {
   const [lang]    = useState<"en" | "zh-HK">("zh-HK");
   const [isAdmin] = useState(false);
 
-  // Student profile is still a full-screen overlay (not a URL, intentionally)
-  const [studentDetail, setStudentDetail] = useState<{
-    studentId:  string;
-    source:     "roster" | "class-list";
-    classCode?: string;
-  } | null>(null);
-
   // Derive navId from current URL — this is the single source of truth
   const navId = pathToNavId(location.pathname);
 
@@ -201,18 +193,6 @@ export const TeacherPortal: React.FC = () => {
     return (
       <Screen_QRSignIn
         onBack={() => navigate(NAV_TO_PATH["activities"])}
-      />
-    );
-  }
-
-  // Student profile: full-screen bypass (triggered by clicking a student row)
-  if (studentDetail !== null) {
-    return (
-      <Screen_StudentProfile
-        studentId={studentDetail.studentId}
-        routeSource={studentDetail.source}
-        routeClassCode={studentDetail.classCode}
-        onBack={() => setStudentDetail(null)}
       />
     );
   }
@@ -229,13 +209,10 @@ export const TeacherPortal: React.FC = () => {
         navId={navId}
         lang={lang}
         onNav={(id: string) => navigate(NAV_TO_PATH[id] ?? "/teacher")}
-        onViewStudent={(id, ctx) =>
-          setStudentDetail({
-            studentId: id,
-            source:    ctx?.classCode ? "class-list" : "roster",
-            classCode: ctx?.classCode,
-          })
-        }
+        onViewStudent={(id) => {
+          // Always use CI4 profile bridge so hero card binds live DB fields
+          window.location.href = `/students/details/${encodeURIComponent(id)}`;
+        }}
       />
     </Frame02_AppShell>
   );

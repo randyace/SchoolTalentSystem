@@ -120,6 +120,11 @@ const defaultForm = (s: Subject): SubjectForm => ({
   acornIds: [...(s.acorn_ids || [])],
 });
 
+const emptyForm = (): SubjectForm => ({
+  code: "", zhName: "", enName: "",
+  klaId: "", levels: [], acornIds: [],
+});
+
 // ─── WeightsPanel — Term weightings + Sub-papers (分卷) ───────────────────────
 const WeightsPanel: React.FC<{
   subject: Subject;
@@ -433,12 +438,13 @@ export const Screen_Subjects: React.FC<Props> = ({
   const [catalog, setCatalog] = useState<Subject[]>(
     () => (subjects && subjects.length > 0) ? subjects : SUBJECTS_DATA
   );
-  const initial = catalog.find(s => s.code === "VA" || s.id === "VA") ?? catalog[0];
 
-  const [selectedId,  setSelectedId]  = useState<string | null>(initial?.id ?? null);
+  // No Figma-mock preselection — table loads with inspector closed (full width).
+  const [selectedId,  setSelectedId]  = useState<string | null>(null);
+  const [isCreating,  setIsCreating]  = useState(false);
   const [search,      setSearch]      = useState("");
   const [klaFilter,   setKlaFilter]   = useState("全部");
-  const [form,        setForm]        = useState<SubjectForm>(() => defaultForm(initial ?? SUBJECTS_DATA[0]));
+  const [form,        setForm]        = useState<SubjectForm>(() => emptyForm());
   const [isMobile,    setIsMobile]    = useState(false);
   const [drawerView,  setDrawerView]  = useState<"edit" | "weights">("edit");
   const [toggling, setToggling] = useState<string | null>(null);
@@ -479,7 +485,7 @@ export const Screen_Subjects: React.FC<Props> = ({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const drawerOpen = selectedId !== null;
+  const isInspectorOpen = selectedId !== null || isCreating;
   const F = ERP.font.family;
 
   const filtered = catalog.filter(s => {
@@ -491,14 +497,36 @@ export const Screen_Subjects: React.FC<Props> = ({
     return matchSearch && matchKla;
   });
 
+  const closeInspector = () => {
+    setSelectedId(null);
+    setIsCreating(false);
+    setDrawerView("edit");
+    setForm(emptyForm());
+    setSaveMsg(null);
+  };
+
+  const openCreate = () => {
+    setSelectedId(null);
+    setIsCreating(true);
+    setDrawerView("edit");
+    setForm(emptyForm());
+    setSaveMsg(null);
+  };
+
   const backToEdit = () => {
     setDrawerView("edit");
   };
 
   const handleSelectRow = (s: Subject) => {
-    setSelectedId(s.id === selectedId ? null : s.id);
+    if (s.id === selectedId && !isCreating) {
+      closeInspector();
+      return;
+    }
+    setIsCreating(false);
+    setSelectedId(s.id);
     setDrawerView("edit");
-    if (s.id !== selectedId) setForm(defaultForm(s));
+    setForm(defaultForm(s));
+    setSaveMsg(null);
   };
 
   const toggleLevel = (l: string) =>
@@ -551,10 +579,9 @@ export const Screen_Subjects: React.FC<Props> = ({
           }
           return next;
         });
-        setForm(defaultForm(json.subject));
       }
-      setSaveMsg("已儲存");
-      setTimeout(() => setSaveMsg(null), 1800);
+      // Close inspector after successful save so the table returns to full width.
+      closeInspector();
     } catch {
       setSaveMsg("儲存失敗，請重試");
     } finally {
@@ -588,12 +615,16 @@ export const Screen_Subjects: React.FC<Props> = ({
                 Subject Management · AY 2025/26 · {catalog.length} 個科目
               </p>
             </div>
-            <button style={{
-              display: "flex", alignItems: "center", gap: 6,
-              padding: "8px 14px", borderRadius: ERP.radius.md,
-              border: "none", background: ERP.colors.accent,
-              color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer",
-            }}>
+            <button
+              type="button"
+              onClick={openCreate}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: ERP.radius.md,
+                border: "none", background: ERP.colors.accent,
+                color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer",
+              }}
+            >
               <Plus size={14} /> 新增科目
             </button>
           </div>
@@ -807,14 +838,15 @@ export const Screen_Subjects: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* ── RIGHT DRAWER ────────────────────────────────────────────────── */}
+      {/* ── RIGHT DRAWER (only mounts when open → table gets 100% width) ── */}
+      {isInspectorOpen && (
       <div style={{
-        width: drawerOpen ? DRAWER_W : 0,
+        width: DRAWER_W,
         transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
         overflow: "hidden",
         flexShrink: 0,
-        borderLeft: drawerOpen ? `1px solid ${ERP.colors.border}` : "none",
-        boxShadow: drawerOpen ? "-4px 0 16px rgba(0,0,0,0.06)" : "none",
+        borderLeft: `1px solid ${ERP.colors.border}`,
+        boxShadow: "-4px 0 16px rgba(0,0,0,0.06)",
       }}>
         {/* Slide-track: edit + weights panels */}
         <div style={{ width: DRAWER_W, height: "100%", overflow: "hidden", position: "relative" }}>
@@ -826,7 +858,7 @@ export const Screen_Subjects: React.FC<Props> = ({
           transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
         }}>
 
-        {/* ── Panel 1: Edit form ── */}
+        {/* ── Panel 1: Edit / Create form ── */}
         <div style={{ width: DRAWER_W, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", background: ERP.colors.surface }}>
 
           {/* Drawer header */}
@@ -840,15 +872,20 @@ export const Screen_Subjects: React.FC<Props> = ({
                 <div style={{ width: 28, height: 28, borderRadius: ERP.radius.sm, background: ERP.colors.accentPale, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <BookOpen size={14} color={ERP.colors.accent} />
                 </div>
-                <span style={{ fontSize: 15, fontWeight: 700, color: ERP.colors.textPrimary }}>編輯科目</span>
-                <span style={{ fontFamily: ERP.font.mono, fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: ERP.radius.xs, background: ERP.colors.accentLight, color: ERP.colors.accent }}>{form.code}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: ERP.colors.textPrimary }}>
+                  {isCreating ? "新增科目" : "編輯科目"}
+                </span>
+                {form.code && (
+                  <span style={{ fontFamily: ERP.font.mono, fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: ERP.radius.xs, background: ERP.colors.accentLight, color: ERP.colors.accent }}>{form.code}</span>
+                )}
               </div>
               <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 3, marginLeft: 36 }}>
-                Edit Subject · 修改科目資料
+                {isCreating ? "Create Subject · 新增科目資料" : "Edit Subject · 修改科目資料"}
               </div>
             </div>
             <button
-              onClick={() => setSelectedId(null)}
+              type="button"
+              onClick={closeInspector}
               style={{ background: "none", border: `1px solid ${ERP.colors.border}`, cursor: "pointer", padding: 5, borderRadius: ERP.radius.sm, color: ERP.colors.textMuted, display: "flex", flexShrink: 0 }}
             >
               <X size={15} />
@@ -973,7 +1010,7 @@ export const Screen_Subjects: React.FC<Props> = ({
           }}>
             <button
               type="button"
-              onClick={() => setSelectedId(null)}
+              onClick={closeInspector}
               style={{
                 padding: "8px 18px", borderRadius: ERP.radius.md,
                 border: `1px solid ${ERP.colors.border}`, background: "transparent",
@@ -994,7 +1031,7 @@ export const Screen_Subjects: React.FC<Props> = ({
                 opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? "儲存中…" : saveMsg === "已儲存" ? "✓ 已儲存" : "儲存變更 Save Changes"}
+              {saving ? "儲存中…" : isCreating ? "建立科目 Create" : "儲存變更 Save Changes"}
             </button>
           </div>
 
@@ -1019,6 +1056,7 @@ export const Screen_Subjects: React.FC<Props> = ({
         </div>{/* end slide-track */}
         </div>{/* end overflow wrapper */}
       </div>
+      )}
     </div>
   );
 };

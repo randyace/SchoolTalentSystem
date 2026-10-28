@@ -152,7 +152,7 @@ export const Screen_SystemSettings: React.FC<{
                 </div>
               </div>
               <Field label="學校名稱 School Name">
-                <input name="school_name" defaultValue={schoolName} placeholder="例：培道書院 Stewards Pooi Tun Secondary School" style={inputStyle} />
+                <input name="school_name" defaultValue={schoolName} placeholder="例：香港神託會培敦中學" style={inputStyle} />
               </Field>
             </FormCard>
 

@@ -12,6 +12,7 @@ import {
   GripVertical, History, Brain, Upload, Feather, RotateCcw,
   MessageSquare, Send, Table2, FileJson, FileSpreadsheet,
   Bot, User, Archive, Calendar, Hash, ChevronUp, Loader2, Search, Trash2, PlusCircle,
+  Lightbulb,
 } from "lucide-react";
 import {
   type OutputType,
@@ -351,6 +352,7 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
   const [toneOpen,        setToneOpen]        = useState(false);
   const [scenario,        setScenario]        = useState(FALLBACK_SCENARIOS[0].label_zh);
   const [scenarioOpen,    setScenarioOpen]    = useState(false);
+  const [additionalPrompt, setAdditionalPrompt] = useState("");
   const [isAddingTone,    setIsAddingTone]    = useState(false);
   const [isAddingScenario, setIsAddingScenario] = useState(false);
   const [showManageModal, setShowManageModal] = useState(false);
@@ -501,6 +503,7 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
     setSelectedOutputId(outputTypes.find((o) => o.code === "recommendation")?.id ?? null);
     setTone(tones[0]?.label_zh || FALLBACK_TONES[0].label_zh);
     setScenario(scenarios[0]?.label_zh || FALLBACK_SCENARIOS[0].label_zh);
+    setAdditionalPrompt("");
     setIsAddingTone(false);
     setIsAddingScenario(false);
     setShowManageModal(false);
@@ -567,6 +570,8 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
       const match = scenarios.find((s) => s.label_zh === scen || s.label_zh.includes(scen) || scen.includes(s.label_zh));
       setScenario(match?.label_zh || scen);
     }
+    const extra = params.additional_prompt ?? params.additionalPrompt;
+    setAdditionalPrompt(typeof extra === "string" ? extra : "");
     if (typeof params.doc_type === "string" && params.doc_type) {
       hydrateOutputType(params.doc_type);
     }
@@ -590,6 +595,8 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
         const match = scenarios.find((s) => s.label_zh === scen || s.label_zh.includes(scen) || scen.includes(s.label_zh.split(" ")[0]));
         setScenario(match?.label_zh || scen);
       }
+      // Prefer document-level additional_prompt; version params may override in applyVersionParams
+      setAdditionalPrompt(String((doc as { additional_prompt?: string }).additional_prompt || ""));
       const vers = [...detail.versions].sort((a, b) => a.version_num - b.version_num);
       setVersions(vers);
       const cur = detail.current_version
@@ -959,7 +966,11 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
 
   const handleUploadContext = useCallback(async (file: File) => {
     if (!isAllowedContextFile(file)) {
-      showToast("僅支援 PDF / DOCX / TXT / JPG / PNG / WEBP");
+      showToast("僅支援 PDF, DOCX, XLSX, CSV, MD, TXT, JPG, PNG（不含巨集格式）");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast("單一檔案上限 10MB");
       return;
     }
     const asImage = isContextImageFile(file);
@@ -967,6 +978,7 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
     setUploadingOcr(asImage);
     try {
       const fd = new FormData();
+      fd.append("external_context_file", file);
       fd.append("file", file);
       fd.append("context_file", file);
       if (csrfName && csrfHash) fd.append(csrfName, csrfHash);
@@ -978,6 +990,11 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
+        if (res.status === 413) {
+          throw new Error(
+            String(data.message || "檔案過大 (超過 4MB) 且自動壓縮失敗，請手動壓縮後再上載。")
+          );
+        }
         throw new Error(data.message || `upload HTTP ${res.status}`);
       }
       const source = (data.source === "ocr" || asImage) ? "ocr" as const : "document" as const;
@@ -1065,6 +1082,8 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
         tone,
         target_word_count: wordTarget,
         scenario,
+        additionalPrompt: additionalPrompt.trim(),
+        additional_prompt: additionalPrompt.trim(),
         external_context_text: externalParts.join("\n\n"),
       };
       const res = await fetch(generateUrl, {
@@ -1109,7 +1128,7 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
     }
   }, [
     isGenerating, uploading, uploadingOcr, outputType, outputMeta.code, outputMeta.zh,
-    selectedTarget, documentId, tone, wordTarget, scenario,
+    selectedTarget, documentId, tone, wordTarget, scenario, additionalPrompt,
     uploadedCtx, generateUrl, csrfName, csrfHash, documentsUrl, applyStudentContext, showToast,
   ]);
 
@@ -2131,6 +2150,35 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
                       )}
                     </div>
                   </div>
+
+                  {/* Additional Instructions — free-text nuances for GB10 */}
+                  <div className="mt-3 pt-3 border-top border-light" style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${D.border}` }}>
+                    <label className="form-label text-muted small fw-bold mb-2" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: D.text3, marginBottom: 6 }}>
+                      <Lightbulb size={12} className="bi bi-lightbulb-fill text-warning me-1" style={{ color: "#F59E0B", flexShrink: 0 }} />
+                      附加提示詞 / Additional Instructions (可選)
+                    </label>
+                    <textarea
+                      className="form-control form-control-sm bg-white"
+                      rows={3}
+                      placeholder="例如：請特別強調該學生在數學比賽中展現的逆境抗壓能力..."
+                      value={additionalPrompt}
+                      onChange={(e) => setAdditionalPrompt(e.target.value)}
+                      style={{
+                        resize: "none",
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1.5px solid ${D.border}`,
+                        background: "#fff",
+                        fontSize: 11.5,
+                        fontFamily: F,
+                        color: D.text1,
+                        lineHeight: 1.5,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
                 </div>
 
                 {/* System Data */}
@@ -2217,7 +2265,8 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.docx,.txt,.md,.csv,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                    className="d-none"
+                    accept=".pdf,.docx,.xlsx,.csv,.md,.txt,.jpg,.jpeg,.png"
                     style={{ display: "none" }}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
@@ -2261,7 +2310,12 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
                         ? "正在解析…"
                         : "上傳比賽章程、背景資料或活動海報"}
                     </div>
-                    <div style={{ fontSize: 10, color: D.text4, marginTop: 2 }}>支援 PDF, DOCX, TXT, JPG, PNG</div>
+                    <p className="small text-muted mb-0" style={{ fontSize: 10, color: D.text4, margin: "2px 0 0" }}>
+                      支援 PDF, DOCX, XLSX, CSV, MD, TXT, JPG, PNG
+                    </p>
+                    <p className="small text-muted" style={{ fontSize: "0.7rem", color: D.text4, margin: "2px 0 0" }}>
+                      單一檔案上限 10MB，試算表將自動轉換為文本解析
+                    </p>
                   </div>
                 </div>
 

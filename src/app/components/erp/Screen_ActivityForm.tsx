@@ -1004,7 +1004,7 @@ export const Screen_ActivityForm: React.FC<{
                   }}
                 >
                   {selected && <Check size={11} />}
-                  {tag}
+                  {s.label || tag}
                 </button>
               );
             })}
@@ -1027,7 +1027,7 @@ export const Screen_ActivityForm: React.FC<{
                   return (
                     <div key={tag}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{tag}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{s.label || tag}</span>
                         <span style={{ fontSize: 12, fontWeight: 800, fontFamily: ERP.font.mono }}>{val}%</span>
                       </div>
                       <input

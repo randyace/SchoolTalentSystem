@@ -14,14 +14,14 @@ export type AcornBindingItem = {
   nameEn: string;
 };
 
-/** Default six dimensions — matches acorn_dimensions seed / Subjects FALLBACK_ACORNS. */
+/** Default six dimensions — storage ZH keys; display uses 六育 badge labels. */
 export const DEFAULT_ACORN_ITEMS: AcornBindingItem[] = [
-  { value: "認知", nameZh: "認知", nameEn: "Academic" },
-  { value: "社群", nameZh: "社群", nameEn: "Collaborative" },
-  { value: "創意", nameZh: "創意", nameEn: "Opportunity" },
-  { value: "協作", nameZh: "協作", nameEn: "Realm" },
-  { value: "領導", nameZh: "領導", nameEn: "Nurturing" },
-  { value: "體適能", nameZh: "體適能", nameEn: "Faith" },
+  { value: "認知", nameZh: ERP.acornTags["認知"].label, nameEn: "Academic" },
+  { value: "社群", nameZh: ERP.acornTags["社群"].label, nameEn: "Collaborative" },
+  { value: "創意", nameZh: ERP.acornTags["創意"].label, nameEn: "Opportunity" },
+  { value: "協作", nameZh: ERP.acornTags["協作"].label, nameEn: "Realm" },
+  { value: "領導", nameZh: ERP.acornTags["領導"].label, nameEn: "Nurturing" },
+  { value: "體適能", nameZh: ERP.acornTags["體適能"].label, nameEn: "Faith" },
 ];
 
 export function acornPastel(zh: string) {
@@ -105,7 +105,7 @@ export const AcornBinding: React.FC<AcornBindingProps> = ({
       >
         {items.map(item => {
           const checked = selectedSet.has(String(item.value));
-          const st = acornPastel(item.nameZh);
+          const st = acornPastel(String(item.value));
           return (
             <label
               key={String(item.value)}
@@ -167,7 +167,7 @@ export const AcornBinding: React.FC<AcornBindingProps> = ({
             <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>（尚未選擇）</span>
           ) : (
             selectedItems.map(item => {
-              const st = acornPastel(item.nameZh);
+              const st = acornPastel(String(item.value));
               return (
                 <span
                   key={String(item.value)}

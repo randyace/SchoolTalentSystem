@@ -83,28 +83,37 @@ export type UploadedContext = {
   source?: "document" | "ocr";
 };
 
+/** Allowed External Context formats — no macro Office (.docm/.xlsm). */
 const CONTEXT_FILE_EXTS = new Set([
-  "pdf", "docx", "txt", "md", "csv", "jpg", "jpeg", "png", "webp", "gif",
+  "pdf", "docx", "xlsx", "csv", "md", "txt", "jpg", "jpeg", "png",
 ]);
 
-const CONTEXT_IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+const CONTEXT_IMAGE_EXTS = new Set(["jpg", "jpeg", "png"]);
+
+const BLOCKED_MACRO_EXTS = new Set(["docm", "xlsm", "pptm", "dotm", "xltm"]);
 
 export function isAllowedContextFile(file: File): boolean {
   const ext = (file.name.split(".").pop() || "").toLowerCase();
+  if (BLOCKED_MACRO_EXTS.has(ext)) return false;
   if (CONTEXT_FILE_EXTS.has(ext)) return true;
   const mime = (file.type || "").toLowerCase();
   return (
     mime === "application/pdf" ||
     mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    mime.startsWith("text/") ||
-    mime.startsWith("image/")
+    mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mime === "text/csv" ||
+    mime === "text/markdown" ||
+    mime === "text/plain" ||
+    mime === "image/jpeg" ||
+    mime === "image/png"
   );
 }
 
 export function isContextImageFile(file: File): boolean {
   const ext = (file.name.split(".").pop() || "").toLowerCase();
   if (CONTEXT_IMAGE_EXTS.has(ext)) return true;
-  return (file.type || "").toLowerCase().startsWith("image/");
+  const mime = (file.type || "").toLowerCase();
+  return mime === "image/jpeg" || mime === "image/png";
 }
 
 export type WorkspaceStats = {

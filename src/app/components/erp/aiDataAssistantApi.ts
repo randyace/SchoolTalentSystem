@@ -80,25 +80,72 @@ export async function createSession(
   return data.session as AssistantSession;
 }
 
+export type ProcessedAttachments = {
+  extracted_text: string;
+  images: string[];
+  items?: Array<Record<string, unknown>>;
+};
+
+/** Upload chat attachments for Vision / text pre-processing before send. */
+export async function uploadChatContext(
+  uploadUrl: string,
+  files: File[],
+  csrfName?: string,
+  csrfHash?: string,
+): Promise<ProcessedAttachments> {
+  if (!files.length) {
+    return { extracted_text: "", images: [] };
+  }
+  const fd = new FormData();
+  for (const f of files) {
+    fd.append("files[]", f);
+  }
+  if (csrfName && csrfHash) fd.append(csrfName, csrfHash);
+
+  const res = await fetch(uploadUrl, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || `upload-context HTTP ${res.status}`);
+  }
+  return {
+    extracted_text: String(data.extracted_text || ""),
+    images: Array.isArray(data.images) ? data.images.filter((u: unknown) => typeof u === "string") : [],
+    items: Array.isArray(data.items) ? data.items : [],
+  };
+}
+
 export async function sendPrompt(
   sendUrl: string,
   prompt: string,
   sessionId: number | string | null,
   csrfName?: string,
   csrfHash?: string,
+  attachments?: ProcessedAttachments | null,
 ): Promise<{
   session: AssistantSession;
   user_message: AssistantMessage;
   assistant_message: AssistantMessage;
 }> {
+  const body: Record<string, unknown> = {
+    prompt,
+    session_id: sessionId ? Number(sessionId) : 0,
+  };
+  if (attachments && (attachments.extracted_text || (attachments.images && attachments.images.length))) {
+    body.attachments = {
+      extracted_text: attachments.extracted_text || "",
+      images: attachments.images || [],
+    };
+  }
   const res = await fetch(sendUrl, {
     method: "POST",
     credentials: "same-origin",
     headers: jsonHeaders(csrfName, csrfHash),
-    body: JSON.stringify({
-      prompt,
-      session_id: sessionId ? Number(sessionId) : 0,
-    }),
+    body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.message || `send HTTP ${res.status}`);

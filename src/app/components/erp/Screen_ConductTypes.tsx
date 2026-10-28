@@ -2,12 +2,28 @@
 // Screen: 行為與考勤類別管理 — Conduct & Attendance Types Configuration
 // Frame: 系統管理 > 系統參數設定 > 行為與考勤類別
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ERP } from "./erpTokens";
 import {
   Plus, X, ChevronRight, Edit2, EyeOff, CheckCircle2,
-  Check, Info, Scale, Minus, AlertCircle,
+  Check, Info, Scale, Minus, AlertCircle, Loader2,
 } from "lucide-react";
+
+const NEW_TYPE_ID = "__new__";
+
+function apiHeaders(csrfHash?: string): HeadersInit {
+  const h: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+  };
+  if (csrfHash) h["X-CSRF-TOKEN"] = csrfHash;
+  return h;
+}
+
+function clampOffset(n: number): number {
+  return Math.max(-10, Math.min(10, n));
+}
 
 // ── Tokens ────────────────────────────────────────────────────────────────────
 const F = ERP.font.family;
@@ -48,13 +64,13 @@ const COLOR_SWATCHES = [
 
 // ACORN impact dimensions — superset including conduct-specific dims
 const ACORN_DIMS = [
-  { key: "無影響", label: "No Impact",   color: C.textMuted, bg: C.pageBg, border: C.border },
-  { key: "社群",   label: "Community",   ...ERP.acornTags["社群"]  },
-  { key: "協作",   label: "Teamwork",    ...ERP.acornTags["協作"]  },
-  { key: "領導",   label: "Leadership",  ...ERP.acornTags["領導"]  },
-  { key: "認知",   label: "Cognition",   ...ERP.acornTags["認知"]  },
-  { key: "創意",   label: "Creativity",  ...ERP.acornTags["創意"]  },
-  { key: "體適能", label: "Physical",    ...ERP.acornTags["體適能"]},
+  { key: "無影響", label: "No Impact", color: C.textMuted, bg: C.pageBg, border: C.border },
+  { key: "社群",   label: ERP.acornTags["社群"].label,   ...ERP.acornTags["社群"]  },
+  { key: "協作",   label: ERP.acornTags["協作"].label,   ...ERP.acornTags["協作"]  },
+  { key: "領導",   label: ERP.acornTags["領導"].label,   ...ERP.acornTags["領導"]  },
+  { key: "認知",   label: ERP.acornTags["認知"].label,   ...ERP.acornTags["認知"]  },
+  { key: "創意",   label: ERP.acornTags["創意"].label,   ...ERP.acornTags["創意"]  },
+  { key: "體適能", label: ERP.acornTags["體適能"].label, ...ERP.acornTags["體適能"]},
 ];
 
 // ── Initial data (5 rows for richness) ───────────────────────────────────────
@@ -205,9 +221,11 @@ interface DrawerForm {
 
 const EditDrawer: React.FC<{
   item:    ConductType;
+  isNew:   boolean;
+  saving?: boolean;
   onClose: () => void;
   onSave:  (updated: ConductType) => void;
-}> = ({ item, onClose, onSave }) => {
+}> = ({ item, isNew, saving, onClose, onSave }) => {
   const [form, setForm] = useState<DrawerForm>({
     zhName:      item.zhName,
     enName:      item.enName,
@@ -219,9 +237,9 @@ const EditDrawer: React.FC<{
     status:      item.status,
   });
 
-  const catMeta = CATEGORY_META[form.category];
   const hasImpact = form.acornDim !== "無影響";
   const dimTag = ERP.acornTags[form.acornDim] ?? null;
+  const offsetPct = ((form.acornPoints + 10) / 20) * 100;
 
   const setField = <K extends keyof DrawerForm>(k: K, v: DrawerForm[K]) =>
     setForm(f => ({ ...f, [k]: v }));
@@ -229,13 +247,13 @@ const EditDrawer: React.FC<{
   const handleSave = () =>
     onSave({
       ...item,
-      zhName:      form.zhName,
-      enName:      form.enName,
+      zhName:      form.zhName.trim(),
+      enName:      form.enName.trim(),
       category:    form.category,
       color:       form.color,
       colorLabel:  form.colorLabel,
       acornDim:    form.acornDim === "無影響" ? null : form.acornDim,
-      acornPoints: form.acornDim === "無影響" ? 0 : form.acornPoints,
+      acornPoints: form.acornDim === "無影響" ? 0 : clampOffset(form.acornPoints),
       status:      form.status,
     });
 
@@ -267,7 +285,7 @@ const EditDrawer: React.FC<{
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: C.textPrimary, fontFamily: F }}>
-                  編輯類別
+                  {isNew ? "新增類別" : "編輯類別"}
                 </span>
                 <span style={{
                   fontSize: 13, fontWeight: 700, fontFamily: F,
@@ -280,7 +298,7 @@ const EditDrawer: React.FC<{
                 </span>
               </div>
               <div style={{ fontSize: 11, color: C.textMuted, fontFamily: F, marginTop: 2 }}>
-                Edit Type · 修改行為 / 考勤類別參數
+                {isNew ? "Add Type · 建立行為 / 考勤類別" : "Edit Type · 修改行為 / 考勤類別參數"}
               </div>
             </div>
           </div>
@@ -445,90 +463,121 @@ const EditDrawer: React.FC<{
           </select>
         </div>
 
-        {/* Points offset — only visible when a real dimension is selected */}
-        {hasImpact && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 5, fontFamily: F }}>
-              分數增減
-              <span style={{ fontSize: 10, fontWeight: 400, color: C.textMuted, marginLeft: 6 }}>Points Offset · 可填負數</span>
-            </label>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Decrement */}
-              <button
-                onClick={() => setField("acornPoints", form.acornPoints - 1)}
-                style={{
-                  width: 34, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
-                  border: `1px solid ${C.border}`, borderRadius: R.md,
-                  background: C.surface, cursor: "pointer",
-                  color: C.textSecondary, flexShrink: 0,
-                }}
-              >
-                <Minus size={13} />
-              </button>
-
-              {/* Points display */}
-              <div style={{
-                flex: 1, height: 36,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                borderRadius: R.md,
-                border: `1.5px solid ${form.acornPoints > 0 ? "#A7F3D0" : form.acornPoints < 0 ? "#FECACA" : C.border}`,
-                background: form.acornPoints > 0 ? "#F0FDF4" : form.acornPoints < 0 ? "#FEF2F2" : C.pageBg,
-                gap: 4,
+        {/* Points offset — locked to 0 when 無影響 */}
+        <div style={{ marginBottom: 14, opacity: hasImpact ? 1 : 0.55 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 5, fontFamily: F }}>
+            分數增減
+            <span style={{ fontSize: 10, fontWeight: 400, color: C.textMuted, marginLeft: 6 }}>Points Offset · −10 ~ +10</span>
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <button
+              type="button"
+              disabled={!hasImpact}
+              onClick={() => setField("acornPoints", clampOffset(form.acornPoints - 1))}
+              style={{
+                width: 34, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
+                border: `1px solid ${C.border}`, borderRadius: R.md,
+                background: C.surface, cursor: hasImpact ? "pointer" : "not-allowed",
+                color: C.textSecondary, flexShrink: 0,
+              }}
+            >
+              <Minus size={13} />
+            </button>
+            <div style={{
+              flex: 1, height: 36,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: R.md,
+              border: `1.5px solid ${form.acornPoints > 0 ? "#A7F3D0" : form.acornPoints < 0 ? "#FECACA" : C.border}`,
+              background: form.acornPoints > 0 ? "#F0FDF4" : form.acornPoints < 0 ? "#FEF2F2" : C.pageBg,
+              gap: 4,
+            }}>
+              <span style={{
+                fontFamily: ERP.font.mono, fontSize: 20, fontWeight: 800,
+                color: form.acornPoints > 0 ? "#15803D" : form.acornPoints < 0 ? "#B91C1C" : C.textMuted,
+                letterSpacing: "-0.5px",
               }}>
-                <span style={{
-                  fontFamily: ERP.font.mono, fontSize: 20, fontWeight: 800,
-                  color: form.acornPoints > 0 ? "#15803D" : form.acornPoints < 0 ? "#B91C1C" : C.textMuted,
-                  letterSpacing: "-0.5px",
-                }}>
-                  {form.acornPoints > 0 ? "+" : ""}{form.acornPoints}
-                </span>
-                <span style={{ fontSize: 11, color: C.textMuted, fontFamily: F }}>分</span>
-              </div>
-
-              {/* Increment */}
-              <button
-                onClick={() => setField("acornPoints", form.acornPoints + 1)}
-                style={{
-                  width: 34, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
-                  border: `1px solid ${C.border}`, borderRadius: R.md,
-                  background: C.surface, cursor: "pointer",
-                  color: C.textSecondary, flexShrink: 0,
-                }}
-              >
-                <Plus size={13} />
-              </button>
+                {form.acornPoints > 0 ? "+" : ""}{form.acornPoints}
+              </span>
+              <span style={{ fontSize: 11, color: C.textMuted, fontFamily: F }}>分</span>
             </div>
+            <button
+              type="button"
+              disabled={!hasImpact}
+              onClick={() => setField("acornPoints", clampOffset(form.acornPoints + 1))}
+              style={{
+                width: 34, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
+                border: `1px solid ${C.border}`, borderRadius: R.md,
+                background: C.surface, cursor: hasImpact ? "pointer" : "not-allowed",
+                color: C.textSecondary, flexShrink: 0,
+              }}
+            >
+              <Plus size={13} />
+            </button>
           </div>
-        )}
+          <style>{`
+            .conduct-offset-slider::-webkit-slider-thumb {
+              -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+              background: ${form.acornPoints >= 0 ? "#16A34A" : "#DC2626"}; cursor: pointer;
+              border: 2px solid #fff; box-shadow: 0 0 0 1px ${C.border};
+            }
+            .conduct-offset-slider { -webkit-appearance: none; appearance: none; outline: none; background: transparent; width: 100%; cursor: pointer; }
+            .conduct-offset-slider::-webkit-slider-runnable-track {
+              height: 4px; border-radius: 99px;
+              background: linear-gradient(to right, #FECACA 0%, #E2E8F0 50%, #BBF7D0 100%);
+            }
+          `}</style>
+          <input
+            className="conduct-offset-slider"
+            type="range"
+            min={-10}
+            max={10}
+            step={1}
+            disabled={!hasImpact}
+            value={hasImpact ? form.acornPoints : 0}
+            onChange={e => setField("acornPoints", clampOffset(parseInt(e.target.value, 10) || 0))}
+            style={{ width: "100%", opacity: hasImpact ? 1 : 0.4 }}
+            aria-valuemin={-10}
+            aria-valuemax={10}
+            aria-valuenow={hasImpact ? form.acornPoints : 0}
+            data-pct={offsetPct}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: C.textMuted, fontFamily: ERP.font.mono }}>
+            <span>−10</span><span>0</span><span>+10</span>
+          </div>
+        </div>
 
         {/* Live ACORN impact preview card */}
         <div style={{
           marginBottom: 18,
           padding: "10px 13px",
-          background: hasImpact && dimTag
-            ? dimTag.bg
-            : C.pageBg,
-          border: `1px solid ${hasImpact && dimTag ? dimTag.border : C.border}`,
+          background: !hasImpact || form.acornPoints === 0
+            ? C.pageBg
+            : form.acornPoints > 0 ? "#F0FDF4" : "#FFF1F2",
+          border: `1px solid ${
+            !hasImpact || form.acornPoints === 0
+              ? C.border
+              : form.acornPoints > 0 ? "#BBF7D0" : "#FECDD3"
+          }`,
           borderRadius: R.md,
-          display: "flex", alignItems: "center", gap: 10,
+          display: "flex", alignItems: "flex-start", gap: 10,
         }}>
-          <Info size={13} color={hasImpact && dimTag ? dimTag.color : C.textMuted} style={{ flexShrink: 0 }} />
-          {hasImpact && dimTag ? (
-            <div style={{ fontSize: 12, color: dimTag.color, fontFamily: F, lineHeight: 1.5 }}>
-              <strong>預覽：</strong>
-              觸發此類別時，學生的{" "}
-              <strong style={{ background: dimTag.bg, padding: "0 4px", borderRadius: 3 }}>{form.acornDim}</strong>{" "}
-              維度分數將{form.acornPoints > 0 ? "增加" : "扣減"}{" "}
-              <strong style={{ color: form.acornPoints > 0 ? "#15803D" : "#B91C1C" }}>
-                {Math.abs(form.acornPoints)} 分
-              </strong>
-              。
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: C.textMuted, fontFamily: F }}>
-              此類別選擇「無影響」，觸發時不會更動任何 ACORN 維度分數。
-            </div>
-          )}
+          <Info size={13} color={
+            !hasImpact || form.acornPoints === 0
+              ? C.textMuted
+              : form.acornPoints > 0 ? "#15803D" : "#BE123C"
+          } style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{
+            fontSize: 12, fontFamily: F, lineHeight: 1.55,
+            color: !hasImpact || form.acornPoints === 0
+              ? C.textMuted
+              : form.acornPoints > 0 ? "#166534" : "#9F1239",
+          }}>
+            {!hasImpact || form.acornPoints === 0
+              ? "◎ 預覽：觸發此類別時，不會變動學生的 ACORN 分數。"
+              : form.acornPoints > 0
+                ? `◎ 預覽：觸發此類別時，學生的 ${form.acornDim} 維度分數將增加 +${form.acornPoints} 分。`
+                : `◎ 預覽：觸發此類別時，學生的 ${form.acornDim} 維度分數將扣減 ${form.acornPoints} 分。`}
+          </div>
         </div>
 
         {/* ─ Section 4: Status ─ */}
@@ -582,17 +631,20 @@ const EditDrawer: React.FC<{
         </button>
         <button
           onClick={handleSave}
+          disabled={!!saving || !form.zhName.trim() || !form.enName.trim()}
           style={{
             padding: "8px 22px", borderRadius: R.md, border: "none",
             background: C.accent, color: "#fff",
-            fontSize: 13, fontWeight: 700, fontFamily: F, cursor: "pointer",
+            fontSize: 13, fontWeight: 700, fontFamily: F,
+            cursor: saving ? "wait" : "pointer",
             boxShadow: `0 2px 8px ${C.accent}40`,
             display: "flex", alignItems: "center", gap: 6,
+            opacity: saving ? 0.7 : 1,
           }}
-          onMouseEnter={e => (e.currentTarget.style.background = C.accentDark)}
+          onMouseEnter={e => { if (!saving) e.currentTarget.style.background = C.accentDark; }}
           onMouseLeave={e => (e.currentTarget.style.background = C.accent)}
         >
-          <Check size={14} />
+          {saving ? <Loader2 size={14} style={{ animation: "spin 0.8s linear infinite" }} /> : <Check size={14} />}
           儲存變更 Save Changes
         </button>
       </div>
@@ -600,36 +652,146 @@ const EditDrawer: React.FC<{
   );
 };
 
+function mapApiConductType(row: any): ConductType {
+  return {
+    id: String(row?.id ?? ""),
+    zhName: String(row?.name_zh ?? ""),
+    enName: String(row?.name_en ?? ""),
+    category: row?.category === "attendance" ? "attendance" : "conduct",
+    color: String(row?.color_hex ?? "#2563EB"),
+    colorLabel: String(row?.color_name ?? ""),
+    acornDim: row?.acorn_dimension ? String(row.acorn_dimension) : null,
+    acornPoints: Number(row?.points_offset ?? 0),
+    status: row?.is_active === false || row?.is_active === 0 ? "disabled" : "active",
+  };
+}
+
 // ── Main Screen ───────────────────────────────────────────────────────────────
-export const Screen_ConductTypes: React.FC = () => {
-  const [types,      setTypes]      = useState<ConductType[]>(INITIAL_TYPES);
-  const [editingId,  setEditingId]  = useState<string | null>("c1");
+export interface ScreenConductTypesProps {
+  conductTypesUrl?: string;
+  csrfName?: string;
+  csrfHash?: string;
+}
+
+export const Screen_ConductTypes: React.FC<ScreenConductTypesProps> = ({
+  conductTypesUrl = "/api/system-config/conduct-types",
+  csrfHash,
+}) => {
+  const [types,      setTypes]      = useState<ConductType[]>([]);
+  const [editingId,  setEditingId]  = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
   const [isMobile,   setIsMobile]   = useState(false);
+  const [loading,    setLoading]    = useState(true);
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
-    if (window.innerWidth < 768) setEditingId(null);
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const drawerOpen  = editingId !== null;
-  const editingItem = types.find(t => t.id === editingId) ?? null;
+  const reload = useCallback(async (selectId?: string | null) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(conductTypesUrl, {
+        headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const rows = Array.isArray(json?.data) ? json.data.map(mapApiConductType) : [];
+      setTypes(rows);
+      // Do not auto-select on initial load — drawer opens only via Edit / Add
+      if (selectId !== undefined) {
+        setEditingId(selectId);
+      }
+    } catch (e) {
+      setTypes([]);
+      setError(e instanceof Error ? e.message : "載入失敗");
+    } finally {
+      setLoading(false);
+    }
+  }, [conductTypesUrl]);
 
-  const handleSave = (updated: ConductType) => {
-    setTypes(prev => prev.map(t => t.id === updated.id ? updated : t));
-    setSavedFlash(updated.id);
-    setTimeout(() => setSavedFlash(null), 2200);
-    setEditingId(null);
+  useEffect(() => { void reload(); }, [reload]);
+
+  const isInspectorOpen = editingId !== null;
+  const isNew = editingId === NEW_TYPE_ID;
+  const editingItem: ConductType | null = isNew
+    ? {
+        id: NEW_TYPE_ID,
+        zhName: "",
+        enName: "",
+        category: "conduct",
+        color: "#16A34A",
+        colorLabel: "綠色",
+        acornDim: null,
+        acornPoints: 0,
+        status: "active",
+      }
+    : (types.find(t => t.id === editingId) ?? null);
+
+  const openCreate = () => setEditingId(NEW_TYPE_ID);
+
+  const handleSave = async (updated: ConductType) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        name_zh: updated.zhName,
+        name_en: updated.enName,
+        category: updated.category,
+        color_name: updated.colorLabel,
+        color_hex: updated.color,
+        acorn_dimension: updated.acornDim,
+        points_offset: updated.acornPoints,
+        is_active: updated.status === "active",
+      };
+      const isCreate = updated.id === NEW_TYPE_ID;
+      const res = await fetch(
+        isCreate ? conductTypesUrl : `${conductTypesUrl.replace(/\/$/, "")}/${updated.id}`,
+        {
+          method: isCreate ? "POST" : "PUT",
+          headers: apiHeaders(csrfHash),
+          credentials: "same-origin",
+          body: JSON.stringify(body),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(String(json?.message || `儲存失敗 (HTTP ${res.status})`));
+      }
+      const saved = mapApiConductType(json.data);
+      await reload(saved.id);
+      setSavedFlash(saved.id);
+      setTimeout(() => setSavedFlash(null), 2200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "儲存失敗");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleToggleStatus = (id: string) =>
-    setTypes(prev => prev.map(t => t.id === id
-      ? { ...t, status: t.status === "active" ? "disabled" : "active" }
-      : t
-    ));
+  const handleToggleStatus = async (id: string) => {
+    try {
+      const res = await fetch(`${conductTypesUrl.replace(/\/$/, "")}/${id}/toggle`, {
+        method: "PATCH",
+        headers: apiHeaders(csrfHash),
+        credentials: "same-origin",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(String(json?.message || "狀態切換失敗"));
+      }
+      const saved = mapApiConductType(json.data);
+      setTypes(prev => prev.map(t => t.id === id ? saved : t));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "狀態切換失敗");
+    }
+  };
 
   // Grid column widths
   const COLS = "2fr 1fr 130px 200px 120px 140px";
@@ -639,6 +801,7 @@ export const Screen_ConductTypes: React.FC = () => {
       display: "flex", height: isMobile ? "auto" : "100%", overflow: isMobile ? "visible" : "hidden",
       background: C.pageBg, fontFamily: F,
     }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ── LEFT: Main content ── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: isMobile ? "visible" : "hidden", minWidth: 0 }}>
@@ -690,7 +853,7 @@ export const Screen_ConductTypes: React.FC = () => {
               </p>
             </div>
             <button
-              onClick={() => {}}
+              onClick={openCreate}
               style={{
                 display: "flex", alignItems: "center", gap: 7,
                 padding: "9px 16px", borderRadius: R.md,
@@ -707,6 +870,15 @@ export const Screen_ConductTypes: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div style={{
+            padding: "10px 28px", background: "#FEF2F2", borderBottom: "1px solid #FECACA",
+            fontSize: 12.5, fontFamily: F, color: "#B91C1C", fontWeight: 600, flexShrink: 0,
+          }}>
+            {error}
+          </div>
+        )}
 
         {/* ── Success flash banner ── */}
         {savedFlash && (
@@ -758,7 +930,18 @@ export const Screen_ConductTypes: React.FC = () => {
             </div>
 
             {/* Data rows */}
-            {types.map((item, idx) => {
+            {loading && (
+              <div style={{ padding: "48px 20px", textAlign: "center", color: C.textMuted, fontSize: 13, fontFamily: F }}>
+                <Loader2 size={22} color={C.accent} style={{ animation: "spin 0.8s linear infinite", marginBottom: 8 }} />
+                <div>載入類別中…</div>
+              </div>
+            )}
+            {!loading && types.length === 0 && (
+              <div style={{ padding: "48px 20px", textAlign: "center", color: C.textMuted, fontSize: 13, fontFamily: F }}>
+                尚未設定類別。請按右上角「新增類別」。
+              </div>
+            )}
+            {!loading && types.map((item, idx) => {
               const isEditing = editingId === item.id;
               const isFlash   = savedFlash === item.id;
               return (
@@ -926,36 +1109,33 @@ export const Screen_ConductTypes: React.FC = () => {
         </div>
       </div>
 
-      {/* ── RIGHT: Edit Drawer ── */}
-      {isMobile && drawerOpen && (
-        <div onClick={() => setEditingId(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 199 }} />
-      )}
-      {isMobile ? (
-        drawerOpen && (
-          <div style={{
+      {/* ── RIGHT: Inspector — only mounts when open ── */}
+      {isInspectorOpen && editingItem && (
+        <>
+          {isMobile && (
+            <div onClick={() => setEditingId(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 199 }} />
+          )}
+          <div style={isMobile ? {
             position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
             zIndex: 200, display: "flex", flexDirection: "column",
             background: C.surface, overflow: "hidden",
+          } : {
+            width: DRAWER_W, maxWidth: "40%", flexShrink: 0,
+            borderLeft: `1px solid ${C.border}`,
+            background: C.surface,
+            display: "flex", flexDirection: "column",
+            boxShadow: "-4px 0 20px rgba(0,0,0,0.07)",
+            animation: "inspectorSlideIn 0.22s cubic-bezier(0.4,0,0.2,1)",
           }}>
-            {editingItem && (
-              <EditDrawer key={editingItem.id} item={editingItem} onClose={() => setEditingId(null)} onSave={handleSave} />
-            )}
+            <style>{`
+              @keyframes inspectorSlideIn {
+                from { transform: translateX(24px); opacity: 0.6; }
+                to { transform: translateX(0); opacity: 1; }
+              }
+            `}</style>
+            <EditDrawer key={editingItem.id} item={editingItem} isNew={isNew} saving={saving} onClose={() => setEditingId(null)} onSave={handleSave} />
           </div>
-        )
-      ) : (
-        <div style={{
-          width: drawerOpen ? DRAWER_W : 0,
-          transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
-          overflow: "hidden", flexShrink: 0,
-          borderLeft: drawerOpen ? `1px solid ${C.border}` : "none",
-          boxShadow: drawerOpen ? "-4px 0 20px rgba(0,0,0,0.07)" : "none",
-        }}>
-          <div style={{ width: DRAWER_W, height: "100%", display: "flex", flexDirection: "column", background: C.surface }}>
-            {editingItem && (
-              <EditDrawer key={editingItem.id} item={editingItem} onClose={() => setEditingId(null)} onSave={handleSave} />
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

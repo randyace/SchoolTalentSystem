@@ -18,6 +18,10 @@ import { Screen_BulkGroupAward } from "./components/erp/Screen_BulkGroupAward";
 import { Screen_CertificateTemplates } from "./components/erp/Screen_CertificateTemplates";
 import { Screen_Achievements } from "./components/erp/Screen_Achievements";
 import { Screen_SystemSettings } from "./components/erp/Screen_SystemSettings";
+import { Screen_TierMapping } from "./components/erp/Screen_TierMapping";
+import { Screen_AcornEngine } from "./components/erp/Screen_AcornEngine";
+import { Screen_ConductTypes } from "./components/erp/Screen_ConductTypes";
+import { Screen_RolesPositions } from "./components/erp/Screen_RolesPositions";
 import { Screen_AIDataAssistant } from "./components/erp/Screen_AIDataAssistant";
 import { Screen_AIWritingWorkspace } from "./components/erp/Screen_AIWritingWorkspace";
 import { Screen_SystemAdminHome } from "./components/erp/Screen_SystemAdminHome";
@@ -65,6 +69,10 @@ export type StsBridgePage =
   | "ai-workspace"
   | "settings"
   | "system-settings"
+  | "tier-mapping"
+  | "acorn-engine"
+  | "conduct-types"
+  | "roles-positions"
   | "api-docs"
   | "scores"
   | "assessments"
@@ -114,15 +122,21 @@ export interface StsBridgeConfig {
   };
   profile?: {
     student_id: string;
+    internal_id?: number;
     name_zh_hk?: string;
     name_en?: string;
     class_name?: string;
     class_code?: string;
+    class_number?: number | null;
     system_tier?: string;
     custom_title?: string;
     status?: string;
+    status_raw?: string;
     academic_year?: string;
+    pdpo_token?: string;
   };
+  holistic?: import("./components/erp/Screen_StudentProfile").HolisticBridgePayload;
+  acornDims?: Array<Record<string, unknown>>;
   students?: Array<{
     id: string;
     chName: string;
@@ -306,6 +320,8 @@ export interface StsBridgeConfig {
   removeUrl?: string;
   /** Bulk certificate generator */
   studentsUrlBase?: string;
+  /** Talent pool students API */
+  studentsUrl?: string;
   generatePdfUrl?: string;
   /** Achievement review workstation (Screen_BatchOCR) */
   batchTitle?: string;
@@ -318,6 +334,16 @@ export interface StsBridgeConfig {
   searchStudentsUrl?: string;
   environmentLevelsUrl?: string;
   tierRolesUrl?: string;
+  /** ACORN system config admin pages */
+  tiersUrl?: string;
+  manifestUrl?: string;
+  diagnoseUrl?: string;
+  recalcUrl?: string;
+  autoBindUrl?: string;
+  initialDiagnosis?: unknown;
+  manifest?: import("./components/erp/Screen_AcornEngine").AcornEngineManifest;
+  conductTypesUrl?: string;
+  rolesUrl?: string;
   /** AI Data Assistant */
   sessionsUrl?: string;
   sendUrl?: string;
@@ -340,6 +366,8 @@ export interface StsBridgeConfig {
   principalName?: string;
   principalTitle?: string;
   schoolName?: string;
+  schoolNameEn?: string;
+  schoolDisplayName?: string;
   signatureLine?: string;
   customFields?: Array<{ id: number; field_name: string; display_label: string }>;
   customFieldsUrl?: string;
@@ -401,13 +429,28 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
 
   switch (config.page) {
     case "student-profile":
-      return (
+      return wrap(nav || "students-by-year", (
         <Screen_StudentProfile
           studentId={config.profile?.student_id || "unknown"}
           onBack={() => go("/students")}
           routeSource="roster"
+          schoolName={config.schoolDisplayName || config.schoolName || "香港神託會培敦中學"}
+          schoolNameEn={config.schoolNameEn || "Stewards Pooi Tun Secondary School"}
+          holistic={config.holistic ?? null}
+          profileMeta={config.profile ? {
+            student_id: config.profile.student_id,
+            name_zh_hk: config.profile.name_zh_hk,
+            name_en: config.profile.name_en,
+            class_name: config.profile.class_name,
+            class_number: config.profile.class_number ?? null,
+            system_tier: config.profile.system_tier,
+            status: config.profile.status,
+            status_raw: config.profile.status_raw,
+            academic_year: config.profile.academic_year,
+            pdpo_token: config.profile.pdpo_token,
+          } : null}
         />
-      );
+      ));
 
     case "students":
       return wrap(nav || "students-by-year", (
@@ -575,7 +618,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
       ));
 
     case "staff":
-      return wrap(nav || "roles-positions", (
+      return wrap(nav || "staff", (
         <Screen_Staff
           staff={config.staff || []}
           openForm={!!config.openForm}
@@ -845,7 +888,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           schoolLogoPath={config.schoolLogoPath || ""}
           principalName={config.principalName || ""}
           principalTitle={config.principalTitle || "校長 Principal"}
-          schoolName={config.schoolName || "School Talent System"}
+          schoolName={config.schoolName || "香港神託會培敦中學"}
           signatureLine={config.signatureLine || "_______________________"}
           customFields={config.customFields || []}
           templateId={config.templateId ?? null}
@@ -859,13 +902,18 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
       ));
 
     case "talent":
-      return wrap(nav || "talent-filter", <Screen_TalentFilter />);
+      return wrap(nav || "talent-filter", (
+        <Screen_TalentFilter
+          studentsUrl={config.studentsUrl || "/api/talent-pool/students"}
+        />
+      ));
 
     case "ai-assistant":
       return wrap(nav || "ai-data-assistant", (
         <Screen_AIDataAssistant
           sessionsUrl={config.sessionsUrl || "/ai-assistant/sessions"}
           sendUrl={config.sendUrl || "/ai-assistant/send"}
+          uploadContextUrl={config.uploadContextUrl || "/ai-assistant/api/upload-context"}
           exportDataUrl={config.exportDataUrl || "/ai-assistant/export-data"}
           exportSessionUrl={config.exportSessionUrl || "/ai-assistant/export-session"}
           importSessionUrl={config.importSessionUrl || "/ai-assistant/import-session"}
@@ -912,14 +960,62 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         />,
       );
 
+    case "acorn-engine":
+      return wrap(nav || "acorn-engine", (
+        <Screen_AcornEngine
+          manifest={config.manifest ?? null}
+          academicYear={config.academicYear}
+          manifestUrl={config.manifestUrl || "/admin/acorn-engine/manifest"}
+          updateUrl={config.updateUrl || "/admin/acorn-engine/update-params"}
+          recalcUrl={config.recalcUrl || "/admin/acorn-engine/recalculate-all"}
+          autoBindUrl={config.autoBindUrl || "/admin/acorn-engine/auto-bind-weights"}
+          diagnoseUrl={config.diagnoseUrl || "/admin/acorn-engine/diagnose-student"}
+          initialDiagnosis={config.initialDiagnosis ?? null}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />
+      ));
+
+    case "tier-mapping":
+      return wrap(nav || "tier-mapping", (
+        <Screen_TierMapping
+          tiersUrl={config.tiersUrl || "/api/system-config/tiers"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />
+      ));
+
+    case "conduct-types":
+      return wrap(nav || "conduct-types", (
+        <Screen_ConductTypes
+          conductTypesUrl={config.conductTypesUrl || "/api/system-config/conduct-types"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />
+      ));
+
+    case "roles-positions":
+      return wrap(nav || "roles-positions", (
+        <Screen_RolesPositions
+          rolesUrl={config.rolesUrl || "/api/system-config/roles"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />
+      ));
+
     case "settings":
       return wrap(nav || "system-admin-home", (
         <Screen_SystemAdminHome onNavigate={(id) => {
           const map: Record<string, string> = {
             "system-settings": "/settings",
+            "acorn-engine": "/admin/acorn-engine",
+            "tier-mapping": "/teacher/tiers",
+            "conduct-types": "/teacher/conduct-types",
+            "roles-positions": "/teacher/roles",
             "data-import": "/roster",
             "api-docs": "/api/docs",
             "prompt-portal": "/ai-workspace",
+            "ai-workspace": "/ai-workspace",
           };
           go(map[id] || "/settings");
         }} />

@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState } from "react";
 import {
-  Database, Sparkles, Network, BookOpen, Trophy, Sliders, Code2,
+  Database, Sparkles, Network, BookOpen, Trophy, Sliders, Code2, Cpu,
   ShieldCheck, Tag, Settings, ChevronRight, CheckCircle2, Clock,
   Zap, Lock,
 } from "lucide-react";
@@ -51,6 +51,15 @@ const CATEGORIES: AdminCategory[] = [
         description: "管理教師帳號權限及跨系統數據同步設定",
         icon: <Network size={22} />,
         accentColor: "#0891B2",
+        status: "stable",
+      },
+      {
+        id: "acorn-engine",
+        zhLabel: "ACORN 演算法引擎",
+        enLabel: "Algorithm & Params",
+        description: "六育複合演算法常數、十大模組健康度與學生計分除錯",
+        icon: <Cpu size={22} />,
+        accentColor: "#1D4ED8",
         status: "stable",
       },
       {

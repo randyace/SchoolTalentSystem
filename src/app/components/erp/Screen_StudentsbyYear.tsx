@@ -585,9 +585,7 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
   }, [formsProp, classCatalog]);
 
   const [privacyOn,   setPrivacyOn]   = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(roster.slice(0, 2).map(s => s.id))
-  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [revealedCells, setRevealedCells] = useState<Set<string>>(new Set());
 
   const [searchQ,      setSearchQ]      = useState("");

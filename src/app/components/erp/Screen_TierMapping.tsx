@@ -2,13 +2,25 @@
 // Screen: 成就級別管理 — Tier Mapping Configuration
 // Frame: 系統設定 > 成就級別管理 (1.G.1)
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ERP } from "./erpTokens";
 import {
   Plus, X, ChevronRight, Settings, Edit2, EyeOff,
-  CheckCircle2, Sliders, Info, Check, ChevronDown,
-  Award, Hash,
+  CheckCircle2, Sliders, Info, Check,
+  Award, Loader2,
 } from "lucide-react";
+
+const NEW_TIER_ID = "__new__";
+
+function apiHeaders(csrfHash?: string): HeadersInit {
+  const h: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+  };
+  if (csrfHash) h["X-CSRF-TOKEN"] = csrfHash;
+  return h;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -76,7 +88,7 @@ const INITIAL_TIERS: Tier[] = [
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 const AcornPill: React.FC<{ tagKey: string }> = ({ tagKey }) => {
-  const tag = ERP.acornTags[tagKey];
+  const tag = ERP.acornTags[tagKey as keyof typeof ERP.acornTags];
   if (!tag) return null;
   return (
     <span style={{
@@ -90,7 +102,7 @@ const AcornPill: React.FC<{ tagKey: string }> = ({ tagKey }) => {
         width: 6, height: 6, borderRadius: "50%",
         background: tag.color, flexShrink: 0,
       }} />
-      {tagKey}
+      {tag.label}
     </span>
   );
 };
@@ -168,6 +180,7 @@ const Toggle: React.FC<{
 // ── Drawer Form ───────────────────────────────────────────────────────────────
 
 interface DrawerForm {
+  code:       string;
   enName:     string;
   zhDesc:     string;
   acornDims:  string[];
@@ -176,11 +189,14 @@ interface DrawerForm {
 }
 
 const EditDrawer: React.FC<{
-  tier:    Tier;
-  onClose: () => void;
-  onSave:  (updated: Tier) => void;
-}> = ({ tier, onClose, onSave }) => {
+  tier:     Tier;
+  isNew:    boolean;
+  saving?:  boolean;
+  onClose:  () => void;
+  onSave:   (updated: Tier) => void;
+}> = ({ tier, isNew, saving, onClose, onSave }) => {
   const [form, setForm] = useState<DrawerForm>({
+    code:       tier.code,
     enName:     tier.enName,
     zhDesc:     tier.zhDesc,
     acornDims:  [...tier.acornDims],
@@ -188,7 +204,7 @@ const EditDrawer: React.FC<{
     status:     tier.status,
   });
 
-  const codeStyle = TIER_CODE_COLORS[tier.code] ?? { bg: "#F1F5F9", color: "#334155", border: "#CBD5E1" };
+  const codeStyle = TIER_CODE_COLORS[form.code] ?? { bg: "#F1F5F9", color: "#334155", border: "#CBD5E1" };
 
   const toggleAcorn = (key: string) =>
     setForm(f => ({
@@ -198,7 +214,15 @@ const EditDrawer: React.FC<{
         : [...f.acornDims, key],
     }));
 
-  const handleSave = () => onSave({ ...tier, ...form });
+  const handleSave = () => onSave({
+    ...tier,
+    code: form.code.trim().toUpperCase(),
+    enName: form.enName.trim(),
+    zhDesc: form.zhDesc.trim(),
+    acornDims: form.acornDims,
+    multiplier: form.multiplier,
+    status: form.status,
+  });
 
   const sliderVal = form.multiplier;
   const sliderPct = ((sliderVal - 1) / 4) * 100;
@@ -244,19 +268,21 @@ const EditDrawer: React.FC<{
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: C.textPrimary, fontFamily: F }}>
-                  編輯成就級別
+                  {isNew ? "新增成就級別" : "編輯成就級別"}
                 </span>
-                <span style={{
-                  fontFamily: MONO, fontSize: 12, fontWeight: 800,
-                  padding: "2px 8px", borderRadius: R.xs,
-                  background: codeStyle.bg, color: codeStyle.color,
-                  border: `1px solid ${codeStyle.border}`,
-                }}>
-                  {tier.code}
-                </span>
+                {!isNew && form.code && (
+                  <span style={{
+                    fontFamily: MONO, fontSize: 12, fontWeight: 800,
+                    padding: "2px 8px", borderRadius: R.xs,
+                    background: codeStyle.bg, color: codeStyle.color,
+                    border: `1px solid ${codeStyle.border}`,
+                  }}>
+                    {form.code}
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 11, color: C.textMuted, fontFamily: F, marginTop: 2 }}>
-                Edit Achievement Tier · 修改級別參數
+                {isNew ? "Add Achievement Tier · 建立新級別參數" : "Edit Achievement Tier · 修改級別參數"}
               </div>
             </div>
           </div>
@@ -287,29 +313,48 @@ const EditDrawer: React.FC<{
           <Settings size={10} />基本參數 · Core Parameters
         </div>
 
-        {/* Tier Code (read-only) */}
+        {/* Tier Code — editable on create, read-only when editing */}
         <div style={{ marginBottom: 15 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 5, fontFamily: F }}>
             級別代碼
             <span style={{ fontSize: 10, fontWeight: 400, color: C.textMuted, marginLeft: 6 }}>Tier Code</span>
-            <span style={{
-              marginLeft: 6, fontSize: 10, fontWeight: 600,
-              padding: "1px 6px", borderRadius: R.sm,
-              background: C.pageBg, border: `1px solid ${C.border}`,
-              color: C.textMuted,
-            }}>唯讀</span>
+            {!isNew && (
+              <span style={{
+                marginLeft: 6, fontSize: 10, fontWeight: 600,
+                padding: "1px 6px", borderRadius: R.sm,
+                background: C.pageBg, border: `1px solid ${C.border}`,
+                color: C.textMuted,
+              }}>唯讀</span>
+            )}
           </label>
-          <div style={{
-            padding: "8px 12px",
-            borderRadius: R.md, border: `1px solid ${C.border}`,
-            background: C.pageBg,
-            display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <TierCodeBadge code={tier.code} />
-            <span style={{ fontSize: 11, color: C.textMuted, fontFamily: F }}>
-              系統識別碼，建立後不可修改。
-            </span>
-          </div>
+          {isNew ? (
+            <input
+              value={form.code}
+              placeholder="例如 T4"
+              onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase().replace(/[^T0-9]/gi, "").slice(0, 8) }))}
+              style={{
+                width: "100%", boxSizing: "border-box" as const,
+                padding: "8px 12px", borderRadius: R.md,
+                border: `1px solid ${C.border}`,
+                background: C.surface, color: C.textPrimary,
+                fontSize: 13, fontFamily: MONO, fontWeight: 700, outline: "none",
+              }}
+              onFocus={e => (e.currentTarget.style.borderColor = C.accent)}
+              onBlur={e => (e.currentTarget.style.borderColor = C.border)}
+            />
+          ) : (
+            <div style={{
+              padding: "8px 12px",
+              borderRadius: R.md, border: `1px solid ${C.border}`,
+              background: C.pageBg,
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <TierCodeBadge code={form.code} />
+              <span style={{ fontSize: 11, color: C.textMuted, fontFamily: F }}>
+                系統識別碼，建立後不可修改。
+              </span>
+            </div>
+          )}
         </div>
 
         {/* English Name */}
@@ -388,8 +433,8 @@ const EditDrawer: React.FC<{
                     {active && <Check size={9} color="#fff" strokeWidth={3} />}
                   </div>
                   <div>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: active ? dim.color : C.textPrimary, lineHeight: 1 }}>{dim.key}</div>
-                    <div style={{ fontSize: 9, color: C.textMuted, marginTop: 1.5, lineHeight: 1 }}>{dim.label}</div>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: active ? dim.color : C.textPrimary, lineHeight: 1 }}>{dim.label}</div>
+                    <div style={{ fontSize: 9, color: C.textMuted, marginTop: 1.5, lineHeight: 1 }}>{dim.key}</div>
                   </div>
                 </button>
               );
@@ -529,18 +574,21 @@ const EditDrawer: React.FC<{
         </button>
         <button
           onClick={handleSave}
+          disabled={!!saving || !form.enName.trim() || (isNew && !/^T[1-9]\d*$/i.test(form.code.trim()))}
           style={{
             padding: "8px 22px", borderRadius: R.md, border: "none",
             background: C.accent, color: "#fff",
-            fontSize: 13, fontWeight: 700, fontFamily: F, cursor: "pointer",
+            fontSize: 13, fontWeight: 700, fontFamily: F,
+            cursor: saving ? "wait" : "pointer",
             boxShadow: `0 2px 8px ${C.accent}40`,
             display: "flex", alignItems: "center", gap: 6,
             transition: "background 0.15s",
+            opacity: saving ? 0.7 : 1,
           }}
-          onMouseEnter={e => (e.currentTarget.style.background = C.accentDark)}
+          onMouseEnter={e => { if (!saving) e.currentTarget.style.background = C.accentDark; }}
           onMouseLeave={e => (e.currentTarget.style.background = C.accent)}
         >
-          <Check size={14} />
+          {saving ? <Loader2 size={14} style={{ animation: "spin 0.8s linear infinite" }} /> : <Check size={14} />}
           儲存變更 Save Changes
         </button>
       </div>
@@ -552,38 +600,131 @@ const EditDrawer: React.FC<{
 
 const DRAWER_W = 440;
 
-export const Screen_TierMapping: React.FC = () => {
-  const [tiers,      setTiers]      = useState<Tier[]>(INITIAL_TIERS);
-  const [editingId,  setEditingId]  = useState<string | null>("t3");
+function mapApiTier(row: any): Tier {
+  const dims = Array.isArray(row?.acorn_dimensions) ? row.acorn_dimensions.map(String) : [];
+  return {
+    id: String(row?.id ?? ""),
+    code: String(row?.tier_code ?? row?.code ?? ""),
+    enName: String(row?.name_en ?? ""),
+    zhDesc: String(row?.description_zh ?? ""),
+    acornDims: dims,
+    multiplier: Number(row?.base_multiplier ?? 1),
+    status: row?.is_active === false || row?.is_active === 0 ? "disabled" : "active",
+  };
+}
+
+export interface ScreenTierMappingProps {
+  tiersUrl?: string;
+  csrfName?: string;
+  csrfHash?: string;
+}
+
+export const Screen_TierMapping: React.FC<ScreenTierMappingProps> = ({
+  tiersUrl = "/api/system-config/tiers",
+  csrfHash,
+}) => {
+  const [tiers,      setTiers]      = useState<Tier[]>([]);
+  const [editingId,  setEditingId]  = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
   const [isMobile,   setIsMobile]   = useState(false);
+  const [loading,    setLoading]    = useState(true);
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
-    if (window.innerWidth < 768) setEditingId(null);
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const drawerOpen = editingId !== null;
-  const editingTier = tiers.find(t => t.id === editingId) ?? null;
+  const reload = useCallback(async (selectId?: string | null) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(tiersUrl, {
+        headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const rows = Array.isArray(json?.data) ? json.data.map(mapApiTier) : [];
+      setTiers(rows);
+      // Do not auto-select on initial load — drawer opens only via Edit / Add
+      if (selectId !== undefined) {
+        setEditingId(selectId);
+      }
+    } catch (e) {
+      setTiers([]);
+      setError(e instanceof Error ? e.message : "載入失敗");
+    } finally {
+      setLoading(false);
+    }
+  }, [tiersUrl]);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  const isInspectorOpen = editingId !== null;
+  const isNew = editingId === NEW_TIER_ID;
+  const editingTier: Tier | null = isNew
+    ? { id: NEW_TIER_ID, code: "", enName: "", zhDesc: "", acornDims: [], multiplier: 1.0, status: "active" }
+    : (tiers.find(t => t.id === editingId) ?? null);
 
   const openEdit = (id: string) => setEditingId(id);
   const closeDrawer = () => setEditingId(null);
 
-  const handleSave = (updated: Tier) => {
-    setTiers(prev => prev.map(t => t.id === updated.id ? updated : t));
-    setSavedFlash(updated.id);
-    setTimeout(() => setSavedFlash(null), 2200);
-    closeDrawer();
+  const openCreate = () => setEditingId(NEW_TIER_ID);
+
+  const handleSave = async (updated: Tier) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        tier_code: updated.code,
+        name_en: updated.enName,
+        description_zh: updated.zhDesc,
+        acorn_dimensions: updated.acornDims,
+        base_multiplier: updated.multiplier,
+        is_active: updated.status === "active",
+      };
+      const isCreate = updated.id === NEW_TIER_ID;
+      const res = await fetch(isCreate ? tiersUrl : `${tiersUrl.replace(/\/$/, "")}/${updated.id}`, {
+        method: isCreate ? "POST" : "PUT",
+        headers: apiHeaders(csrfHash),
+        credentials: "same-origin",
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(String(json?.message || `儲存失敗 (HTTP ${res.status})`));
+      }
+      const saved = mapApiTier(json.data);
+      await reload(saved.id);
+      setSavedFlash(saved.id);
+      setTimeout(() => setSavedFlash(null), 2200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "儲存失敗");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDisable = (id: string) => {
-    setTiers(prev => prev.map(t => t.id === id
-      ? { ...t, status: t.status === "active" ? "disabled" : "active" }
-      : t
-    ));
+  const handleDisable = async (id: string) => {
+    try {
+      const res = await fetch(`${tiersUrl.replace(/\/$/, "")}/${id}/toggle`, {
+        method: "PATCH",
+        headers: apiHeaders(csrfHash),
+        credentials: "same-origin",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(String(json?.message || "狀態切換失敗"));
+      }
+      const saved = mapApiTier(json.data);
+      setTiers(prev => prev.map(t => t.id === id ? saved : t));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "狀態切換失敗");
+    }
   };
 
   return (
@@ -594,6 +735,7 @@ export const Screen_TierMapping: React.FC = () => {
       background: C.pageBg,
       fontFamily: F,
     }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ── LEFT: Main content ────────────────────────────────────────────── */}
       <div style={{
@@ -666,7 +808,7 @@ export const Screen_TierMapping: React.FC = () => {
             </div>
 
             <button
-              onClick={() => {}}
+              onClick={openCreate}
               style={{
                 display: "flex", alignItems: "center", gap: 7,
                 padding: "9px 16px", borderRadius: R.md,
@@ -684,6 +826,15 @@ export const Screen_TierMapping: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div style={{
+            padding: "10px 28px", background: "#FEF2F2", borderBottom: "1px solid #FECACA",
+            fontSize: 12.5, fontFamily: F, color: "#B91C1C", fontWeight: 600, flexShrink: 0,
+          }}>
+            {error}
+          </div>
+        )}
 
         {/* ── Save flash banner ── */}
         {savedFlash && (
@@ -740,7 +891,18 @@ export const Screen_TierMapping: React.FC = () => {
             </div>
 
             {/* Rows */}
-            {tiers.map((tier, idx) => {
+            {loading && (
+              <div style={{ padding: "48px 20px", textAlign: "center", color: C.textMuted, fontSize: 13, fontFamily: F }}>
+                <Loader2 size={22} color={C.accent} style={{ animation: "spin 0.8s linear infinite", marginBottom: 8 }} />
+                <div>載入成就級別中…</div>
+              </div>
+            )}
+            {!loading && tiers.length === 0 && (
+              <div style={{ padding: "48px 20px", textAlign: "center", color: C.textMuted, fontSize: 13, fontFamily: F }}>
+                尚未設定成就級別。請按右上角「新增級別」。
+              </div>
+            )}
+            {!loading && tiers.map((tier, idx) => {
               const isEditing = editingId === tier.id;
               const isFlash   = savedFlash === tier.id;
               return (
@@ -895,8 +1057,8 @@ export const Screen_TierMapping: React.FC = () => {
               </span>
               {!isMobile && (
                 <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: C.textMuted, fontFamily: F }}>
-                  <Hash size={11} />
-                  Tender SLA Tier Map v1.0
+                  <Info size={11} />
+                  級別代碼建立後不可修改
                 </div>
               )}
             </div>
@@ -925,36 +1087,33 @@ export const Screen_TierMapping: React.FC = () => {
         </div>
       </div>
 
-      {/* ── RIGHT: Edit Drawer ─────────────────────────────────────────────── */}
-      {isMobile && drawerOpen && (
-        <div onClick={closeDrawer} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 199 }} />
-      )}
-      {isMobile ? (
-        drawerOpen && (
-          <div style={{
+      {/* ── RIGHT: Inspector — only mounts when open ───────────────────────── */}
+      {isInspectorOpen && editingTier && (
+        <>
+          {isMobile && (
+            <div onClick={closeDrawer} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 199 }} />
+          )}
+          <div style={isMobile ? {
             position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
             zIndex: 200, display: "flex", flexDirection: "column",
             background: C.surface, overflow: "hidden",
+          } : {
+            width: DRAWER_W, maxWidth: "40%", flexShrink: 0,
+            borderLeft: `1px solid ${C.border}`,
+            background: C.surface,
+            display: "flex", flexDirection: "column",
+            boxShadow: "-4px 0 20px rgba(0,0,0,0.07)",
+            animation: "inspectorSlideIn 0.22s cubic-bezier(0.4,0,0.2,1)",
           }}>
-            {editingTier && (
-              <EditDrawer key={editingTier.id} tier={editingTier} onClose={closeDrawer} onSave={handleSave} />
-            )}
+            <style>{`
+              @keyframes inspectorSlideIn {
+                from { transform: translateX(24px); opacity: 0.6; }
+                to { transform: translateX(0); opacity: 1; }
+              }
+            `}</style>
+            <EditDrawer key={editingTier.id} tier={editingTier} isNew={isNew} saving={saving} onClose={closeDrawer} onSave={handleSave} />
           </div>
-        )
-      ) : (
-        <div style={{
-          width: drawerOpen ? DRAWER_W : 0,
-          transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
-          overflow: "hidden", flexShrink: 0,
-          borderLeft: drawerOpen ? `1px solid ${C.border}` : "none",
-          boxShadow: drawerOpen ? "-4px 0 20px rgba(0,0,0,0.07)" : "none",
-        }}>
-          <div style={{ width: DRAWER_W, height: "100%", display: "flex", flexDirection: "column", background: C.surface }}>
-            {editingTier && (
-              <EditDrawer key={editingTier.id} tier={editingTier} onClose={closeDrawer} onSave={handleSave} />
-            )}
-          </div>
-        </div>
+        </>
       )}
 
     </div>

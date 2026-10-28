@@ -8,13 +8,13 @@
 //   Mod C            — 校園自主積點 (Reward Points)
 //
 // Layout: Full-page, no sidebar, sticky top bar.
-// Default subject: 陳大文 Chan Tai Man (2025-F1A-001)
+// Hero identity binds from bridge profileMeta / holistic API — never hardcode demo names.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from "react";
 import { ERP } from "./erpTokens";
 import {
-  ArrowLeft, Download, Sparkles, Zap, TrendingUp, TrendingDown, Plus, X, Check,
-  CheckCircle2, Clock, ChevronRight, BarChart2,
+  Download, Sparkles, Zap, TrendingUp, TrendingDown, Plus, X, Check,
+  CheckCircle2, Clock, BarChart2, Loader2,
   ToggleLeft, ToggleRight, Award, Shield, Layers, Calendar,
   FileBadge, BookOpen, UserCheck, XCircle, Lock,
   FileText, Trophy, AlertCircle, Star, ChevronDown,
@@ -24,64 +24,137 @@ import {
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// §1  ACORN CONFIGURATION
-// Maps to the 6 ACORN framework dimensions rendered as Hexagon Radar axes.
-// Colors mirror ERP.acornTags ordering: 認知→學術, 協作→協作, 創意→機遇,
-//   社群→領域, 領導→培育, 體適能→信念
+// §1  ACORN 六育 CONFIGURATION (德智體群美勞)
+// Radar order: 智 → 群 → 美 → 體 → 勞 → 德
 // ═══════════════════════════════════════════════════════════════════════════════
-const ACORN_AXES = [
-  { zh: "學術", en: "Academic",      color: "#1D4ED8", bg: "#DBEAFE", border: "#BFDBFE" },
-  { zh: "協作", en: "Collaborative", color: "#15803D", bg: "#DCFCE7", border: "#BBF7D0" },
-  { zh: "機遇", en: "Opportunity",   color: "#C2410C", bg: "#FFEDD5", border: "#FED7AA" },
-  { zh: "領域", en: "Realm",         color: "#BE185D", bg: "#FCE7F3", border: "#FBCFE8" },
-  { zh: "培育", en: "Nurturing",     color: "#6D28D9", bg: "#EDE9FE", border: "#DDD6FE" },
-  { zh: "信念", en: "Faith",         color: "#0F766E", bg: "#CCFBF1", border: "#99F6E4" },
-] as const;
+type AcornAxis = { zh: string; en: string; color: string; bg: string; border: string; key?: string; badge?: string };
+const DEFAULT_ACORN_AXES: AcornAxis[] = [
+  { zh: "智", en: "Academic",      color: "#2563eb", bg: "#DBEAFE", border: "#BFDBFE", key: "academic",      badge: "智 · 認知" },
+  { zh: "群", en: "Collaborative", color: "#16a34a", bg: "#DCFCE7", border: "#BBF7D0", key: "collaborative", badge: "群 · 社群" },
+  { zh: "美", en: "Opportunity",   color: "#ea580c", bg: "#FFEDD5", border: "#FED7AA", key: "opportunity",   badge: "美 · 創意" },
+  { zh: "體", en: "Realm",         color: "#e11d48", bg: "#FFE4E6", border: "#FECDD3", key: "realm",         badge: "體 · 體適能" },
+  { zh: "勞", en: "Nurturing",     color: "#7c3aed", bg: "#EDE9FE", border: "#DDD6FE", key: "nurturing",     badge: "勞 · 領導" },
+  { zh: "德", en: "Faith",         color: "#0d9488", bg: "#CCFBF1", border: "#99F6E4", key: "faith",         badge: "德 · 信念" },
+];
 
-interface AcornRecord { label: string; labelEn: string; scores: number[] }
-const ACORN_DATA: Record<string, AcornRecord> = {
+type ActivityFootprint = {
+  id: string;
+  type?: string;
+  title?: string;
+  title_en?: string;
+  name?: string;
+  enName?: string;
+  date?: string;
+  category?: string;
+  subject?: string;
+  tier_code?: string;
+  roleTier?: string;
+  role_name?: string;
+  role?: string;
+  status?: string;
+  acorn_dimension_label?: string;
+  acornIdx?: number;
+  awarded_points?: number;
+  acornPts?: number;
+  awarded_points_label?: string;
+};
+
+interface AcornRecord {
+  label: string;
+  labelEn: string;
+  scores: number[];
+  summary?: {
+    pbl_count?: number;
+    activity_count?: number;
+    t3_leader_count?: number;
+    total_autonomous_points?: number;
+    overall_engagement_index?: number;
+  };
+  narrative?: { masked?: string; raw?: string; generated_at?: string };
+  footprints?: ActivityFootprint[];
+}
+
+type ProfileAchievement = {
+  id: number;
+  title: string;
+  award_details?: string;
+  tier_role?: string;
+  environment_level?: string;
+  event_date?: string;
+  review_status?: string;
+  hours?: number;
+};
+
+type ProfileAcademicRow = {
+  subject: string;
+  assessment: string;
+  raw_score: number | null;
+  max_score: number | null;
+  percent: number | null;
+  term?: string;
+  status?: string;
+};
+
+type ProfileConductRow = {
+  id: number;
+  type_name_zh: string;
+  record_date: string;
+  acorn_dimension?: string;
+  points_offset?: number;
+  category?: string;
+};
+
+type ProfileAttendanceRow = {
+  id: number;
+  date: string;
+  type: string;
+};
+const FALLBACK_ACORN_DATA: Record<string, AcornRecord> = {
   "2025/26": {
     label:   "2025/26 (中一/F1)",
     labelEn: "AY 2025/26 · Form 1",
-    scores:  [82, 91, 74, 68, 78, 85],   // 學術 +7 · 協作 +11 · 機遇 +9 · 領域 +8 · 培育 +8 · 信念 +5
+    scores:  [82, 91, 74, 68, 78, 85],
+    summary: { pbl_count: 2, activity_count: 8, t3_leader_count: 1, total_autonomous_points: 420 },
+    narrative: {
+      masked: "Student #CTM-001 在「群 · 社群」表現突出（91 分），並累積領導經歷。建議下一步挑戰「體 · 體適能」。",
+      raw: "陳大文 在「群 · 社群」表現突出（91 分），並累積領導經歷。建議下一步挑戰「體 · 體適能」。",
+      generated_at: "",
+    },
   },
   "2024/25": {
     label:   "2024/25 (入學基準)",
     labelEn: "AY 2024/25 · Admission Benchmark",
     scores:  [75, 80, 65, 60, 70, 80],
+    summary: { pbl_count: 1, activity_count: 4, t3_leader_count: 0, total_autonomous_points: 180 },
   },
 };
-// Valid earlier years to compare against for each primary view year
-const COMPARE_OPTIONS: Record<string, string[]> = {
+const FALLBACK_COMPARE: Record<string, string[]> = {
   "2025/26": ["2024/25"],
   "2024/25": [],
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// §2  ACTIVITY DATA
-// ═══════════════════════════════════════════════════════════════════════════════
-const ACTIVITIES = [
-  {
-    id: "a1",
-    name: "中一級科學環保專題",
-    enName: "F1 Environmental Science PBL",
-    subject: "科學",
-    role: "組長", roleTier: "T3" as const,
-    status: "completed" as const,
-    acornIdx: 1, acornPts: 5,
-    date: "2026-05-15",
-  },
-  {
-    id: "a2",
-    name: "中文學會 — 徵文比賽",
-    enName: "Chinese Society Writing Competition",
-    subject: "中國語文",
-    role: "參賽者", roleTier: "T1" as const,
-    status: "reviewing" as const,
-    acornIdx: 0, acornPts: 2,
-    date: "2026-07-01",
-  },
-] as const;
+export type HolisticBridgePayload = {
+  default_year?: string;
+  years?: Record<string, AcornRecord>;
+  compare_options?: Record<string, string[]>;
+  pdpo_token?: string;
+  display_name_zh?: string;
+  display_name_en?: string;
+  pending_cert_count?: number;
+  records?: {
+    pending_cert_count?: number;
+    achievements?: ProfileAchievement[];
+    academic?: ProfileAcademicRow[];
+    conduct?: ProfileConductRow[];
+    attendance?: ProfileAttendanceRow[];
+    activities?: Array<{ type?: string; name?: string; role?: string; tier?: string }>;
+    footprints?: ActivityFootprint[];
+  };
+  axes?: Array<{
+    key: string; zh: string; sub?: string; badge?: string; en: string;
+    color: string; bg: string; border: string;
+  }>;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // §3  HEX RADAR SVG  (custom, no recharts)
@@ -120,14 +193,19 @@ function gridHex(scale: number): string {
 const CLR_NOW  = { stroke: "#6EE7B7", fill: "rgba(110,231,183,0.22)", dot: "#6EE7B7", label: "#059669" };
 const CLR_PREV = { stroke: "#DC2626", fill: "rgba(220,38,38,0.08)",  dot: "#EF4444", label: "#DC2626" };
 
-const HexRadar: React.FC<{ showPrevious: boolean; scoresNow: number[]; scoresPrev: number[] }> = ({
-  showPrevious, scoresNow, scoresPrev,
+const HexRadar: React.FC<{
+  showPrevious: boolean;
+  scoresNow: number[];
+  scoresPrev: number[];
+  axes?: AcornAxis[];
+}> = ({
+  showPrevious, scoresNow, scoresPrev, axes = DEFAULT_ACORN_AXES,
 }) => (
   <svg
     viewBox={`0 0 ${SZ} ${SZ}`}
     width="100%" height="auto"
     style={{ overflow: "visible", display: "block" }}
-    aria-label="ACORN 六維學習特徵圖譜雷達圖"
+    aria-label="ACORN 六育全人特徵圖譜雷達圖"
   >
     <defs>
       {/* Emerald gradient fill — current year */}
@@ -173,7 +251,7 @@ const HexRadar: React.FC<{ showPrevious: boolean; scoresNow: number[]; scoresPre
     ))}
 
     {/* Axis lines */}
-    {ACORN_AXES.map((ax, i) => {
+    {axes.map((ax, i) => {
       const [ox, oy] = rPt(i, 100);
       return <line key={i} x1={CX} y1={CY} x2={ox} y2={oy} stroke={ax.color} strokeWidth="1.5" strokeOpacity="0.20" />;
     })}
@@ -235,7 +313,7 @@ const HexRadar: React.FC<{ showPrevious: boolean; scoresNow: number[]; scoresPre
     })}
 
     {/* Axis labels — keep per-axis brand colors for dimension identity */}
-    {ACORN_AXES.map((ax, i) => {
+    {axes.map((ax, i) => {
       const a  = -Math.PI / 2 + (i * 2 * Math.PI) / 6;
       const lx = CX + LR * Math.cos(a);
       const ly = CY + LR * Math.sin(a);
@@ -296,6 +374,48 @@ export interface StudentProfileProps {
   routeSource?: "roster" | "class-list";
   /** The class code (e.g. "F1A") when arriving from the class list */
   routeClassCode?: string;
+  /** Official school name from system settings / Config\SchoolSettings */
+  schoolName?: string;
+  schoolNameEn?: string;
+  /** Live multi-year ACORN snapshots from bridge / API */
+  holistic?: HolisticBridgePayload | null;
+  profileMeta?: {
+    student_id?: string;
+    name_zh_hk?: string;
+    name_en?: string;
+    class_name?: string;
+    class_number?: number | null;
+    system_tier?: string;
+    status?: string;
+    status_raw?: string;
+    academic_year?: string;
+    pdpo_token?: string;
+  } | null;
+}
+
+/** First visible character (CJK-safe). */
+function firstGlyph(text: string, fallback = "學"): string {
+  const t = text.trim();
+  if (!t) return fallback;
+  const ch = Array.from(t)[0];
+  return ch || fallback;
+}
+
+function statusDisplay(status?: string | null): { label: string; bg: string; color: string; bd: string } {
+  const s = (status || "").toLowerCase().trim();
+  if (s === "active" || s === "在學") {
+    return { label: "在學", bg: "#DCFCE720", color: "#86EFAC", bd: "#16A34A35" };
+  }
+  if (s === "repeat" || s === "重讀") {
+    return { label: "重讀", bg: "#FEF3C720", color: "#FCD34D", bd: "#D9770640" };
+  }
+  if (s === "suspended" || s === "停學") {
+    return { label: "停學", bg: "#FEE2E220", color: "#FCA5A5", bd: "#DC262640" };
+  }
+  if (s === "left" || s === "graduated" || s === "離校" || s === "畢業") {
+    return { label: s === "graduated" || s === "畢業" ? "畢業" : "離校", bg: "#F1F5F920", color: "#CBD5E1", bd: "#94A3B840" };
+  }
+  return { label: status?.trim() || "在學", bg: "#DCFCE720", color: "#86EFAC", bd: "#16A34A35" };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -327,13 +447,14 @@ const SUBJECT_QUICK = ["數學科", "中文科", "英文科", "物理科", "化�
 
 interface AddRecordModalProps {
   defaultTab: "attendance" | "conduct";
+  studentLabel?: string;
   onSubmitAttendance: (r: { type: keyof typeof ATT_TYPE_META; remark: string; date: string }) => void;
   onSubmitConduct:    (r: { kind: "mod-d" | "merit"; date: string; subject: string; teacher: string; levelKey: string; detail: string }) => void;
   onClose: () => void;
 }
 
 const AddRecordModal: React.FC<AddRecordModalProps> = ({
-  defaultTab, onSubmitAttendance, onSubmitConduct, onClose,
+  defaultTab, studentLabel, onSubmitAttendance, onSubmitConduct, onClose,
 }) => {
   const F  = ERP.font.family;
   const C  = ERP.colors;
@@ -415,7 +536,7 @@ const AddRecordModal: React.FC<AddRecordModalProps> = ({
               新增紀錄
             </div>
             <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: F }}>
-              Add New Record · 陳大文 Chan Tai Man
+              Add New Record · {studentLabel?.trim() || "—"}
             </div>
           </div>
           <button
@@ -749,28 +870,89 @@ const AddRecordModal: React.FC<AddRecordModalProps> = ({
 };
 
 export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
-  studentId, onBack,
-  routeSource = "roster",
-  routeClassCode,
+  studentId,
+  onBack: _onBack,
+  routeSource: _routeSource = "roster",
+  routeClassCode: _routeClassCode,
+  schoolName = "香港神託會培敦中學",
+  schoolNameEn = "Stewards Pooi Tun Secondary School",
+  holistic = null,
+  profileMeta = null,
 }) => {
+  void _onBack;
+  void _routeSource;
+  void _routeClassCode;
+  const schoolLine = schoolName.includes("Stewards") || schoolName.includes(schoolNameEn)
+    ? schoolName
+    : `${schoolName} · ${schoolNameEn}`;
   const [activeTab, setActiveTab] = useState<"overview" | "certs" | "academic" | "conduct">("overview");
   const [showYoY,  setShowYoY]  = useState(true);   // pre-activated: YoY overlay ON
-  const [viewYear, setViewYear] = useState("2025/26");
-  const [cmpYear,  setCmpYear]  = useState("2024/25");
+  const [liveProfile, setLiveProfile] = useState(profileMeta);
+  const [liveHolistic, setLiveHolistic] = useState(holistic);
+
+  // Keep props in sync when bridge re-hydrates
+  useEffect(() => { setLiveProfile(profileMeta); }, [profileMeta]);
+  useEffect(() => { setLiveHolistic(holistic); }, [holistic]);
+
+  // Fetch live identity when bridge profile is missing/incomplete
+  useEffect(() => {
+    const incomplete =
+      !profileMeta?.student_id
+      || (!profileMeta?.name_zh_hk && !profileMeta?.name_en);
+    if (!incomplete || !studentId || studentId === "unknown") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/students/${encodeURIComponent(studentId)}/holistic`, {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok || !json?.ok) return;
+        if (json.profile) setLiveProfile(json.profile);
+        if (json.holistic) setLiveHolistic(json.holistic);
+      } catch {
+        /* keep whatever props we have */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [studentId, profileMeta?.student_id, profileMeta?.name_zh_hk, profileMeta?.name_en]);
+
+  const effectiveHolistic = liveHolistic ?? holistic;
+  const liveYears = effectiveHolistic?.years && Object.keys(effectiveHolistic.years).length > 0 ? effectiveHolistic.years : null;
+  const ACORN_DATA: Record<string, AcornRecord> = liveYears ?? FALLBACK_ACORN_DATA;
+  const COMPARE_OPTIONS: Record<string, string[]> = effectiveHolistic?.compare_options ?? FALLBACK_COMPARE;
+  const ACORN_AXES: AcornAxis[] = (effectiveHolistic?.axes && effectiveHolistic.axes.length === 6)
+    ? effectiveHolistic.axes.map(a => ({
+        zh: a.zh, en: a.en, color: a.color, bg: a.bg, border: a.border,
+        key: a.key, badge: a.badge ?? `${a.zh} · ${a.sub ?? a.en}`,
+      }))
+    : DEFAULT_ACORN_AXES;
+
+  const yearKeys = Object.keys(ACORN_DATA);
+  const initialYear = (effectiveHolistic?.default_year && ACORN_DATA[effectiveHolistic.default_year])
+    ? effectiveHolistic.default_year
+    : (yearKeys[0] ?? "2025/26");
+
+  const [viewYear, setViewYear] = useState(initialYear);
+  const [cmpYear,  setCmpYear]  = useState((COMPARE_OPTIONS[initialYear] ?? [])[0] ?? "");
   const [pdpo,     setPdpo]     = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [narrativeBusy, setNarrativeBusy] = useState(false);
+  const [liveNarrative, setLiveNarrative] = useState<{ masked: string; raw: string; generated_at?: string } | null>(null);
 
   // ── ACORN year derivations ─────────────────────────────────────────────────
   const cmpOptions   = COMPARE_OPTIONS[viewYear] ?? [];
   const effectiveCmp = cmpOptions.includes(cmpYear) ? cmpYear : (cmpOptions[0] ?? "");
   const showCmp      = showYoY && effectiveCmp !== "";
-  const viewData     = ACORN_DATA[viewYear]!;
+  const viewData     = ACORN_DATA[viewYear] ?? FALLBACK_ACORN_DATA["2025/26"];
   const cmpData      = ACORN_DATA[effectiveCmp];
 
   // Reset comparison when primary view year changes
   useEffect(() => {
     const opts = COMPARE_OPTIONS[viewYear] ?? [];
     setCmpYear(opts[0] ?? "");
+    setLiveNarrative(null);
   }, [viewYear]);
 
   // ── Cert Approval tab state ───────────────────────────────────────────────
@@ -782,18 +964,56 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
 
-  // ── Conduct tab — mutable logs + add-record modal ──────────────────────────
-  const [attendanceLogs, setAttendanceLogs] = useState([
-    { id: "a1", date: "2026-03-15", type: "late"  as keyof typeof ATT_TYPE_META, typeZh: "遲到", typeEn: "Late Arrival",  remark: "交通擠塞",     remarkEn: "Traffic congestion"       },
-    { id: "a2", date: "2026-01-10", type: "sick"  as keyof typeof ATT_TYPE_META, typeZh: "病假", typeEn: "Sick Leave",    remark: "附醫生證明",   remarkEn: "Medical cert. attached"   },
-  ]);
-  const [engagementLogs, setEngagementLogs] = useState([
-    { id: "e1", date: "2026-04-02", subject: "數學科",  subjectEn: "Mathematics", teacher: "陳Sir",   teacherEn: "Mr. Chan",  kind: "mod-d"  as const, tagZh: "高參與度", tagEn: "Highly Engaged",    level: "high"  as const, detail: "主動發問 3 次，全程專注" },
-    { id: "e2", date: "2026-03-20", subject: "全校",    subjectEn: "Whole School",teacher: "訓導處",  teacherEn: "Discipline",kind: "merit"  as const, tagZh: "小功",     tagEn: "Minor Merit",       level: "merit" as const, detail: "協助校運會籌備" },
-    { id: "e3", date: "2026-02-15", subject: "歷史科",  subjectEn: "History",     teacher: "王老師",  teacherEn: "Ms. Wong",  kind: "mod-d"  as const, tagZh: "游離",     tagEn: "Disengaged",        level: "low"   as const, detail: "注意力分散，需跟進" },
-    { id: "e4", date: "2026-01-28", subject: "英文科",  subjectEn: "English",     teacher: "李老師",  teacherEn: "Ms. Lee",   kind: "mod-d"  as const, tagZh: "積極參與", tagEn: "Active Participant", level: "high"  as const, detail: "口頭發表表現突出" },
-  ]);
+  // ── Conduct tab — hydrated from bridge records (no demo rows) ─────────────
+  const [attendanceLogs, setAttendanceLogs] = useState<Array<{
+    id: string; date: string; type: keyof typeof ATT_TYPE_META; typeZh: string; typeEn: string; remark: string; remarkEn: string;
+  }>>([]);
+  const [engagementLogs, setEngagementLogs] = useState<Array<{
+    id: string; date: string; subject: string; subjectEn: string; teacher: string; teacherEn: string;
+    kind: "mod-d" | "merit"; tagZh: string; tagEn: string; level: "high" | "low" | "merit"; detail: string;
+  }>>([]);
   const [addingRecord, setAddingRecord] = useState<"attendance" | "conduct" | null>(null);
+
+  // Hydrate attendance / conduct from live bridge once available
+  useEffect(() => {
+    const att = effectiveHolistic?.records?.attendance ?? [];
+    if (att.length) {
+      setAttendanceLogs(att.map((a) => {
+        const key = (String(a.type || "late").toLowerCase().includes("sick") ? "sick"
+          : String(a.type || "").toLowerCase().includes("absent") ? "absent"
+          : "late") as keyof typeof ATT_TYPE_META;
+        const meta = ATT_TYPE_META[key] || ATT_TYPE_META.late;
+        return {
+          id: String(a.id),
+          date: a.date || "",
+          type: key,
+          typeZh: meta.zh,
+          typeEn: meta.en,
+          remark: a.type || "",
+          remarkEn: a.type || "",
+        };
+      }));
+    }
+    const cond = effectiveHolistic?.records?.conduct ?? [];
+    if (cond.length) {
+      setEngagementLogs(cond.map((c) => {
+        const isMerit = (c.points_offset ?? 0) >= 0 || (c.category || "").includes("conduct");
+        return {
+          id: String(c.id),
+          date: c.record_date || "",
+          subject: c.acorn_dimension || "全校",
+          subjectEn: c.acorn_dimension || "School",
+          teacher: "—",
+          teacherEn: "—",
+          kind: isMerit ? "merit" as const : "mod-d" as const,
+          tagZh: c.type_name_zh || "紀錄",
+          tagEn: c.type_name_zh || "Record",
+          level: isMerit ? "merit" as const : "high" as const,
+          detail: `Δ ${c.points_offset ?? 0} pts`,
+        };
+      }));
+    }
+  }, [effectiveHolistic?.records?.attendance, effectiveHolistic?.records?.conduct]);
 
   const F = ERP.font.family;
 
@@ -804,110 +1024,130 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const displayName = pdpo ? "Student #CTM-001 🛡️" : "陳大文";
+  const profile = liveProfile ?? profileMeta;
+  const pdpoToken = effectiveHolistic?.pdpo_token || profile?.pdpo_token || "Student #S00000";
+  const nameZh = (profile?.name_zh_hk || effectiveHolistic?.display_name_zh || "").trim();
+  const nameEn = (profile?.name_en || effectiveHolistic?.display_name_en || "").trim();
+  const realName = nameZh || nameEn || "（未命名學生）";
+  const realNameEn = nameEn;
+  const displayName = pdpo ? `${pdpoToken} 🛡️` : realName;
+  // Avatar: first char of Chinese name, else first letter of English name
+  const avatarGlyph = nameZh
+    ? firstGlyph(nameZh, "學")
+    : firstGlyph(nameEn.toUpperCase(), "S");
 
-  // ── Routing context: breadcrumbs + back-button label ─────────────────────
-  const isFromClassList = routeSource === "class-list" && !!routeClassCode;
-  const backLabel = isFromClassList ? `返回 ${routeClassCode} 班名冊` : "返回名冊";
-  const crumbs = isFromClassList
-    ? [
-        { label: "首頁" },
-        { label: "學生與班級" },
-        { label: "班別列表", clickable: true },
-        { label: routeClassCode!, clickable: true },
-        { label: displayName, last: true },
-      ]
-    : [
-        { label: "首頁" },
-        { label: "年度學生名冊", clickable: true },
-        { label: `${displayName} (${studentId})`, last: true },
-      ];
+  const regId = (profile?.student_id || studentId || "").trim();
+  const classLabel = (profile?.class_name || _routeClassCode || "").trim() || "—";
+  const classNo = profile?.class_number != null && profile.class_number !== ("" as unknown as number)
+    ? String(profile.class_number)
+    : "—";
+  const statusUi = statusDisplay(profile?.status || profile?.status_raw);
+  // Academic year badge tracks the year currently being viewed (radar selector)
+  const yearLabel = `AY ${viewYear}`;
 
-  const aiText = pdpo
-    ? `根據 Student #CTM-001 本學期的 ACORN 數據 🛡️，其在「協作」維度表現突出（曾擔任 2 次 PBL 組長）。建議下一步可挑戰「領域」維度的進階科學探究專題。`
-    : `根據陳同學本學期的 ACORN 數據，其在「協作」維度表現突出（曾擔任 2 次 PBL 組長）。建議下一步可挑戰「領域」維度的進階科學探究專題。`;
+  const pendingCertCount = Number(
+    effectiveHolistic?.pending_cert_count
+    ?? effectiveHolistic?.records?.pending_cert_count
+    ?? 0,
+  );
+  const liveAchievements = effectiveHolistic?.records?.achievements ?? [];
+  const liveAcademic = effectiveHolistic?.records?.academic ?? [];
+  const liveConduct = effectiveHolistic?.records?.conduct ?? [];
+  const liveAttendance = effectiveHolistic?.records?.attendance ?? [];
+
+  const narrativeMasked = liveNarrative?.masked
+    || viewData.narrative?.masked
+    || `${pdpoToken} 的全人發展評語尚未生成。請按「重新生成 AI 評語」。`;
+  const narrativeRaw = liveNarrative?.raw
+    || viewData.narrative?.raw
+    || narrativeMasked.replace(pdpoToken, realName).replace(" 🛡️", "");
+  const narrativeText = pdpo ? narrativeMasked : narrativeRaw;
+  const narrativeAt = liveNarrative?.generated_at || viewData.narrative?.generated_at || "";
+
+  const summary = viewData.summary ?? {
+    pbl_count: 0, activity_count: 0, t3_leader_count: 0,
+    total_autonomous_points: 0, overall_engagement_index: 0,
+  };
+  const autonomousPts = Number(summary.total_autonomous_points ?? 0);
+  const engagementIdx = Number(summary.overall_engagement_index ?? 0);
+  const engagementLabel = engagementIdx >= 75
+    ? "課堂參與度 · High"
+    : engagementIdx >= 40
+      ? "課堂參與度 · Moderate"
+      : engagementIdx >= 1
+        ? "課堂參與度 · Low"
+        : "尚無參與數據 · No Data";
+  const engagementDisplay = engagementIdx > 0
+    ? `${Number(engagementIdx.toFixed(1))}%`
+    : "0%";
+
+  const bestGrowth = (() => {
+    if (!showCmp || !cmpData) return null;
+    let bestIdx = 0;
+    let bestDelta = -Infinity;
+    ACORN_AXES.forEach((_, i) => {
+      const d = (viewData.scores[i] ?? 0) - (cmpData.scores[i] ?? 0);
+      if (d > bestDelta) { bestDelta = d; bestIdx = i; }
+    });
+    return { axis: ACORN_AXES[bestIdx], delta: Math.round(bestDelta * 10) / 10 };
+  })();
+
+  const requestNarrative = async () => {
+    setNarrativeBusy(true);
+    try {
+      const res = await fetch(`/api/students/${encodeURIComponent(studentId)}/holistic/narrative`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+        body: JSON.stringify({ year: viewYear, compare_year: effectiveCmp || null }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.narrative) {
+        setLiveNarrative({
+          masked: String(json.narrative.masked || ""),
+          raw: String(json.narrative.raw || ""),
+          generated_at: String(json.narrative.generated_at || ""),
+        });
+      } else {
+        console.error("narrative failed", json?.message || res.status);
+      }
+    } catch (err) {
+      console.error("narrative request error", err);
+    } finally {
+      setNarrativeBusy(false);
+    }
+  };
 
   // ── tier badge colours ──────────────────────────────────────────────────────
-  const TIER_CFG = {
+  const TIER_CFG: Record<string, { bg: string; color: string; border: string }> = {
+    T4: { bg: ERP.acornTags["領導"].bg, color: ERP.acornTags["領導"].color, border: ERP.acornTags["領導"].border },
     T3: { bg: ERP.acornTags["領導"].bg, color: ERP.acornTags["領導"].color, border: ERP.acornTags["領導"].border },
     T2: { bg: ERP.acornTags["協作"].bg, color: ERP.acornTags["協作"].color, border: ERP.acornTags["協作"].border },
     T1: { bg: ERP.acornTags["社群"].bg, color: ERP.acornTags["社群"].color, border: ERP.acornTags["社群"].border },
+    T0: { bg: "#F1F5F9", color: "#64748B", border: "#E2E8F0" },
   };
 
-  const STATUS_CFG = {
+  const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
     completed: { label: "已完成", color: ERP.colors.green, bg: ERP.colors.greenLight, border: "#86EFAC", icon: <CheckCircle2 size={11} /> },
     reviewing: { label: "審核中", color: ERP.colors.amber, bg: ERP.colors.amberLight, border: "#FDE68A", icon: <Clock size={11} /> },
+    ongoing:   { label: "進行中", color: ERP.colors.accent, bg: ERP.colors.accentPale, border: "#93C5FD", icon: <Clock size={11} /> },
   };
 
+  // Live footprints for the AY currently shown in Achievement Summary (never demo rows)
+  const liveFootprints: ActivityFootprint[] = (
+    (viewData as AcornRecord)?.footprints
+    ?? effectiveHolistic?.records?.footprints
+    ?? []
+  );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: ERP.colors.pageBg, fontFamily: F, overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", background: ERP.colors.pageBg, fontFamily: F }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          TOP NAV BAR — sticky, replaces sidebar context
+          PAGE CONTENT (scrolls inside AppShell <main>)
       ══════════════════════════════════════════════════════════════════════ */}
-      <div style={{
-        height: 56, background: ERP.colors.surface,
-        borderBottom: `1px solid ${ERP.colors.border}`,
-        display: "flex", alignItems: "center", padding: "0 20px", gap: 10,
-        flexShrink: 0, boxShadow: ERP.shadow.xs,
-        position: "sticky", top: 0, zIndex: 100,
-      }}>
-        <button onClick={onBack} style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          padding: "6px 12px", borderRadius: ERP.radius.md,
-          border: `1px solid ${ERP.colors.border}`,
-          background: ERP.colors.surface, color: ERP.colors.textSecondary,
-          fontSize: 12, fontWeight: 500, fontFamily: F, cursor: "pointer", flexShrink: 0,
-        }}>
-          <ArrowLeft size={13} /> {backLabel}
-        </button>
-
-        {/* Dynamic breadcrumb — path changes based on routeSource */}
-        <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, overflow: "hidden", flex: 1, flexWrap: "nowrap" }}>
-          {crumbs.map((c, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <ChevronRight size={11} color={ERP.colors.textMuted} style={{ flexShrink: 0 }} />}
-              {c.last ? (
-                <BlurWrap on={pdpo} hint={false} inline>
-                  <span style={{ fontWeight: 700, color: ERP.colors.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {c.label}
-                  </span>
-                </BlurWrap>
-              ) : c.clickable ? (
-                <button onClick={onBack} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12, color: ERP.colors.accent, fontFamily: F, whiteSpace: "nowrap", textDecoration: "underline", textDecorationColor: ERP.colors.accentLight }}>
-                  {c.label}
-                </button>
-              ) : (
-                <span style={{ color: ERP.colors.textMuted, whiteSpace: "nowrap" }}>{c.label}</span>
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-
-        {!isMobile && (
-          <BlurWrap on={pdpo} hint={false} inline>
-            <span style={{ fontSize: 11, color: ERP.colors.textMuted, flexShrink: 0 }}>
-              培道書院 Stewards Pooi Tun Secondary School
-            </span>
-          </BlurWrap>
-        )}
-
-        <button style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          padding: "7px 14px", borderRadius: ERP.radius.md,
-          border: "none", background: ERP.colors.accent, color: "#fff",
-          fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
-          flexShrink: 0, boxShadow: `0 2px 8px ${ERP.colors.accent}40`,
-        }}>
-          <Download size={13} />
-          {isMobile ? "匯出" : "組裝並匯出成果檔案"}
-        </button>
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          SCROLLABLE CANVAS
-      ══════════════════════════════════════════════════════════════════════ */}
-      <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px" : "24px 28px 48px" }}>
+      <div className="container-fluid" style={{ flex: 1, padding: isMobile ? "16px" : "20px 28px 48px" }}>
 
         {/* ──────────────────────────────────────────────────────────────────
             PROFILE HERO CARD — dark gradient header + white footer
@@ -919,7 +1159,8 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
           boxShadow: pdpo
             ? `0 0 0 2.5px #F59E0B, 0 0 0 7px rgba(245,158,11,0.14), ${ERP.shadow.lg}`
             : ERP.shadow.lg,
-          marginBottom: 24,
+          marginTop: 4,
+          marginBottom: 20,
           transition: "box-shadow 0.2s",
         }}>
           {/* PDPO amber status strip */}
@@ -940,84 +1181,115 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
           {/* Dark gradient section */}
           <div style={{
             background: "linear-gradient(135deg, #0F172A 0%, #1E1B4B 52%, #0C4A6E 100%)",
-            padding: isMobile ? "20px" : "26px 30px",
-            display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-            flexWrap: "wrap", gap: 18,
+            padding: isMobile ? "18px 20px 20px" : "22px 30px 26px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
           }}>
-            {/* Avatar + Name block */}
-            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 14 : 20 }}>
-              <div style={{
-                width: isMobile ? 62 : 78, height: isMobile ? 62 : 78,
-                borderRadius: ERP.radius.xl, flexShrink: 0,
-                background: pdpo
-                  ? "linear-gradient(135deg, #78350F 0%, #92400E 100%)"
-                  : "linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                border: pdpo ? "3px solid rgba(245,158,11,0.6)" : "3px solid rgba(255,255,255,0.18)",
-                boxShadow: pdpo ? "0 6px 24px rgba(245,158,11,0.35)" : "0 6px 24px rgba(0,0,0,0.35)",
-                transition: "all 0.2s",
-              }}>
-                {pdpo
-                  ? <Shield size={isMobile ? 28 : 34} color="#F59E0B" />
-                  : <span style={{ fontSize: isMobile ? 26 : 32, fontWeight: 900, color: "#fff", fontFamily: F }}>陳</span>
-                }
-              </div>
-              <div>
-                <div style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, color: "#F8FAFC", lineHeight: 1.15, letterSpacing: "-0.3px" }}>
-                  {displayName}
-                </div>
-                <BlurWrap on={pdpo} hint>
-                  <div style={{ fontSize: 13, color: "#94A3B8", marginTop: 3 }}>Chan Tai Man · {studentId}</div>
-                </BlurWrap>
-                <BlurWrap on={pdpo} hint={false}>
-                  <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>培道書院 Stewards Pooi Tun Secondary School</div>
-                </BlurWrap>
-                {/* Tags */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                  {([
-                    { label: "F1A",        bg: "#DBEAFE22", color: "#93C5FD", bd: "#3B82F640", pii: true  },
-                    { label: "學號：1",    bg: "#FFFFFF10", color: "#CBD5E1", bd: "#FFFFFF1A", pii: true  },
-                    { label: "在學",       bg: "#DCFCE720", color: "#86EFAC", bd: "#16A34A35", pii: false },
-                    { label: "AY 2025/26", bg: "#FEF3C720", color: "#FCD34D", bd: "#D9770640", pii: false },
-                  ] as { label: string; bg: string; color: string; bd: string; pii: boolean }[]).map(t => (
-                    <BlurWrap key={t.label} on={pdpo && t.pii} hint inline>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, padding: "3px 9px",
-                        borderRadius: ERP.radius.full,
-                        background: t.bg, color: t.color, border: `1px solid ${t.bd}`,
-                      }}>{t.label}</span>
-                    </BlurWrap>
-                  ))}
-                </div>
-              </div>
+            {/* Top row: export CTA (high-contrast on dark) */}
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+              <button
+                type="button"
+                className="btn btn-light text-primary fw-bold"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  padding: isMobile ? "8px 12px" : "9px 16px",
+                  borderRadius: ERP.radius.md,
+                  border: "1px solid rgba(255,255,255,0.85)",
+                  background: "#FFFFFF",
+                  color: ERP.colors.accentDark || "#1D4ED8",
+                  fontSize: 12, fontWeight: 800, fontFamily: F, cursor: "pointer",
+                  flexShrink: 0,
+                  boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+                }}
+              >
+                <Download size={14} />
+                {isMobile ? "匯出成果" : "組裝並匯出成果檔案"}
+              </button>
             </div>
 
-            {/* KPI Metric Cards */}
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {[
-                {
-                  mod: "Mod C · 積點", icon: <Zap size={14} color="#FCD34D" />, iconColor: "#FCD34D",
-                  value: "1,250", unit: "校園自主積點 pts",
-                },
-                {
-                  mod: "Mod D · 參與", icon: <TrendingUp size={14} color="#34D399" />, iconColor: "#34D399",
-                  value: "88%", unit: "課堂參與度 · High",
-                },
-              ].map(kpi => (
-                <div key={kpi.mod} style={{
-                  padding: isMobile ? "10px 14px" : "13px 20px",
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.09)",
-                  borderRadius: ERP.radius.lg, textAlign: "center" as const, minWidth: 116,
+            {/* Identity + KPI row */}
+            <div style={{
+              display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+              flexWrap: "wrap", gap: 18,
+            }}>
+              {/* Avatar + Name block */}
+              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 14 : 20 }}>
+                <div style={{
+                  width: isMobile ? 62 : 78, height: isMobile ? 62 : 78,
+                  borderRadius: ERP.radius.xl, flexShrink: 0,
+                  background: pdpo
+                    ? "linear-gradient(135deg, #78350F 0%, #92400E 100%)"
+                    : "linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: pdpo ? "3px solid rgba(245,158,11,0.6)" : "3px solid rgba(255,255,255,0.18)",
+                  boxShadow: pdpo ? "0 6px 24px rgba(245,158,11,0.35)" : "0 6px 24px rgba(0,0,0,0.35)",
+                  transition: "all 0.2s",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginBottom: 5 }}>
-                    {kpi.icon}
-                    <span style={{ fontSize: 9, fontWeight: 700, color: kpi.iconColor, textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>{kpi.mod}</span>
-                  </div>
-                  <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: kpi.iconColor, lineHeight: 1 }}>{kpi.value}</div>
-                  <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 4 }}>{kpi.unit}</div>
+                  {pdpo
+                    ? <Shield size={isMobile ? 28 : 34} color="#F59E0B" />
+                    : <span style={{ fontSize: isMobile ? 26 : 32, fontWeight: 900, color: "#fff", fontFamily: F }}>{avatarGlyph}</span>
+                  }
                 </div>
-              ))}
+                <div>
+                  <div style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, color: "#F8FAFC", lineHeight: 1.15, letterSpacing: "-0.3px" }}>
+                    {displayName}
+                  </div>
+                  <BlurWrap on={pdpo} hint>
+                    <div style={{ fontSize: 13, color: "#94A3B8", marginTop: 3 }}>
+                      {(realNameEn || "—")} · {regId || "—"}
+                    </div>
+                  </BlurWrap>
+                  <BlurWrap on={pdpo} hint={false}>
+                    <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>{schoolLine}</div>
+                  </BlurWrap>
+                  {/* Tags — live from annual record / profile bridge (never Figma demo) */}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                    {([
+                      { label: classLabel, bg: "#DBEAFE22", color: "#93C5FD", bd: "#3B82F640", pii: true  },
+                      { label: `學號：${classNo}`, bg: "#FFFFFF10", color: "#CBD5E1", bd: "#FFFFFF1A", pii: true  },
+                      { label: statusUi.label, bg: statusUi.bg, color: statusUi.color, bd: statusUi.bd, pii: false },
+                      { label: yearLabel, bg: "#FEF3C720", color: "#FCD34D", bd: "#D9770640", pii: false },
+                    ] as { label: string; bg: string; color: string; bd: string; pii: boolean }[]).map(t => (
+                      <BlurWrap key={t.label} on={pdpo && t.pii} hint inline>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "3px 9px",
+                          borderRadius: ERP.radius.full,
+                          background: t.bg, color: t.color, border: `1px solid ${t.bd}`,
+                        }}>{t.label}</span>
+                      </BlurWrap>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI Metric Cards — live Mod C / Mod D from yearly snapshot */}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {[
+                  {
+                    mod: "Mod C · 積點", icon: <Zap size={14} color="#FCD34D" />, iconColor: "#FCD34D",
+                    value: autonomousPts.toLocaleString(), unit: "校園自主積點 pts",
+                  },
+                  {
+                    mod: "Mod D · 參與", icon: <TrendingUp size={14} color="#34D399" />, iconColor: "#34D399",
+                    value: engagementDisplay, unit: engagementLabel,
+                  },
+                ].map(kpi => (
+                  <div key={kpi.mod} style={{
+                    padding: isMobile ? "10px 14px" : "13px 20px",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.09)",
+                    borderRadius: ERP.radius.lg, textAlign: "center" as const, minWidth: 116,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginBottom: 5 }}>
+                      {kpi.icon}
+                      <span style={{ fontSize: 9, fontWeight: 700, color: kpi.iconColor, textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>{kpi.mod}</span>
+                    </div>
+                    <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: kpi.iconColor, lineHeight: 1 }}>{kpi.value}</div>
+                    <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 4 }}>{kpi.unit}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1050,7 +1322,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
         {(() => {
           const TABS: { id: "overview" | "certs" | "academic" | "conduct"; icon: React.ReactNode; zh: string; short: string; en: string; badge?: number }[] = [
             { id: "overview",  icon: <BarChart2 size={14} />,  zh: "全人特徵圖譜",     short: "特徵圖譜", en: "Holistic Overview"      },
-            { id: "certs",     icon: <FileBadge size={14} />,  zh: "🎖️ 成就與證書審批", short: "成就審批", en: "Cert Approvals", badge: 1 },
+            { id: "certs",     icon: <FileBadge size={14} />,  zh: "🎖️ 成就與證書審批", short: "成就審批", en: "Cert Approvals", badge: pendingCertCount > 0 ? pendingCertCount : undefined },
             { id: "academic",  icon: <BookOpen size={14} />,   zh: "學業成績明細",     short: "學業成績", en: "Academic Records"       },
             { id: "conduct",   icon: <UserCheck size={14} />,  zh: "行為與出缺席",     short: "行為出缺", en: "Conduct & Attendance"   },
           ];
@@ -1272,7 +1544,9 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                   background: "#D1FAE5", border: "1px solid #6EE7B7",
                 }}>
                   <TrendingUp size={11} color="#059669" />
-                  <span style={{ fontSize: 11, fontWeight: 800, color: "#059669" }}>最大進步：協作 +11pts</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#059669" }}>
+                    最大進步：{bestGrowth ? `${bestGrowth.axis.badge ?? bestGrowth.axis.zh} ${bestGrowth.delta >= 0 ? "+" : ""}${Number(bestGrowth.delta).toFixed(1)}pts` : "—"}
+                  </span>
                 </span>
               </div>
             )}
@@ -1284,6 +1558,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                 showPrevious={showCmp}
                 scoresNow={viewData.scores}
                 scoresPrev={cmpData?.scores ?? []}
+                axes={ACORN_AXES}
               />
               </div>
             </div>
@@ -1308,9 +1583,10 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
               </div>
 
               {ACORN_AXES.map((ax, i) => {
-                const now   = viewData.scores[i];
-                const prev  = cmpData?.scores[i] ?? 0;
-                const delta = now - prev;
+                const now   = Number(viewData.scores[i] ?? 0);
+                const prev  = Number(cmpData?.scores[i] ?? 0);
+                const delta = Number((now - prev).toFixed(1));
+                const deltaLabel = `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}`;
                 return (
                   <div key={i} style={{ marginBottom: 13 }}>
                     {/* Row header */}
@@ -1323,19 +1599,20 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                       </div>
                       {/* Score numbers + delta */}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        <span style={{ fontSize: 13, fontWeight: 900, color: "#059669" }}>🟢 {now}</span>
+                        <span style={{ fontSize: 13, fontWeight: 900, color: "#059669" }}>🟢 {now.toFixed(1)}</span>
                         {showCmp && (
                           <>
                             <span style={{ fontSize: 10, color: ERP.colors.textMuted }}>vs</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>🔴 {prev}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>🔴 {prev.toFixed(1)}</span>
                             <span style={{
                               fontSize: 9, fontWeight: 800, padding: "2px 6px",
                               borderRadius: ERP.radius.full,
-                              background: "#D1FAE5", color: "#059669",
-                              border: "1px solid #6EE7B7",
+                              background: delta >= 0 ? "#D1FAE5" : "#FEE2E2",
+                              color: delta >= 0 ? "#059669" : "#DC2626",
+                              border: `1px solid ${delta >= 0 ? "#6EE7B7" : "#FECACA"}`,
                               whiteSpace: "nowrap" as const,
                             }}>
-                              📈 +{delta}
+                              📈 {deltaLabel}
                             </span>
                           </>
                         )}
@@ -1423,11 +1700,33 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
 
               {/* AI text body */}
               <p style={{ fontSize: 14, lineHeight: 1.78, color: "#1E1B4B", margin: "0 0 6px", fontFamily: F, position: "relative" as const }}>
-                {aiText}
+                {narrativeText}
               </p>
-              <p style={{ fontSize: 10, color: "#7C3AED", margin: "0 0 18px", opacity: 0.68, fontStyle: "italic" as const, lineHeight: 1.5 }}>
-                Generated based on ACORN dataset and Mod B footprints · 2026-08-07 14:35 HKT
-              </p>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 18 }}>
+                <p style={{ fontSize: 10, color: "#7C3AED", margin: 0, opacity: 0.68, fontStyle: "italic" as const, lineHeight: 1.5 }}>
+                  {narrativeAt
+                    ? `Generated · ${narrativeAt}`
+                    : "Generated based on ACORN yearly snapshot · Cl.6.1"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { void requestNarrative(); }}
+                  disabled={narrativeBusy}
+                  style={{
+                    fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 6,
+                    border: "1px solid #C4B5FD", background: "#EDE9FE", color: "#6D28D9",
+                    cursor: narrativeBusy ? "wait" : "pointer", fontFamily: F,
+                    display: "inline-flex", alignItems: "center", gap: 5, opacity: narrativeBusy ? 0.75 : 1,
+                  }}
+                >
+                  {narrativeBusy ? (
+                    <>
+                      <Loader2 size={11} style={{ animation: "spin 0.7s linear infinite" }} />
+                      生成中...
+                    </>
+                  ) : "重新生成 AI 評語"}
+                </button>
+              </div>
 
               {/* PDPO Mask Toggle */}
               <div style={{
@@ -1447,7 +1746,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                     </span>
                   </div>
                   <div style={{ fontSize: 10, color: pdpo ? "#B45309" : ERP.colors.textMuted, marginTop: 2 }}>
-                    Apply PDPO Mask · Cl.6.1 · {pdpo ? "Student #CTM-001 🛡️" : "陳大文"}
+                    Apply PDPO Mask · Cl.6.1 · {pdpo ? `${pdpoToken} 🛡️` : realName}
                   </div>
                 </div>
                 <button onClick={() => setPdpo(v => !v)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
@@ -1467,10 +1766,10 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 {[
-                  { label: "完成 PBL",    value: "3",     unit: "個專題", color: ERP.colors.accent  },
-                  { label: "參與活動",    value: "7",     unit: "次",     color: ERP.colors.teal    },
-                  { label: "擔任領導角色",value: "2",     unit: "次 T3",  color: ERP.colors.purple  },
-                  { label: "累計積點",    value: "1,250", unit: "pts",    color: ERP.colors.amber   },
+                  { label: "完成 PBL",    value: String(summary.pbl_count ?? 0), unit: "個專題", color: ERP.colors.accent  },
+                  { label: "參與活動",    value: String(summary.activity_count ?? 0), unit: "次", color: ERP.colors.teal },
+                  { label: "擔任領導角色", value: String(summary.t3_leader_count ?? 0), unit: "次 T3", color: ERP.colors.purple },
+                  { label: "累計積點", value: Number(summary.total_autonomous_points ?? 0).toLocaleString(), unit: "pts", color: ERP.colors.amber },
                 ].map(s => (
                   <div key={s.label} style={{ padding: "11px 13px", borderRadius: ERP.radius.md, background: s.color + "0D", border: `1px solid ${s.color}20` }}>
                     <div style={{ fontSize: 20, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
@@ -1485,7 +1784,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
         </div>{/* /2-col */}
 
         {/* ──────────────────────────────────────────────────────────────────
-            ACTIVITY MATRIX  —  PBL & ECA Footprints
+            ACTIVITY MATRIX  —  PBL & ECA Footprints (live DB)
         ────────────────────────────────────────────────────────────────── */}
         <div style={{ background: ERP.colors.surface, borderRadius: ERP.radius.xl, border: `1px solid ${ERP.colors.border}`, overflow: "hidden", boxShadow: ERP.shadow.sm }}>
           {/* Section header */}
@@ -1499,69 +1798,82 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                 <div style={{ fontSize: 10, color: ERP.colors.textMuted }}>Recent PBL &amp; Activity Footprints</div>
               </div>
             </div>
-            <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>{ACTIVITIES.length} 項記錄</span>
+            <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>{liveFootprints.length} 項紀錄</span>
           </div>
 
-          {/* Activity rows */}
-          {ACTIVITIES.map((act, idx) => {
-            const dim   = ACORN_AXES[act.acornIdx];
-            const tier  = TIER_CFG[act.roleTier];
-            const stat  = STATUS_CFG[act.status];
-            const isLast = idx === ACTIVITIES.length - 1;
+          {liveFootprints.length === 0 ? (
+            <div style={{ padding: "28px 22px", textAlign: "center", color: ERP.colors.textMuted, fontSize: 12 }}>
+              本學年暫無跨學科實作與活動軌跡。
+            </div>
+          ) : (
+            liveFootprints.map((act, idx) => {
+              const title = (act.title || act.name || "（未命名活動）").trim();
+              const enName = (act.title_en || act.enName || "").trim();
+              const subject = (act.category || act.subject || "活動").trim();
+              const role = (act.role_name || act.role || "參加者").trim();
+              const tierCode = (act.tier_code || act.roleTier || "T1").toUpperCase();
+              const statusKey = (
+                act.status === "reviewing" ? "reviewing"
+                  : act.status === "ongoing" ? "ongoing"
+                  : "completed"
+              );
+              const acornIdx = Number.isFinite(act.acornIdx) ? Math.max(0, Math.min(ACORN_AXES.length - 1, Number(act.acornIdx))) : 1;
+              const dim = ACORN_AXES[acornIdx] ?? ACORN_AXES[1];
+              const dimLabel = (act.acorn_dimension_label || dim.zh).trim();
+              const pts = Number(act.awarded_points ?? act.acornPts ?? 0);
+              const ptsLabel = act.awarded_points_label || `${pts >= 0 ? "+" : ""}${pts}`;
+              const tier = TIER_CFG[tierCode] ?? TIER_CFG.T1;
+              const stat = STATUS_CFG[statusKey];
+              const isLast = idx === liveFootprints.length - 1;
 
-            return (
-              <div
-                key={act.id}
-                style={{
-                  display: "flex", alignItems: "center", gap: 16,
-                  padding: "16px 22px",
-                  borderBottom: !isLast ? `1px solid ${ERP.colors.divider}` : "none",
-                  flexWrap: "wrap" as const,
-                  transition: "background 0.1s",
-                }}
-                onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = ERP.colors.surfaceHover}
-                onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = "transparent"}
-              >
-                {/* Timeline dot */}
-                <div style={{
-                  width: 12, height: 12, borderRadius: "50%", flexShrink: 0,
-                  background: dim.color, border: "2.5px solid #fff",
-                  boxShadow: `0 0 0 2.5px ${dim.color}40`,
-                }} />
+              return (
+                <div
+                  key={act.id || `${title}-${idx}`}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 16,
+                    padding: "16px 22px",
+                    borderBottom: !isLast ? `1px solid ${ERP.colors.divider}` : "none",
+                    flexWrap: "wrap" as const,
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = ERP.colors.surfaceHover}
+                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = "transparent"}
+                >
+                  <div style={{
+                    width: 12, height: 12, borderRadius: "50%", flexShrink: 0,
+                    background: dim.color, border: "2.5px solid #fff",
+                    boxShadow: `0 0 0 2.5px ${dim.color}40`,
+                  }} />
 
-                {/* Name + date */}
-                <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: ERP.colors.textPrimary, marginBottom: 2 }}>{act.name}</div>
-                  <div style={{ fontSize: 11, color: ERP.colors.textMuted, display: "flex", alignItems: "center", gap: 5 }}>
-                    <Calendar size={10} /> {act.date} · {act.enName}
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: ERP.colors.textPrimary, marginBottom: 2 }}>{title}</div>
+                    <div style={{ fontSize: 11, color: ERP.colors.textMuted, display: "flex", alignItems: "center", gap: 5 }}>
+                      <Calendar size={10} /> {(act.date || "—")}{enName ? ` · ${enName}` : ""}
+                    </div>
                   </div>
-                </div>
 
-                {/* Subject */}
-                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: ERP.radius.xs, background: ERP.colors.accentPale, color: ERP.colors.accent, flexShrink: 0 }}>
-                  {act.subject}
-                </span>
-
-                {/* Tier + role */}
-                <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: ERP.radius.xs, background: tier.bg, color: tier.color, border: `1px solid ${tier.border}` }}>
-                    {act.roleTier}
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: ERP.radius.xs, background: ERP.colors.accentPale, color: ERP.colors.accent, flexShrink: 0 }}>
+                    {subject}
                   </span>
-                  <span style={{ fontSize: 12, color: ERP.colors.textSecondary }}>角色：{act.role}</span>
+
+                  <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: ERP.radius.xs, background: tier.bg, color: tier.color, border: `1px solid ${tier.border}` }}>
+                      {tierCode}
+                    </span>
+                    <span style={{ fontSize: 12, color: ERP.colors.textSecondary }}>角色：{role}</span>
+                  </div>
+
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: ERP.radius.full, background: stat.bg, color: stat.color, border: `1px solid ${stat.border}`, flexShrink: 0 }}>
+                    {stat.icon} 狀態：{stat.label}
+                  </span>
+
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: ERP.radius.full, background: dim.bg, color: dim.color, border: `1px solid ${dim.border}`, flexShrink: 0 }}>
+                    獲得機遇：{dimLabel} {ptsLabel}
+                  </span>
                 </div>
-
-                {/* Status */}
-                <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: ERP.radius.full, background: stat.bg, color: stat.color, border: `1px solid ${stat.border}`, flexShrink: 0 }}>
-                  {stat.icon} 狀態：{stat.label}
-                </span>
-
-                {/* ACORN tag + pts */}
-                <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: ERP.radius.full, background: dim.bg, color: dim.color, border: `1px solid ${dim.border}`, flexShrink: 0 }}>
-                  獲得標籤：{dim.zh} +{act.acornPts}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         </>)} {/* /activeTab === "overview" */}
@@ -1570,6 +1882,53 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
             TAB CONTENT: CERT APPROVALS  —  Teacher Approval Dashboard
         ────────────────────────────────────────────────────────────────── */}
         {activeTab === "certs" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Live achievement records from DB */}
+            <div style={{ background: ERP.colors.surface, borderRadius: ERP.radius.xl, border: `1px solid ${ERP.colors.border}`, overflow: "hidden", boxShadow: ERP.shadow.sm }}>
+              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${ERP.colors.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FAFCFF" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: ERP.colors.textPrimary }}>本生成就／證書紀錄</div>
+                {pendingCertCount > 0 ? (
+                  <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: ERP.radius.full, background: ERP.colors.redLight, color: ERP.colors.red, border: `1px solid ${ERP.colors.red}40` }}>
+                    {pendingCertCount} 份待審
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: ERP.radius.full, background: ERP.colors.greenLight, color: ERP.colors.green }}>
+                    0 份待審
+                  </span>
+                )}
+              </div>
+              {liveAchievements.length === 0 ? (
+                <div style={{ padding: "28px 20px", textAlign: "center", color: ERP.colors.textMuted, fontSize: 12 }}>
+                  尚無此學生的成就／證書紀錄。
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {liveAchievements.map((a, idx) => (
+                    <div key={a.id || idx} style={{
+                      padding: "12px 18px",
+                      borderBottom: idx < liveAchievements.length - 1 ? `1px solid ${ERP.colors.divider}` : undefined,
+                      display: "flex", alignItems: "center", gap: 12,
+                    }}>
+                      <Trophy size={14} color={ERP.colors.amber} style={{ flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary }}>{a.title || "（未命名成就）"}</div>
+                        <div style={{ fontSize: 10, color: ERP.colors.textMuted, marginTop: 2 }}>
+                          {[a.tier_role, a.environment_level, a.event_date].filter(Boolean).join(" · ") || "—"}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999,
+                        background: (a.review_status === "pending" || a.review_status === "reviewing") ? ERP.colors.redLight : ERP.colors.greenLight,
+                        color: (a.review_status === "pending" || a.review_status === "reviewing") ? ERP.colors.red : ERP.colors.green,
+                      }}>
+                        {a.review_status || "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20, alignItems: "start" }}>
 
             {/* ═══ LEFT: Document Viewer ═══════════════════════════════════ */}
@@ -1585,9 +1944,15 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                     <div style={{ fontSize: 10, color: ERP.colors.textMuted }}>Pending Submissions</div>
                   </div>
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: ERP.radius.full, background: ERP.colors.redLight, color: ERP.colors.red, border: `1px solid ${ERP.colors.red}40` }}>
-                  1 份待審
-                </span>
+                {pendingCertCount > 0 ? (
+                  <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: ERP.radius.full, background: ERP.colors.redLight, color: ERP.colors.red, border: `1px solid ${ERP.colors.red}40` }}>
+                    {pendingCertCount} 份待審
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: ERP.radius.full, background: "#F1F5F9", color: ERP.colors.textMuted }}>
+                    0 份待審
+                  </span>
+                )}
               </div>
 
               {/* Sub-header */}
@@ -1643,8 +2008,8 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                   {/* Awarded to */}
                   <div style={{ textAlign: "center", marginBottom: 12 }}>
                     <div style={{ fontSize: 9, color: "#64748B", letterSpacing: "0.1em", textTransform: "uppercase" as const, marginBottom: 5 }}>This is to certify that</div>
-                    <div style={{ fontSize: 20, fontWeight: 900, color: "#F1C40F", letterSpacing: "-0.2px" }}>陳大文 Chan Tai Man</div>
-                    <div style={{ fontSize: 10, color: "#8BA3C4", marginTop: 2 }}>F1A · 培道書院 Stewards Pooi Tun Secondary School</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: "#F1C40F", letterSpacing: "-0.2px" }}>{displayName}{!pdpo && realNameEn ? ` ${realNameEn}` : ""}</div>
+                    <div style={{ fontSize: 10, color: "#8BA3C4", marginTop: 2 }}>{classLabel} · {schoolLine}</div>
                   </div>
 
                   {/* Gold Award badge */}
@@ -1937,458 +2302,52 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
               </div>{/* /form body */}
             </div>
 
+          </div>{/* /certs grid */}
           </div>
         )}{/* /certs tab */}
 
         {/* ──────────────────────────────────────────────────────────────────
-            TAB CONTENT: ACADEMIC RECORDS (placeholder)
+            TAB CONTENT: ACADEMIC RECORDS — live student_scores
         ────────────────────────────────────────────────────────────────── */}
-        {activeTab === "academic" && (() => {
-          // ── Static data for this term ───────────────────────────────────────
-          const GRADE_ROWS = [
-            {
-              subjectZh: "英國語文", subjectEn: "English Language",
-              kla: "語文", klaEn: "Language Arts", klaColor: "#1D4ED8", klaBg: "#DBEAFE",
-              raw: 75, adj: null, rank: 45, total: 120, trend: "up" as const,
-              grade: "B+",
-            },
-            {
-              subjectZh: "中國語文", subjectEn: "Chinese Language",
-              kla: "語文", klaEn: "Language Arts", klaColor: "#1D4ED8", klaBg: "#DBEAFE",
-              raw: 82, adj: null, rank: 12, total: 120, trend: "down" as const,
-              grade: "A-",
-            },
-            {
-              subjectZh: "數學", subjectEn: "Mathematics",
-              kla: "STEM", klaEn: "STEM", klaColor: "#0F766E", klaBg: "#CCFBF1",
-              raw: 55, adj: 62.5, rank: 68, total: 120, trend: "up" as const,
-              grade: "C+", adjGrade: "C+",
-              biasNote: "班均偏差 −2.3σ · AI校正 +7.5pts",
-            },
-            {
-              subjectZh: "科學", subjectEn: "Science",
-              kla: "STEM", klaEn: "STEM", klaColor: "#0F766E", klaBg: "#CCFBF1",
-              raw: 88, adj: null, rank: 5, total: 120, trend: "up" as const,
-              grade: "A",
-            },
-          ] as const;
-
-          // KLA aggregates (using adj where available)
-          const KLA_BARS = [
-            { zh: "語文", en: "Language Arts", color: "#1D4ED8", bg: "#DBEAFE", score: 78.5, max: 100, subjects: "英文 · 中文" },
-            { zh: "STEM", en: "Science & Math", color: "#0F766E", bg: "#CCFBF1", score: 75.3, max: 100, subjects: "數學(Adj) · 科學" },
-            { zh: "人文", en: "Humanities", color: "#7C3AED", bg: "#EDE9FE", score: 71.0, max: 100, subjects: "歷史 · 地理 (預測)" },
-          ];
-
-          const selStyle: React.CSSProperties = {
-            padding: "6px 26px 6px 10px", fontSize: 12, fontWeight: 700,
-            border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md,
-            background: ERP.colors.surface, color: ERP.colors.textPrimary,
-            fontFamily: ERP.font.family, appearance: "none", cursor: "pointer", outline: "none",
-          };
-
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-              {/* ── Controls row ──────────────────────────────────────────── */}
-              <div style={{
-                display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-                padding: "14px 18px",
-                background: ERP.colors.surface, borderRadius: ERP.radius.xl,
-                border: `1px solid ${ERP.colors.border}`, boxShadow: ERP.shadow.sm,
-              }}>
-                {/* AY dropdown */}
-                <div style={{ position: "relative" }}>
-                  <select defaultValue="2025/26" style={selStyle}>
-                    <option>2025/26</option>
-                    <option>2024/25</option>
-                  </select>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: ERP.colors.textMuted, position: "absolute", left: 10, top: -8, background: ERP.colors.surface, padding: "0 3px" }}>學年 AY</span>
-                  <ChevronDown size={11} color={ERP.colors.textMuted} style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-                </div>
-
-                {/* Term dropdown */}
-                <div style={{ position: "relative" }}>
-                  <select defaultValue="T1" style={selStyle}>
-                    <option value="T1">上學期 (Term 1)</option>
-                    <option value="T2">下學期 (Term 2)</option>
-                    <option value="full">全年 (Full Year)</option>
-                  </select>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: ERP.colors.textMuted, position: "absolute", left: 10, top: -8, background: ERP.colors.surface, padding: "0 3px" }}>學期 Term</span>
-                  <ChevronDown size={11} color={ERP.colors.textMuted} style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-                </div>
-
-                <div style={{ width: 1, height: 28, background: ERP.colors.divider }} />
-
-                {/* Overall avg pill */}
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "7px 14px", borderRadius: ERP.radius.full,
-                  background: "linear-gradient(135deg, #DBEAFE, #EDE9FE)",
-                  border: "1px solid #C4B5FD",
-                }}>
-                  <BarChart2 size={13} color="#6366F1" />
-                  <span style={{ fontSize: 11, color: ERP.colors.textSecondary }}>全科平均 Overall Avg</span>
-                  <span style={{ fontSize: 15, fontWeight: 900, color: "#4F46E5" }}>78.5</span>
-                  <span style={{
-                    fontSize: 11, fontWeight: 800, padding: "2px 8px",
-                    borderRadius: ERP.radius.full, background: "#4F46E5", color: "#fff",
-                  }}>B+</span>
-                </div>
-
-                {/* Mod 2 badge */}
-                <div style={{
-                  marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
-                  padding: "5px 11px", borderRadius: ERP.radius.full,
-                  background: "#F0FDF4", border: "1px solid #86EFAC",
-                }}>
-                  <Sparkles size={11} color="#16A34A" />
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#15803D" }}>Mod 2 偏誤校正引擎 啟動</span>
-                </div>
-              </div>
-
-              {/* ── Main 2-col: data grid + analytics ─────────────────────── */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1fr 300px",
-                gap: 16, alignItems: "start",
-              }}>
-
-                {/* ═══ LEFT: Data Grid ═══════════════════════════════════════ */}
-                <div style={{
-                  background: ERP.colors.surface, borderRadius: ERP.radius.xl,
-                  border: `1px solid ${ERP.colors.border}`, overflow: "hidden",
-                  boxShadow: ERP.shadow.md,
-                }}>
-                  {/* Grid header */}
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 90px 72px 110px 80px 54px",
-                    padding: "10px 16px",
-                    background: ERP.colors.surfaceHover,
-                    borderBottom: `1px solid ${ERP.colors.border}`,
-                  }}>
-                    {[
-                      { zh: "科目", en: "Subject" },
-                      { zh: "學習領域", en: "KLA" },
-                      { zh: "原始分", en: "Raw Score" },
-                      { zh: "偏誤校正分", en: "Adjusted Score" },
-                      { zh: "級別排名", en: "Class Rank" },
-                      { zh: "趨勢", en: "Trend" },
-                    ].map(col => (
-                      <div key={col.zh} style={{ paddingRight: 6 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: ERP.colors.textSecondary }}>{col.zh}</div>
-                        <div style={{ fontSize: 9, color: ERP.colors.textMuted }}>{col.en}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Data rows */}
-                  {GRADE_ROWS.map((row, idx) => {
-                    const isMath = row.adj !== null;
-                    const displayScore = row.adj ?? row.raw;
-                    return (
-                      <div
-                        key={row.subjectZh}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 90px 72px 110px 80px 54px",
-                          padding: "14px 16px",
-                          borderBottom: idx < GRADE_ROWS.length - 1 ? `1px solid ${ERP.colors.divider}` : undefined,
-                          background: isMath ? "#FFFBEB" : (idx % 2 === 0 ? ERP.colors.surface : ERP.colors.surfaceHover + "60"),
-                          borderLeft: isMath ? "3px solid #F59E0B" : "3px solid transparent",
-                          transition: "background 0.1s",
-                          alignItems: "center",
-                        }}
-                      >
-                        {/* Subject */}
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary }}>{row.subjectZh}</span>
-                            {isMath && (
-                              <span style={{
-                                fontSize: 8, fontWeight: 800, padding: "1px 5px",
-                                borderRadius: 3, background: "#FEF3C7", color: "#92400E",
-                                border: "1px solid #FDE68A",
-                              }}>MOD 2</span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: 10, color: ERP.colors.textMuted, marginTop: 1 }}>{row.subjectEn}</div>
-                        </div>
-
-                        {/* KLA */}
-                        <div>
-                          <span style={{
-                            fontSize: 10, fontWeight: 700, padding: "3px 8px",
-                            borderRadius: ERP.radius.full,
-                            background: row.klaBg, color: row.klaColor,
-                            border: `1px solid ${row.klaColor}33`,
-                          }}>{row.kla}</span>
-                        </div>
-
-                        {/* Raw Score */}
-                        <div>
-                          <span style={{
-                            fontSize: 16, fontWeight: 900,
-                            color: isMath ? "#DC2626" : ERP.colors.textPrimary,
-                          }}>{row.raw}</span>
-                          {isMath && (
-                            <div style={{ fontSize: 9, color: "#DC2626", fontWeight: 700, marginTop: 1 }}>
-                              ⚠ 低於班均
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Adjusted Score */}
-                        <div>
-                          {isMath ? (
-                            <div>
-                              {/* AI-adjusted pill */}
-                              <div style={{
-                                display: "inline-flex", alignItems: "center", gap: 5,
-                                padding: "5px 10px", borderRadius: ERP.radius.md,
-                                background: "linear-gradient(135deg, #ECFDF5, #EEF2FF)",
-                                border: "1px solid #6EE7B7",
-                              }}>
-                                <Sparkles size={11} color="#0D9488" />
-                                <span style={{ fontSize: 15, fontWeight: 900, color: "#0D9488" }}>{row.adj}</span>
-                                <span style={{ fontSize: 9, fontWeight: 700, color: "#6366F1" }}>Adj</span>
-                              </div>
-                              <div style={{ fontSize: 9, color: "#6B7280", marginTop: 4 }}>
-                                +{((row.adj ?? 0) - row.raw).toFixed(1)} pts · AI校正
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                              <span style={{ fontSize: 16, fontWeight: 900, color: ERP.colors.textPrimary }}>{row.raw}</span>
-                              <span style={{
-                                fontSize: 9, fontWeight: 700, padding: "2px 6px",
-                                borderRadius: ERP.radius.full, background: ERP.colors.surfaceHover,
-                                color: ERP.colors.textMuted, border: `1px solid ${ERP.colors.border}`,
-                              }}>無調整</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Rank */}
-                        <div>
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
-                            <span style={{ fontSize: 13, fontWeight: 800, color: row.rank <= 15 ? "#15803D" : ERP.colors.textPrimary }}>{row.rank}</span>
-                            <span style={{ fontSize: 10, color: ERP.colors.textMuted }}>/{row.total}</span>
-                          </div>
-                          <div style={{
-                            marginTop: 4, height: 4, borderRadius: 2,
-                            background: ERP.colors.divider, overflow: "hidden", width: 52,
-                          }}>
-                            <div style={{
-                              height: "100%", borderRadius: 2,
-                              width: `${((row.total - row.rank) / row.total) * 100}%`,
-                              background: row.rank <= 15
-                                ? "linear-gradient(90deg,#4ADE80,#16A34A)"
-                                : row.rank <= 60
-                                  ? "linear-gradient(90deg,#FCD34D,#F59E0B)"
-                                  : "linear-gradient(90deg,#FCA5A5,#EF4444)",
-                            }} />
-                          </div>
-                        </div>
-
-                        {/* Trend */}
-                        <div style={{ display: "flex", justifyContent: "center" }}>
-                          {row.trend === "up"
-                            ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: ERP.radius.full, background: "#DCFCE7" }}>
-                                <TrendingUp size={14} color="#16A34A" />
-                              </div>
-                            : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: ERP.radius.full, background: "#FEF2F2" }}>
-                                <TrendingDown size={14} color="#DC2626" />
-                              </div>
-                          }
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Footer summary row */}
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 90px 72px 110px 80px 54px",
-                    padding: "12px 16px",
-                    background: "linear-gradient(90deg,#F8FAFC,#F0FDF4)",
-                    borderTop: `2px solid ${ERP.colors.border}`,
-                    alignItems: "center",
-                  }}>
-                    <div>
-                      <span style={{ fontSize: 10, fontWeight: 800, color: ERP.colors.textSecondary, textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>全科加權平均</span>
-                      <div style={{ fontSize: 9, color: ERP.colors.textMuted }}>Weighted Average · Adj scores applied</div>
-                    </div>
-                    <div />
-                    <div>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: ERP.colors.textSecondary }}>75.0</span>
-                      <div style={{ fontSize: 9, color: ERP.colors.textMuted }}>Raw avg</div>
-                    </div>
-                    <div>
-                      <span style={{ fontSize: 15, fontWeight: 900, color: "#0D9488" }}>78.5</span>
-                      <div style={{ fontSize: 9, color: "#0D9488" }}>Adj avg ↑ +3.5</div>
-                    </div>
-                    <div>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: "#15803D" }}>班排 15/30</span>
-                      <div style={{ fontSize: 9, color: ERP.colors.textMuted }}>級排 68/120</div>
-                    </div>
-                    <div />
-                  </div>
-
-                  {/* Mod 2 callout strip */}
-                  <div style={{
-                    margin: "0 16px 16px",
-                    marginTop: 12,
-                    padding: "11px 14px",
-                    background: "linear-gradient(90deg, #FFFBEB, #ECFDF5)",
-                    border: "1px solid #FDE68A",
-                    borderLeft: "3px solid #F59E0B",
-                    borderRadius: ERP.radius.md,
-                    display: "flex", alignItems: "flex-start", gap: 10,
-                  }}>
-                    <Sparkles size={14} color="#D97706" style={{ flexShrink: 0, marginTop: 1 }} />
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: "#92400E", marginBottom: 3 }}>
-                        Mod 2 偏誤校正引擎 — 數學科調整摘要
-                      </div>
-                      <div style={{ fontSize: 10, color: "#78350F", lineHeight: 1.6 }}>
-                        數學科原始分 <strong>55</strong> 低於該班平均 −2.3σ，診斷引擎偵測到「期終試」評核環節存在系統性偏差。
-                        已按 AI 加權乘數 <strong>×1.13</strong> 進行偏誤校正，調整後分數為 <strong>62.5</strong>（+7.5 pts）。
-                        此調整已計入全科加權平均及年級排名計算。
-                      </div>
-                      <div style={{ fontSize: 9, color: "#D97706", marginTop: 4 }}>
-                        Bias detected in Final Exam component (−2.3σ from class mean). AI multiplier ×1.13 applied → Adj 62.5 · Grade rank revised from 82 → 68/120.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ═══ RIGHT: KLA Strength Analysis ═════════════════════════ */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
-                  {/* KLA bar chart card */}
-                  <div style={{
-                    background: ERP.colors.surface, borderRadius: ERP.radius.xl,
-                    border: `1px solid ${ERP.colors.border}`, overflow: "hidden",
-                    boxShadow: ERP.shadow.md, padding: "18px 18px 20px",
-                  }}>
-                    {/* Card header */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: ERP.radius.md,
-                        background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                      }}>
-                        <BarChart2 size={14} color="#fff" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: ERP.colors.textPrimary }}>強項分析</div>
-                        <div style={{ fontSize: 9, color: ERP.colors.textMuted }}>KLA Subject Strengths</div>
-                      </div>
-                    </div>
-
-                    {/* KLA bars */}
-                    {KLA_BARS.map(kla => (
-                      <div key={kla.zh} style={{ marginBottom: 18 }}>
-                        {/* Label row */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: kla.color, display: "inline-block" }} />
-                              <span style={{ fontSize: 12, fontWeight: 800, color: ERP.colors.textPrimary }}>{kla.zh}</span>
-                              <span style={{ fontSize: 9, color: ERP.colors.textMuted }}>{kla.en}</span>
-                            </div>
-                            <div style={{ fontSize: 9, color: ERP.colors.textMuted, paddingLeft: 14, marginTop: 1 }}>{kla.subjects}</div>
-                          </div>
-                          <div style={{ textAlign: "right" as const }}>
-                            <span style={{ fontSize: 16, fontWeight: 900, color: kla.color }}>{kla.score}</span>
-                            <span style={{ fontSize: 9, color: ERP.colors.textMuted }}>/100</span>
-                          </div>
-                        </div>
-                        {/* Bar track */}
-                        <div style={{ height: 10, borderRadius: 5, background: kla.bg, overflow: "hidden", position: "relative" as const }}>
-                          <div style={{
-                            position: "absolute" as const, left: 0, top: 0, bottom: 0,
-                            width: `${kla.score}%`,
-                            background: `linear-gradient(90deg, ${kla.color}99, ${kla.color})`,
-                            borderRadius: 5,
-                          }} />
-                          {/* Class avg reference line at 75% */}
-                          <div style={{
-                            position: "absolute" as const, left: "75%", top: 0, bottom: 0,
-                            width: 1.5, background: "#64748B", opacity: 0.4,
-                          }} />
-                        </div>
-                        {/* Score grade tag */}
-                        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                          <span style={{ fontSize: 8, color: ERP.colors.textMuted }}>班均基準線 75.0</span>
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, padding: "1px 6px",
-                            borderRadius: 3, background: kla.bg, color: kla.color,
-                          }}>
-                            {kla.score >= 80 ? "强項 ★" : kla.score >= 75 ? "達標 ✓" : "待提升 △"}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Insight footer */}
-                    <div style={{
-                      padding: "10px 12px", marginTop: 2,
-                      background: ERP.colors.surfaceHover,
-                      borderRadius: ERP.radius.md,
-                      border: `1px solid ${ERP.colors.border}`,
-                    }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: ERP.colors.textSecondary, marginBottom: 4 }}>
-                        AI 強項洞察
-                      </div>
-                      <div style={{ fontSize: 10, color: ERP.colors.textMuted, lineHeight: 1.6 }}>
-                        語文領域表現穩健（78.5），STEM 領域在偏誤校正後升至 75.3。建議優先鞏固人文學科（71.0）。
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Ranking summary card */}
-                  <div style={{
-                    background: ERP.colors.surface, borderRadius: ERP.radius.xl,
-                    border: `1px solid ${ERP.colors.border}`,
-                    boxShadow: ERP.shadow.sm, padding: "16px 18px",
-                  }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: ERP.colors.textSecondary, marginBottom: 12, textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>
-                      學期排名概覽
-                    </div>
-                    {[
-                      { label: "班級排名", sub: "Class Rank", val: "15", unit: "/30", color: "#15803D", bg: "#DCFCE7" },
-                      { label: "年級排名", sub: "Grade Rank", val: "68", unit: "/120", color: "#D97706", bg: "#FEF3C7" },
-                      { label: "調整前排名", sub: "Pre-Adj Rank", val: "82", unit: "/120", color: ERP.colors.textMuted, bg: ERP.colors.surfaceHover },
-                    ].map(r => (
-                      <div key={r.label} style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "8px 10px", borderRadius: ERP.radius.md,
-                        background: r.bg, marginBottom: 8,
-                      }}>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: r.color }}>{r.label}</div>
-                          <div style={{ fontSize: 9, color: ERP.colors.textMuted }}>{r.sub}</div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                          <span style={{ fontSize: 20, fontWeight: 900, color: r.color }}>{r.val}</span>
-                          <span style={{ fontSize: 10, color: ERP.colors.textMuted }}>{r.unit}</span>
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ fontSize: 9, color: ERP.colors.textMuted, textAlign: "center" as const, marginTop: 4 }}>
-                      Mod 2 校正使年級排名提升 14 位 (82→68)
-                    </div>
-                  </div>
-                </div>
-              </div>
+        {activeTab === "academic" && liveAcademic.length > 0 && (
+          <div style={{ background: ERP.colors.surface, borderRadius: ERP.radius.xl, border: `1px solid ${ERP.colors.border}`, overflow: "hidden", boxShadow: ERP.shadow.sm }}>
+            <div style={{ padding: "14px 18px", borderBottom: `1px solid ${ERP.colors.border}`, fontSize: 13, fontWeight: 800 }}>
+              學業成績明細 · {viewYear}
             </div>
-          );
-        })()}
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "#F8FAFC", textAlign: "left" }}>
+                    {["科目", "評核", "分數", "滿分", "百分比", "學期"].map((h) => (
+                      <th key={h} style={{ padding: "10px 14px", fontWeight: 700, color: ERP.colors.textMuted, borderBottom: `1px solid ${ERP.colors.border}` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveAcademic.map((row, i) => (
+                    <tr key={`${row.subject}-${row.assessment}-${i}`}>
+                      <td style={{ padding: "10px 14px", fontWeight: 700, borderBottom: `1px solid ${ERP.colors.divider}` }}>{row.subject}</td>
+                      <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.divider}` }}>{row.assessment}</td>
+                      <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.divider}` }}>{row.raw_score ?? "—"}</td>
+                      <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.divider}` }}>{row.max_score ?? "—"}</td>
+                      <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.divider}`, fontWeight: 800, color: ERP.colors.accent }}>
+                        {row.percent != null ? `${row.percent}%` : "—"}
+                      </td>
+                      <td style={{ padding: "10px 14px", borderBottom: `1px solid ${ERP.colors.divider}` }}>{row.term || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {activeTab === "academic" && liveAcademic.length === 0 && (
+          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E2E8F0", padding: "36px 24px", textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
+            尚無此學生於 {viewYear} 的學業成績紀錄。
+          </div>
+        )}
 
-        {/* ──────────────────────────────────────────────────────────────────
+                {/* ──────────────────────────────────────────────────────────────────
             TAB CONTENT: CONDUCT & ATTENDANCE (placeholder)
         ────────────────────────────────────────────────────────────────── */}
         {activeTab === "conduct" && (() => {
@@ -2847,7 +2806,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                   }}>
                     <Activity size={12} color="#2563EB" style={{ flexShrink: 0 }} />
                     <div style={{ fontSize: 10, color: "#1D4ED8", lineHeight: 1.5 }}>
-                      <strong>Mod D 分析：</strong>本學期共 4 項參與度紀錄。高度投入 ×2，積極參與 ×1，游離 ×1（已記錄跟進）。整體參與指數 <strong>88%</strong>，持續上升。
+                      <strong>Mod D 分析：</strong>本學期共 {engagementLogs.length} 項參與／操行紀錄。整體參與指數 <strong>{engagementDisplay}</strong>（{engagementLabel}）。
                     </div>
                   </div>
                 </div>
@@ -2895,6 +2854,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
             {addingRecord !== null && (
               <AddRecordModal
                 defaultTab={addingRecord}
+                studentLabel={[realName, realNameEn].filter(Boolean).join(" ")}
                 onClose={() => setAddingRecord(null)}
                 onSubmitAttendance={({ type, remark, date }) => {
                   const m = ATT_TYPE_META[type];
@@ -2938,7 +2898,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
           );
         })()}
 
-      </div>{/* /scrollable */}
+      </div>{/* /page content */}
     </div>
   );
 };

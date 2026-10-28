@@ -112,7 +112,7 @@ export const Screen_Achievements: React.FC<{
       </form>
 
       <ListingPageShell
-        title="成就與證書"
+        title="成就與證書上載"
         subtitle="Achievements & Certificates · 建立批次後直接進入審核工作站，拖放證書即自動上傳與 AI 萃取"
         count={batches.length}
         countUnit="個批次"

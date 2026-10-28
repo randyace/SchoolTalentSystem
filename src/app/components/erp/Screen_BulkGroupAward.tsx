@@ -175,7 +175,7 @@ const FIELD_GHOST_SAMPLES: Record<string, string> = {
   event_name_en: "Math Olympiad",
   eventName: "數學奧林匹克 Math Olympiad",
   date: "2026-10-27",
-  schoolName: "School Talent System",
+  schoolName: "香港神託會培敦中學",
   principal_name_zh: "林佩儀",
   principal_name_en: "Ms. Lam Pui Yee",
   principal_title_zh: "校長",
@@ -721,7 +721,7 @@ const CertBaseTemplate: React.FC<{
   principalTitle?: string;
 }> = ({
   schoolLogoUrl = "",
-  schoolName = "School Talent System",
+  schoolName = "香港神託會培敦中學",
   principalName = "",
   principalTitle = "校長 Principal",
 }) => (
@@ -852,7 +852,7 @@ export const Screen_BulkGroupAward: React.FC<ScreenBulkGroupAwardProps> = ({
   schoolLogoPath = "",
   principalName = "",
   principalTitle = "校長 Principal",
-  schoolName = "School Talent System",
+  schoolName = "香港神託會培敦中學",
   signatureLine = "_______________________",
   customFields: customFieldsProp = [],
   templateId = null,
