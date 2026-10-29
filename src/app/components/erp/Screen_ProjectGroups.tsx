@@ -2,11 +2,44 @@
 // Screen 1.E.1b  管理分組 / Manage Project Groups
 // Dual-panel: create groups + Smart Import / Form-Class tab grid + overview
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, Check, ClipboardPaste, Layers, Plus, Trash2, Users, Zap,
+  ArrowLeft, Check, ClipboardPaste, Dices, Layers, Loader2, Plus, Trash2, Users, Zap,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
+
+declare global {
+  interface Window {
+    Sortable?: {
+      create: (el: HTMLElement, opts: Record<string, unknown>) => { destroy: () => void };
+    };
+  }
+}
+
+function loadSortableJs(): Promise<void> {
+  if (window.Sortable) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector("script[data-sortablejs]");
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("SortableJS load failed")));
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js";
+    s.async = true;
+    s.dataset.sortablejs = "1";
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("SortableJS load failed"));
+    document.head.appendChild(s);
+  });
+}
+
+const ROLE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  T3: { bg: "#FEF3C7", color: "#92400E", label: "T3 組長" },
+  T2: { bg: "#E0E7FF", color: "#3730A3", label: "T2 副組長" },
+  T1: { bg: "#F1F5F9", color: "#475569", label: "T1 組員" },
+};
 
 const F = ERP.font.family;
 
@@ -35,6 +68,8 @@ export type GroupMember = {
   name_zh_hk?: string;
   name_en?: string;
   class_name?: string;
+  role?: string;
+  role_label?: string;
 };
 
 export type ProjectGroupCard = {
@@ -74,6 +109,7 @@ export const Screen_ProjectGroups: React.FC<{
   projectId?: number | null;
   projectTitle?: string;
   form?: string;
+  targetForms?: string[];
   academicYear?: string;
   groups?: ProjectGroupCard[];
   eligibleTabs?: EligibleTab[];
@@ -82,12 +118,15 @@ export const Screen_ProjectGroups: React.FC<{
   createGroupUrl?: string;
   assignUrl?: string;
   removeUrl?: string;
+  randomizeUrl?: string;
+  moveStudentUrl?: string;
   flashSuccess?: string;
   flashError?: string;
 }> = ({
   projectId = null,
   projectTitle = "專題",
   form = "F3",
+  targetForms = [],
   academicYear = "2025/26",
   groups = [],
   eligibleTabs = [],
@@ -96,6 +135,8 @@ export const Screen_ProjectGroups: React.FC<{
   createGroupUrl = "",
   assignUrl = "",
   removeUrl = "",
+  randomizeUrl = "",
+  moveStudentUrl = "",
   flashSuccess,
   flashError,
 }) => {
@@ -103,6 +144,9 @@ export const Screen_ProjectGroups: React.FC<{
   const postAssign = assignUrl || (pid ? `/projects/groups/${pid}/assign` : "");
   const postCreate = createGroupUrl || (pid ? `/projects/groups/${pid}/create` : "");
   const postRemove = removeUrl || (pid ? `/projects/groups/${pid}/remove` : "");
+  const postRandomize = randomizeUrl || (pid ? `/projects/groups/${pid}/randomize` : "");
+  const postMove = moveStudentUrl || (pid ? `/projects/groups/${pid}/move` : "");
+  const formsLabel = (targetForms?.length ? targetForms : (form ? [form] : [])).join("、") || "—";
 
   const enrolledIds = useMemo(() => new Set(assignedIds), [assignedIds]);
   const pool = useMemo(() => {
@@ -118,6 +162,128 @@ export const Screen_ProjectGroups: React.FC<{
   const [targetGroupId, setTargetGroupId] = useState<string>(groups[0] ? String(groups[0].id) : "");
   const [newGroupName, setNewGroupName] = useState("");
   const [pasteText, setPasteText] = useState("");
+  const [randomizing, setRandomizing] = useState(false);
+  const [localGroups, setLocalGroups] = useState<ProjectGroupCard[]>(groups);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const sortablesRef = useRef<Array<{ destroy: () => void }>>([]);
+
+  useEffect(() => { setLocalGroups(groups); }, [groups]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const setup = async () => {
+      sortablesRef.current.forEach(s => s.destroy());
+      sortablesRef.current = [];
+      if (!boardRef.current || !postMove) return;
+      try {
+        await loadSortableJs();
+      } catch {
+        return;
+      }
+      if (cancelled || !window.Sortable || !boardRef.current) return;
+      const lists = boardRef.current.querySelectorAll<HTMLElement>("[data-group-list]");
+      lists.forEach(listEl => {
+        const sortable = window.Sortable!.create(listEl, {
+          group: "pbl-groups",
+          animation: 150,
+          ghostClass: "pbl-sortable-ghost",
+          onAdd: async (evt: { item: HTMLElement; to: HTMLElement; from: HTMLElement }) => {
+            const studentId = Number(evt.item.dataset.studentId || 0);
+            const toGroupId = Number(evt.to.dataset.groupId || 0);
+            const fromGroupId = Number(evt.from.dataset.groupId || 0);
+            const role = String(evt.item.dataset.role || "T1");
+            if (!studentId || !toGroupId) return;
+            try {
+              const res = await fetch(postMove, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({
+                  student_id: studentId,
+                  to_group_id: toGroupId,
+                  from_group_id: fromGroupId,
+                  role,
+                }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || data?.ok === false) {
+                window.alert(data?.message || "移動失敗");
+                window.location.reload();
+              }
+            } catch {
+              window.alert("移動失敗");
+              window.location.reload();
+            }
+          },
+        });
+        sortablesRef.current.push(sortable);
+      });
+    };
+    void setup();
+    return () => {
+      cancelled = true;
+      sortablesRef.current.forEach(s => s.destroy());
+      sortablesRef.current = [];
+    };
+  }, [localGroups, postMove]);
+
+  const handleRandomize = async () => {
+    if (!postRandomize || randomizing) return;
+    const raw = window.prompt("每組人數為？ (Students per group?)", "4");
+    if (raw === null) return;
+    const size = Number.parseInt(raw, 10);
+    if (!Number.isFinite(size) || size < 2 || size > 20) {
+      window.alert("請輸入 2–20 的整數。");
+      return;
+    }
+    if (localGroups.some(g => g.students.length > 0)
+      && !window.confirm("系統隨機分組會清除現有組別並重建，確定繼續？")) {
+      return;
+    }
+    setRandomizing(true);
+    try {
+      const res = await fetch(postRandomize, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ group_size: size }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.message || "隨機分組失敗");
+      }
+      window.location.reload();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "隨機分組失敗");
+    } finally {
+      setRandomizing(false);
+    }
+  };
+
+  const moveViaSelect = async (studentId: number, fromGroupId: number, toGroupId: number, role: string) => {
+    if (!postMove || toGroupId === fromGroupId) return;
+    try {
+      const res = await fetch(postMove, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          student_id: studentId,
+          to_group_id: toGroupId,
+          from_group_id: fromGroupId,
+          role,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
+        window.alert(data?.message || "移動失敗");
+        return;
+      }
+      window.location.reload();
+    } catch {
+      window.alert("移動失敗");
+    }
+  };
   const [parseMsg, setParseMsg] = useState<string | null>(null);
 
   const activeTabData = eligibleTabs.find(t => t.form === activeTab) || eligibleTabs[0];
@@ -196,16 +362,33 @@ export const Screen_ProjectGroups: React.FC<{
         <div>
           <div style={{ fontSize: 20, fontWeight: 800, color: ERP.colors.textPrimary }}>{projectTitle}</div>
           <div style={{ fontSize: 12, color: ERP.colors.textMuted, marginTop: 4 }}>
-            管理分組 · Manage Groups · AY {academicYear} · 目標級別 {form || "—"}
+            管理分組 · Manage Groups · AY {academicYear} · 目標級別 {formsLabel}
           </div>
         </div>
-        <div style={{
-          display: "inline-flex", alignItems: "center", gap: 8,
-          padding: "6px 12px", borderRadius: ERP.radius.full,
-          background: ERP.colors.accentPale, border: `1px solid ${ERP.colors.accentLight}`,
-          color: ERP.colors.accent, fontSize: 13, fontWeight: 800,
-        }}>
-          <Users size={14} /> {groups.length} 組 · {assignedIds.length} 已分配
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" as const }}>
+          <button
+            type="button"
+            onClick={() => void handleRandomize()}
+            disabled={!postRandomize || randomizing}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "8px 14px", borderRadius: ERP.radius.md,
+              border: "1px solid #C4B5FD", background: "linear-gradient(135deg,#F5F3FF,#EDE9FE)",
+              color: "#6D28D9", fontSize: 13, fontWeight: 800, fontFamily: F,
+              cursor: randomizing ? "wait" : "pointer", opacity: !postRandomize ? 0.5 : 1,
+            }}
+          >
+            {randomizing ? <Loader2 size={14} className="animate-spin" /> : <Dices size={14} />}
+            {randomizing ? "分組中…" : "🎲 系統隨機分組 System Randomize"}
+          </button>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "6px 12px", borderRadius: ERP.radius.full,
+            background: ERP.colors.accentPale, border: `1px solid ${ERP.colors.accentLight}`,
+            color: ERP.colors.accent, fontSize: 13, fontWeight: 800,
+          }}>
+            <Users size={14} /> {localGroups.length} 組 · {assignedIds.length} 已分配
+          </div>
         </div>
       </div>
 
@@ -263,14 +446,14 @@ export const Screen_ProjectGroups: React.FC<{
             }}
           >
             <option value="">— 請選擇組別 —</option>
-            {groups.map(g => (
+            {localGroups.map(g => (
               <option key={g.id} value={String(g.id)}>
                 {g.group_name}（{g.students.length} 人）
               </option>
             ))}
           </select>
-          {groups.length === 0 && (
-            <div style={{ fontSize: 11, color: ERP.colors.textMuted }}>請先新增至少一個組別，再分配學生。</div>
+          {localGroups.length === 0 && (
+            <div style={{ fontSize: 11, color: ERP.colors.textMuted }}>請先新增至少一個組別，或使用系統隨機分組。</div>
           )}
         </div>
       </div>
@@ -443,18 +626,21 @@ export const Screen_ProjectGroups: React.FC<{
         </div>
       </form>
 
-      {/* ── Bottom: Group overview ── */}
-      <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 800 }}>目前分組概覽 Current Grouping</div>
-      {groups.length === 0 ? (
+      {/* ── Bottom: Group overview (drag between groups or use dropdown) ── */}
+      <div style={{ marginBottom: 10, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" as const }}>
+        <div style={{ fontSize: 13, fontWeight: 800 }}>目前分組概覽 Current Grouping</div>
+        <div style={{ fontSize: 11, color: ERP.colors.textMuted }}>可拖曳學生至其他組，或使用下拉選單調整</div>
+      </div>
+      {localGroups.length === 0 ? (
         <div style={{
           padding: 32, textAlign: "center", color: ERP.colors.textMuted, fontSize: 13,
           background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.lg,
         }}>
-          尚未建立組別。請在上方新增第一個組別。
+          尚未建立組別。請使用「系統隨機分組」或上方手動新增。
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-          {groups.map(g => (
+        <div ref={boardRef} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+          {localGroups.map(g => (
             <div key={g.id} style={{
               background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
               borderRadius: ERP.radius.lg, overflow: "hidden", boxShadow: ERP.shadow.xs,
@@ -466,35 +652,72 @@ export const Screen_ProjectGroups: React.FC<{
                 <span style={{ fontSize: 14, fontWeight: 800 }}>{g.group_name}</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.accent }}>{g.students.length} 人</span>
               </div>
-              <div style={{ padding: "8px 10px", maxHeight: 260, overflowY: "auto" }}>
+              <div
+                data-group-list
+                data-group-id={g.id}
+                style={{ padding: "8px 10px", minHeight: 80, maxHeight: 320, overflowY: "auto" }}
+              >
                 {g.students.length === 0 && (
-                  <div style={{ padding: "16px 8px", textAlign: "center", fontSize: 12, color: ERP.colors.textMuted }}>尚無成員</div>
+                  <div style={{ padding: "16px 8px", textAlign: "center", fontSize: 12, color: ERP.colors.textMuted }}>尚無成員 · 可拖入學生</div>
                 )}
-                {g.students.map(s => (
-                  <div key={s.id} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-                    padding: "8px 6px", borderBottom: `1px solid ${ERP.colors.divider}`,
-                  }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{s.name_zh_hk || s.name_en || s.student_id}</div>
-                      <div style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: ERP.font.mono }}>
-                        {s.student_id}{s.class_name ? ` · ${s.class_name}` : ""}
+                {g.students.map(s => {
+                  const role = (s.role || "T1").toUpperCase();
+                  const rs = ROLE_STYLE[role] || ROLE_STYLE.T1;
+                  return (
+                    <div
+                      key={s.id}
+                      data-student-id={s.id}
+                      data-role={role}
+                      style={{
+                        display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8,
+                        padding: "8px 6px", borderBottom: `1px solid ${ERP.colors.divider}`,
+                        cursor: "grab", background: ERP.colors.surface,
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                          <span style={{ fontSize: 13, fontWeight: 700 }}>{s.name_zh_hk || s.name_en || s.student_id}</span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 9999,
+                            background: rs.bg, color: rs.color,
+                          }}>{s.role_label || rs.label}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: ERP.font.mono, marginTop: 2 }}>
+                          {s.student_id}{s.class_name ? ` · ${s.class_name}` : ""}
+                        </div>
+                        {localGroups.length > 1 && (
+                          <select
+                            value={String(g.id)}
+                            onChange={e => void moveViaSelect(s.id, g.id, Number(e.target.value), role)}
+                            style={{
+                              marginTop: 6, width: "100%", fontSize: 11, fontFamily: F,
+                              padding: "4px 6px", borderRadius: 6, border: `1px solid ${ERP.colors.border}`,
+                              background: ERP.colors.pageBg, color: ERP.colors.textSecondary,
+                            }}
+                          >
+                            {localGroups.map(opt => (
+                              <option key={opt.id} value={String(opt.id)}>
+                                {opt.id === g.id ? `目前：${opt.group_name}` : `移至 ${opt.group_name}`}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
+                      <form method="POST" action={postRemove} onSubmit={e => { if (!window.confirm("確定移除此學生？")) e.preventDefault(); }}>
+                        <input type="hidden" name="group_id" value={g.id} />
+                        <input type="hidden" name="student_id" value={s.id} />
+                        <button type="submit" title="移除" style={{
+                          display: "inline-flex", alignItems: "center", gap: 3,
+                          padding: "4px 8px", borderRadius: 6, border: `1px solid ${ERP.colors.red}44`,
+                          background: ERP.colors.redLight, color: ERP.colors.red,
+                          fontSize: 11, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                        }}>
+                          <Trash2 size={11} />
+                        </button>
+                      </form>
                     </div>
-                    <form method="POST" action={postRemove} onSubmit={e => { if (!window.confirm("確定移除此學生？")) e.preventDefault(); }}>
-                      <input type="hidden" name="group_id" value={g.id} />
-                      <input type="hidden" name="student_id" value={s.id} />
-                      <button type="submit" title="移除" style={{
-                        display: "inline-flex", alignItems: "center", gap: 3,
-                        padding: "4px 8px", borderRadius: 6, border: `1px solid ${ERP.colors.red}44`,
-                        background: ERP.colors.redLight, color: ERP.colors.red,
-                        fontSize: 11, fontWeight: 700, fontFamily: F, cursor: "pointer",
-                      }}>
-                        <Trash2 size={11} /> 移除
-                      </button>
-                    </form>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

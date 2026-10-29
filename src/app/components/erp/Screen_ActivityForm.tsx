@@ -222,6 +222,9 @@ export const Screen_ActivityForm: React.FC<{
   const [clubId, setClubId] = useState<string>(
     initialActivity?.club_id ? String(initialActivity.club_id) : ""
   );
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const [teacherMenuOpen, setTeacherMenuOpen] = useState(false);
+  const teacherBoxRef = useRef<HTMLDivElement>(null);
   const [teacherIds, setTeacherIds] = useState<string[]>(() => {
     if (initialActivity?.teacher_ids?.length) return initialActivity.teacher_ids.map(String);
     if (initialActivity?.teacher_in_charge_id) return [String(initialActivity.teacher_in_charge_id)];
@@ -283,6 +286,23 @@ export const Screen_ActivityForm: React.FC<{
       return { id, label };
     }).filter(t => t.id > 0 && t.label);
   }, [teachers]);
+
+  const teacherFiltered = useMemo(() => {
+    const q = teacherSearch.trim().toLowerCase();
+    return teacherOpts.filter(t => {
+      if (teacherIds.includes(String(t.id))) return false;
+      if (!q) return true;
+      return t.label.toLowerCase().includes(q);
+    });
+  }, [teacherOpts, teacherIds, teacherSearch]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (!teacherBoxRef.current?.contains(e.target as Node)) setTeacherMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
   const formOptions = DEFAULT_FORMS;
 
@@ -354,11 +374,16 @@ export const Screen_ActivityForm: React.FC<{
   };
 
   const handleSmartParseSchedule = async () => {
+    const appendStages = (incoming: Stage[]) => {
+      if (!incoming.length) return;
+      setStages(prev => [...prev, ...incoming]);
+      setOkMsg(`已新增 ${incoming.length} 個賽程階段（附加至現有列表）。`);
+      setMsg(null);
+      setSchedulePaste("");
+    };
     const local = parseScheduleLocal(schedulePaste);
     if (local.length > 0) {
-      setStages(local);
-      setOkMsg(`已智能解析 ${local.length} 個賽程階段。`);
-      setMsg(null);
+      appendStages(local);
       return;
     }
     try {
@@ -373,13 +398,12 @@ export const Screen_ActivityForm: React.FC<{
         setMsg("未能解析賽程，請確認每行包含階段名稱與日期。");
         return;
       }
-      setStages(stagesRaw.map((s, i) => ({
+      appendStages(stagesRaw.map((s, i) => ({
         id: `s${Date.now()}-${i}`,
         label: s.stage_name_zh_hk || "",
         labelEn: s.stage_name_en || "",
         date: s.date || "",
       })));
-      setOkMsg(`已解析 ${stagesRaw.length} 個賽程階段。`);
     } catch {
       setMsg("賽程解析失敗，請重試。");
     }
@@ -701,44 +725,92 @@ export const Screen_ActivityForm: React.FC<{
             </Field>
           </div>
 
-          <Field label="負責教師（可多選）" hint="Teachers in Charge">
+          <Field label="負責教師（可多選）" hint="Teachers in Charge · 觸控友善標籤選擇">
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
               <UserCog size={13} color={ERP.colors.textMuted} />
-              <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>已選 {teacherIds.length} 位 · 按住 Ctrl/Cmd 或點擊 chip 多選</span>
+              <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>已選 {teacherIds.length} 位 · 點擊標籤或搜尋加入（無需 Ctrl）</span>
             </div>
-            <select
-              name="teacher_ids[]"
-              multiple
-              value={teacherIds}
-              onChange={e => setTeacherIds(Array.from(e.target.selectedOptions).map(o => o.value))}
-              style={{ ...inputStyle, minHeight: 110 }}
-            >
-              {teacherOpts.map(t => (
-                <option key={t.id} value={String(t.id)}>{t.label}</option>
-              ))}
-            </select>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-              {teacherOpts.map(t => {
-                const id = String(t.id);
-                const on = teacherIds.includes(id);
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => toggleTeacher(id)}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px",
-                      borderRadius: ERP.radius.full, fontSize: 11, fontWeight: 700, fontFamily: F, cursor: "pointer",
-                      border: `1.5px solid ${on ? ERP.colors.accent : ERP.colors.border}`,
-                      background: on ? ERP.colors.accentPale : ERP.colors.pageBg,
-                      color: on ? ERP.colors.accent : ERP.colors.textSecondary,
-                    }}
-                  >
-                    {on && <Check size={10} />}
-                    {t.label}
-                  </button>
-                );
-              })}
+            {teacherIds.map(id => (
+              <input key={`tid-${id}`} type="hidden" name="teacher_ids[]" value={id} />
+            ))}
+            <div ref={teacherBoxRef} style={{ position: "relative" }}>
+              <div style={{
+                display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
+                minHeight: 44, padding: "6px 10px", borderRadius: ERP.radius.md,
+                border: `1.5px solid ${teacherMenuOpen ? ERP.colors.accent : ERP.colors.border}`,
+                background: ERP.colors.surface, cursor: "text",
+              }}
+                onClick={() => setTeacherMenuOpen(true)}
+              >
+                {teacherIds.map(id => {
+                  const t = teacherOpts.find(o => String(o.id) === id);
+                  if (!t) return null;
+                  return (
+                    <span key={id} style={{
+                      display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px",
+                      borderRadius: ERP.radius.full, fontSize: 12, fontWeight: 700, fontFamily: F,
+                      background: ERP.colors.accentPale, color: ERP.colors.accent,
+                      border: `1px solid ${ERP.colors.accentLight}`,
+                    }}>
+                      {t.label}
+                      <button
+                        type="button"
+                        aria-label={`移除 ${t.label}`}
+                        onClick={e => { e.stopPropagation(); toggleTeacher(id); }}
+                        style={{
+                          border: "none", background: "transparent", cursor: "pointer",
+                          display: "inline-flex", padding: 0, color: ERP.colors.accent,
+                        }}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+                <input
+                  value={teacherSearch}
+                  onChange={e => { setTeacherSearch(e.target.value); setTeacherMenuOpen(true); }}
+                  onFocus={() => setTeacherMenuOpen(true)}
+                  placeholder={teacherIds.length ? "繼續搜尋加入…" : "搜尋教師姓名…"}
+                  style={{
+                    flex: 1, minWidth: 120, border: "none", outline: "none",
+                    background: "transparent", fontSize: 13, fontFamily: F, padding: "4px 0",
+                  }}
+                />
+              </div>
+              {teacherMenuOpen && (
+                <div style={{
+                  position: "absolute", left: 0, right: 0, top: "100%", marginTop: 4, zIndex: 30,
+                  maxHeight: 220, overflowY: "auto", background: ERP.colors.surface,
+                  border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md,
+                  boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+                }}>
+                  {teacherFiltered.length === 0 ? (
+                    <div style={{ padding: 12, fontSize: 12, color: ERP.colors.textMuted }}>
+                      {teacherOpts.length === teacherIds.length ? "已選取全部教師" : "沒有符合的教師"}
+                    </div>
+                  ) : teacherFiltered.map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        toggleTeacher(String(t.id));
+                        setTeacherSearch("");
+                        setTeacherMenuOpen(true);
+                      }}
+                      style={{
+                        display: "flex", width: "100%", textAlign: "left" as const,
+                        padding: "10px 12px", border: "none", background: "transparent",
+                        borderBottom: `1px solid ${ERP.colors.border}`,
+                        fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer",
+                        color: ERP.colors.textPrimary,
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </Field>
 
@@ -973,12 +1045,12 @@ export const Screen_ActivityForm: React.FC<{
               onClick={() => setStages(p => [...p, { id: `s${Date.now()}`, label: "", labelEn: "", date: "" }])}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                padding: "9px 12px", border: `1.5px dashed ${ERP.colors.border}`,
-                borderRadius: ERP.radius.md, background: "transparent",
-                color: ERP.colors.textSecondary, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: F,
+                padding: "9px 12px", border: `1.5px dashed ${ERP.colors.accentLight}`,
+                borderRadius: ERP.radius.md, background: ERP.colors.accentPale,
+                color: ERP.colors.accent, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: F,
               }}
             >
-              <Plus size={13} color={ERP.colors.accent} /> 新增階段 Add Stage
+              <Plus size={13} color={ERP.colors.accent} /> ➕ 新增賽程 (Add Session)
             </button>
           </div>
         </Section>

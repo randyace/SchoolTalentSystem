@@ -105,14 +105,34 @@ export const ERP = {
     tableHeaderH:       44,
   },
 
-  // ACORN 六育標籤 — storage keys stay 認知/社群/創意/協作/領導/體適能; labels are canonical virtue text
+  // ACORN 德智體群美靈 — canonical label_zh keys + legacy ZH aliases for BC
   acornTags: {
-    認知:   { bg: "#DBEAFE", color: "#2563eb", border: "#BFDBFE", label: "智 · 認知 (Academic)",            virtue: "智", key: "academic" },
-    社群:   { bg: "#DCFCE7", color: "#16a34a", border: "#BBF7D0", label: "群 · 社群協作 (Collaborative)",   virtue: "群", key: "collaborative" },
-    創意:   { bg: "#FFEDD5", color: "#ea580c", border: "#FED7AA", label: "美 · 創意機遇 (Opportunity)",     virtue: "美", key: "opportunity" },
-    協作:   { bg: "#FFE4E6", color: "#e11d48", border: "#FECDD3", label: "體 · 體適能 (Realm / Physical)",  virtue: "體", key: "realm" },
-    領導:   { bg: "#EDE9FE", color: "#7c3aed", border: "#DDD6FE", label: "勞 · 領導培育 (Nurturing)",       virtue: "勞", key: "nurturing" },
-    體適能: { bg: "#CCFBF1", color: "#0d9488", border: "#99F6E4", label: "德 · 品德信念 (Faith)",           virtue: "德", key: "faith" },
+    德育: { bg: "#CCFBF1", color: "#0d9488", border: "#99F6E4", label: "德育 (Moral)",        virtue: "德", key: "moral" },
+    智育: { bg: "#DBEAFE", color: "#2563eb", border: "#BFDBFE", label: "智育 (Intellectual)", virtue: "智", key: "intellectual" },
+    體育: { bg: "#FFE4E6", color: "#e11d48", border: "#FECDD3", label: "體育 (Physical)",     virtue: "體", key: "physical" },
+    群育: { bg: "#DCFCE7", color: "#16a34a", border: "#BBF7D0", label: "群育 (Social)",       virtue: "群", key: "social" },
+    美育: { bg: "#FFEDD5", color: "#ea580c", border: "#FED7AA", label: "美育 (Aesthetic)",    virtue: "美", key: "aesthetic" },
+    靈育: { bg: "#EDE9FE", color: "#7c3aed", border: "#DDD6FE", label: "靈育 (Spiritual)",    virtue: "靈", key: "spiritual" },
+    // Legacy storage keys → same visuals / remapped dimension keys
+    體適能: { bg: "#CCFBF1", color: "#0d9488", border: "#99F6E4", label: "德育 (Moral)",        virtue: "德", key: "moral" },
+    認知:   { bg: "#DBEAFE", color: "#2563eb", border: "#BFDBFE", label: "智育 (Intellectual)", virtue: "智", key: "intellectual" },
+    協作:   { bg: "#FFE4E6", color: "#e11d48", border: "#FECDD3", label: "體育 (Physical)",     virtue: "體", key: "physical" },
+    社群:   { bg: "#DCFCE7", color: "#16a34a", border: "#BBF7D0", label: "群育 (Social)",       virtue: "群", key: "social" },
+    創意:   { bg: "#FFEDD5", color: "#ea580c", border: "#FED7AA", label: "美育 (Aesthetic)",    virtue: "美", key: "aesthetic" },
+    領導:   { bg: "#EDE9FE", color: "#7c3aed", border: "#DDD6FE", label: "靈育 (Spiritual)",    virtue: "靈", key: "spiritual" },
+    // English / legacy DB slugs (activity.acorn_weights)
+    moral:         { bg: "#CCFBF1", color: "#0d9488", border: "#99F6E4", label: "德育 (Moral)",        virtue: "德", key: "moral" },
+    intellectual:  { bg: "#DBEAFE", color: "#2563eb", border: "#BFDBFE", label: "智育 (Intellectual)", virtue: "智", key: "intellectual" },
+    physical:      { bg: "#FFE4E6", color: "#e11d48", border: "#FECDD3", label: "體育 (Physical)",     virtue: "體", key: "physical" },
+    social:        { bg: "#DCFCE7", color: "#16a34a", border: "#BBF7D0", label: "群育 (Social)",       virtue: "群", key: "social" },
+    aesthetic:     { bg: "#FFEDD5", color: "#ea580c", border: "#FED7AA", label: "美育 (Aesthetic)",    virtue: "美", key: "aesthetic" },
+    spiritual:     { bg: "#EDE9FE", color: "#7c3aed", border: "#DDD6FE", label: "靈育 (Spiritual)",    virtue: "靈", key: "spiritual" },
+    faith:         { bg: "#CCFBF1", color: "#0d9488", border: "#99F6E4", label: "德育 (Moral)",        virtue: "德", key: "moral" },
+    academic:      { bg: "#DBEAFE", color: "#2563eb", border: "#BFDBFE", label: "智育 (Intellectual)", virtue: "智", key: "intellectual" },
+    realm:         { bg: "#FFE4E6", color: "#e11d48", border: "#FECDD3", label: "體育 (Physical)",     virtue: "體", key: "physical" },
+    collaborative: { bg: "#DCFCE7", color: "#16a34a", border: "#BBF7D0", label: "群育 (Social)",       virtue: "群", key: "social" },
+    opportunity:   { bg: "#FFEDD5", color: "#ea580c", border: "#FED7AA", label: "美育 (Aesthetic)",    virtue: "美", key: "aesthetic" },
+    nurturing:     { bg: "#EDE9FE", color: "#7c3aed", border: "#DDD6FE", label: "靈育 (Spiritual)",    virtue: "靈", key: "spiritual" },
   } as Record<string, { bg: string; color: string; border: string; label: string; virtue: string; key: string }>,
 
   // Status chip map (Chinese labels)

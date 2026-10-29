@@ -33,6 +33,7 @@ import { Screen_ActivityWalkIns } from "./components/erp/Screen_ActivityWalkIns"
 import { Screen_ActivityAttendance } from "./components/erp/Screen_ActivityAttendance";
 import { Screen_ScoreEntry } from "./components/erp/Screen_ScoreEntry";
 import { Screen_Assessments } from "./components/erp/Screen_Assessments";
+import { Screen_TermWeightings } from "./components/erp/Screen_TermWeightings";
 import { Screen01_Dashboard } from "./components/lalp/Screen01_Dashboard";
 import { Screen_StudentBatchCreate } from "./components/erp/Screen_StudentBatchCreate";
 import { Screen_ClassDetails } from "./components/erp/Screen_ClassDetails";
@@ -40,6 +41,8 @@ import { Screen_Staff } from "./components/erp/Screen_Staff";
 import { Screen_ClubManagement, ClubRosterView } from "./components/erp/Screen_ClubManagement";
 import { Screen_GroupProjects } from "./components/erp/Screen_GroupProjects";
 import { Screen_ProjectGroups } from "./components/erp/Screen_ProjectGroups";
+import { Screen_SystemUserList, Screen_SystemUserSecurity } from "./components/erp/Screen_SystemUserList";
+import { Screen_AuditLog } from "./components/erp/Screen_AuditLog";
 import { Screen_PhpContent, type PhpContentAssets } from "./components/erp/Screen_PhpContent";
 
 export type StsBridgePage =
@@ -76,7 +79,11 @@ export type StsBridgePage =
   | "api-docs"
   | "scores"
   | "assessments"
+  | "term-weightings"
   | "staff"
+  | "system-users"
+  | "system-user-security"
+  | "audit-logs"
   | "clubs"
   | "club-roster"
   | "projects"
@@ -101,9 +108,23 @@ export interface StsBridgeConfig {
   profileUrl?: string;
   flashSuccess?: string;
   flashError?: string;
+  flashMessage?: string;
   storeUrl?: string;
+  saveUrl?: string;
+  matrixUrl?: string;
+  subjectId?: number | null;
+  form?: string | null;
+  matrix?: Record<string, unknown> | null;
   academicYear?: string;
   academicYears?: string[];
+  /** 1.F.1 Data Import wizard */
+  modules?: unknown[];
+  parseUrl?: string;
+  validateUrl?: string;
+  executeUrl?: string;
+  templateUrl?: string;
+  sampleUrl?: string;
+  acornRecalcUrl?: string;
   filterForm?: string;
   nextIdStart?: number;
   classProfile?: {
@@ -273,6 +294,8 @@ export interface StsBridgeConfig {
   walkIns?: any[];
   attendanceUrl?: string;
   groupedRecords?: Record<string, any[]>;
+  schedules?: Array<{ id: number; label: string; label_en?: string; date?: string }>;
+  rosterLoadUrl?: string;
   totalCount?: number;
   enrollUrl?: string;
   rosterUrl?: string;
@@ -288,6 +311,17 @@ export interface StsBridgeConfig {
   terms?: Array<{ value: string; label: string }>;
   assessmentItems?: Array<{ value: string; label: string; name_en?: string }>;
   assessmentsUrl?: string;
+  importUrl?: string;
+  lockUrl?: string;
+  isAdmin?: boolean;
+  canUnlock?: boolean;
+  logsUrl?: string;
+  exportUrl?: string;
+  syncUrl?: string;
+  defaultDateFrom?: string;
+  defaultDateTo?: string;
+  actionTypes?: string[];
+  statuses?: string[];
   assessments?: any[];
   assessmentId?: number | null;
   initialAssessment?: any;
@@ -311,6 +345,10 @@ export interface StsBridgeConfig {
   projectId?: number | null;
   initialProject?: any;
   groupsUrlBase?: string;
+  generateScaffoldUrl?: string;
+  randomizeUrl?: string;
+  moveStudentUrl?: string;
+  targetForms?: string[];
   projectTitle?: string;
   form?: string;
   groups?: any[];
@@ -359,6 +397,10 @@ export interface StsBridgeConfig {
   saveVersionUrl?: string;
   uploadContextUrl?: string;
   studentContextUrl?: string;
+  /** System User Management */
+  systemUsersUrl?: string;
+  securityDetailUrl?: string;
+  userId?: number | null;
   metadataUrl?: string;
   /** From system_settings (Settings UI) */
   schoolLogoUrl?: string;
@@ -406,10 +448,15 @@ function go(path: string) {
 }
 
 function shell(navId: string, children: React.ReactNode, config?: StsBridgeConfig) {
-  const user = config?.currentUser || (window.__STS_BRIDGE__ as StsBridgeConfig | undefined)?.currentUser || null;
-  const logoutUrl = config?.logoutUrl || (window.__STS_BRIDGE__ as StsBridgeConfig | undefined)?.logoutUrl || "/logout";
-  const profileUrl = config?.profileUrl || (window.__STS_BRIDGE__ as StsBridgeConfig | undefined)?.profileUrl || "/profile";
+  const bridge = config || (window.__STS_BRIDGE__ as StsBridgeConfig | undefined);
+  const user = config?.currentUser || bridge?.currentUser || null;
+  const logoutUrl = config?.logoutUrl || bridge?.logoutUrl || "/logout";
+  const profileUrl = config?.profileUrl || bridge?.profileUrl || "/profile";
   const role = (user?.role || "").toLowerCase();
+  const schoolName = config?.schoolName || bridge?.schoolName || bridge?.schoolDisplayName || "香港神託會培敦中學";
+  const schoolNameEn = config?.schoolNameEn || bridge?.schoolNameEn || "Stewards Pooi Tun Secondary School";
+  // FIXME: prefer a dedicated activeAcademicYear from global settings when available
+  const academicYear = config?.academicYear || bridge?.academicYear || "2025/26";
   return (
     <Frame02_AppShell
       activeNavId={navId}
@@ -417,6 +464,9 @@ function shell(navId: string, children: React.ReactNode, config?: StsBridgeConfi
       logoutUrl={logoutUrl}
       profileUrl={profileUrl}
       isAdmin={role === "admin"}
+      schoolName={schoolName}
+      schoolNameEn={schoolNameEn}
+      academicYear={academicYear}
     >
       {children}
     </Frame02_AppShell>
@@ -517,7 +567,18 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
       ));
 
     case "roster-import":
-      return wrap(nav || "data-import", <Screen_DataImport />);
+      return wrap(nav || "data-import", (
+        <Screen_DataImport
+          modules={(config.modules as any) || undefined}
+          parseUrl={config.parseUrl || "/admin/data-import/parse-preview"}
+          validateUrl={config.validateUrl || "/admin/data-import/validate"}
+          executeUrl={config.executeUrl || "/admin/data-import/execute"}
+          templateUrl={config.templateUrl || "/admin/data-import/template"}
+          sampleUrl={config.sampleUrl || "/admin/data-import/sample"}
+          acornRecalcUrl={config.acornRecalcUrl || "/admin/acorn-engine"}
+          academicYear={config.academicYear || "2025/26"}
+        />
+      ));
 
     case "dynamic-group":
       return wrap(nav || "dynamic-groups", (
@@ -573,6 +634,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           subjects={config.subjects as any}
           klas={config.klas as any}
           acorns={config.acorns as any}
+          startCreating={!!(config as any).startCreating}
           toggleUrl={config.toggleUrl || "/subjects/toggle-dynamic-grouping"}
           storeUrl={config.storeUrl || "/subjects/store"}
           updateUrl={config.updateUrl || "/subjects/update"}
@@ -588,8 +650,12 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           subjects={(config.subjects as any) || []}
           terms={config.terms}
           rosterUrl={config.rosterUrl || "/scores/roster"}
-          saveUrl={config.saveUrl || "/scores/save"}
+          saveUrl={config.saveUrl || "/scores/batch-update"}
           assessmentsUrl={config.assessmentsUrl || "/scores/assessments"}
+          importUrl={config.importUrl || "/scores/import"}
+          lockUrl={config.lockUrl || "/scores/lock"}
+          isAdmin={!!config.isAdmin}
+          canUnlock={!!config.canUnlock}
         />
       ));
 
@@ -617,6 +683,20 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         />
       ));
 
+    case "term-weightings":
+      return wrap(nav || "subjects", (
+        <Screen_TermWeightings
+          subjects={(config.subjects as any) || []}
+          subjectId={config.subjectId ?? null}
+          academicYear={config.academicYear || "2025/26"}
+          form={config.form ?? null}
+          matrix={(config.matrix as any) || null}
+          saveUrl={config.saveUrl || "/term-weightings/save"}
+          matrixUrl={config.matrixUrl || "/term-weightings/matrix"}
+          flashMessage={config.flashMessage || config.flashSuccess || null}
+        />
+      ));
+
     case "staff":
       return wrap(nav || "staff", (
         <Screen_Staff
@@ -634,6 +714,30 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           flashError={config.flashError}
         />
       ));
+
+    case "system-users":
+      return wrap(
+        nav || "system-users",
+        <Screen_SystemUserList
+          systemUsersUrl={config.systemUsersUrl || "/api/system-users"}
+          storeUrl={config.storeUrl || "/api/system-users/store"}
+          securityDetailUrl={config.securityDetailUrl || "/admin/system-users"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />,
+      );
+
+    case "system-user-security":
+      return wrap(
+        nav || "system-users",
+        <Screen_SystemUserSecurity
+          userId={config.userId ?? null}
+          listUrl={config.listUrl || "/admin/system-users"}
+          systemUsersUrl={config.systemUsersUrl || "/api/system-users"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />,
+      );
 
     case "clubs":
       return wrap(nav || "club-management", (
@@ -682,6 +786,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           projects={config.projects || []}
           subjects={(config.subjects as any) || []}
           acorns={config.acorns || []}
+          teachers={(config.teachers as any) || []}
           academicYear={config.academicYear || "2025/26"}
           openForm={!!config.openForm}
           projectId={config.projectId ?? null}
@@ -690,6 +795,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           updateUrl={config.updateUrl || "/projects/update"}
           listUrl={config.listUrl || "/projects"}
           groupsUrlBase={config.groupsUrlBase || "/projects/groups"}
+          generateScaffoldUrl={config.generateScaffoldUrl || "/projects/generate-scaffold"}
           flashSuccess={config.flashSuccess}
           flashError={config.flashError}
         />
@@ -701,6 +807,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           projectId={config.projectId ?? null}
           projectTitle={config.projectTitle || ""}
           form={config.form || ""}
+          targetForms={(config.targetForms as any) || []}
           academicYear={config.academicYear || "2025/26"}
           groups={config.groups || []}
           eligibleTabs={config.eligibleTabs || []}
@@ -709,6 +816,8 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           createGroupUrl={config.createGroupUrl || ""}
           assignUrl={config.assignUrl || ""}
           removeUrl={config.removeUrl || ""}
+          randomizeUrl={config.randomizeUrl || ""}
+          moveStudentUrl={config.moveStudentUrl || ""}
           flashSuccess={config.flashSuccess}
           flashError={config.flashError}
         />
@@ -790,8 +899,12 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           activityId={config.activityId ?? null}
           activityName={config.activityName || ""}
           academicYear={config.academicYear}
+          schedules={(config.schedules as any) || []}
+          students={(config.students as any) || []}
           groupedRecords={config.groupedRecords || {}}
           totalCount={config.totalCount ?? 0}
+          saveUrl={config.saveUrl || ""}
+          rosterLoadUrl={(config as any).rosterLoadUrl || ""}
           editUrl={config.editUrl || "/activities"}
           rosterUrl={config.rosterUrl || ""}
           listUrl={config.listUrl || "/activities"}
@@ -1003,6 +1116,19 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         />
       ));
 
+    case "audit-logs":
+      return wrap(nav || "sync-permissions", (
+        <Screen_AuditLog
+          logsUrl={config.logsUrl || "/admin/audit-logs/data"}
+          exportUrl={config.exportUrl || "/admin/audit-logs/export"}
+          syncUrl={config.syncUrl || "/admin/audit-logs/force-sync"}
+          defaultDateFrom={config.defaultDateFrom}
+          defaultDateTo={config.defaultDateTo}
+          actionTypes={config.actionTypes}
+          statuses={config.statuses}
+        />
+      ));
+
     case "settings":
       return wrap(nav || "system-admin-home", (
         <Screen_SystemAdminHome onNavigate={(id) => {
@@ -1016,6 +1142,8 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
             "api-docs": "/api/docs",
             "prompt-portal": "/ai-workspace",
             "ai-workspace": "/ai-workspace",
+            "sync-permissions": "/admin/audit-logs",
+            "desensitize-audit": "/admin/audit-logs",
           };
           go(map[id] || "/settings");
         }} />

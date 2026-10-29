@@ -24,17 +24,17 @@ import {
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// §1  ACORN 六育 CONFIGURATION (德智體群美勞)
-// Radar order: 智 → 群 → 美 → 體 → 勞 → 德
+// §1  ACORN 六育 CONFIGURATION (德智體群美靈) — fallback only; live axes from bridge
+// Order: 德 → 智 → 體 → 群 → 美 → 靈  (N-gon when bridge sends fewer/more)
 // ═══════════════════════════════════════════════════════════════════════════════
-type AcornAxis = { zh: string; en: string; color: string; bg: string; border: string; key?: string; badge?: string };
+type AcornAxis = { zh: string; en: string; color: string; bg: string; border: string; key?: string; badge?: string; sub?: string };
 const DEFAULT_ACORN_AXES: AcornAxis[] = [
-  { zh: "智", en: "Academic",      color: "#2563eb", bg: "#DBEAFE", border: "#BFDBFE", key: "academic",      badge: "智 · 認知" },
-  { zh: "群", en: "Collaborative", color: "#16a34a", bg: "#DCFCE7", border: "#BBF7D0", key: "collaborative", badge: "群 · 社群" },
-  { zh: "美", en: "Opportunity",   color: "#ea580c", bg: "#FFEDD5", border: "#FED7AA", key: "opportunity",   badge: "美 · 創意" },
-  { zh: "體", en: "Realm",         color: "#e11d48", bg: "#FFE4E6", border: "#FECDD3", key: "realm",         badge: "體 · 體適能" },
-  { zh: "勞", en: "Nurturing",     color: "#7c3aed", bg: "#EDE9FE", border: "#DDD6FE", key: "nurturing",     badge: "勞 · 領導" },
-  { zh: "德", en: "Faith",         color: "#0d9488", bg: "#CCFBF1", border: "#99F6E4", key: "faith",         badge: "德 · 信念" },
+  { zh: "德", en: "Moral",        color: "#0d9488", bg: "#CCFBF1", border: "#99F6E4", key: "moral",        badge: "德育", sub: "德育" },
+  { zh: "智", en: "Intellectual", color: "#2563eb", bg: "#DBEAFE", border: "#BFDBFE", key: "intellectual", badge: "智育", sub: "智育" },
+  { zh: "體", en: "Physical",     color: "#e11d48", bg: "#FFE4E6", border: "#FECDD3", key: "physical",     badge: "體育", sub: "體育" },
+  { zh: "群", en: "Social",       color: "#16a34a", bg: "#DCFCE7", border: "#BBF7D0", key: "social",       badge: "群育", sub: "群育" },
+  { zh: "美", en: "Aesthetic",    color: "#ea580c", bg: "#FFEDD5", border: "#FED7AA", key: "aesthetic",    badge: "美育", sub: "美育" },
+  { zh: "靈", en: "Spiritual",    color: "#7c3aed", bg: "#EDE9FE", border: "#DDD6FE", key: "spiritual",    badge: "靈育", sub: "靈育" },
 ];
 
 type ActivityFootprint = {
@@ -113,7 +113,7 @@ const FALLBACK_ACORN_DATA: Record<string, AcornRecord> = {
   "2025/26": {
     label:   "2025/26 (中一/F1)",
     labelEn: "AY 2025/26 · Form 1",
-    scores:  [82, 91, 74, 68, 78, 85],
+    scores:  [85, 82, 68, 91, 74, 78], // 德智體群美靈
     summary: { pbl_count: 2, activity_count: 8, t3_leader_count: 1, total_autonomous_points: 420 },
     narrative: {
       masked: "Student #CTM-001 在「群 · 社群」表現突出（91 分），並累積領導經歷。建議下一步挑戰「體 · 體適能」。",
@@ -124,7 +124,7 @@ const FALLBACK_ACORN_DATA: Record<string, AcornRecord> = {
   "2024/25": {
     label:   "2024/25 (入學基準)",
     labelEn: "AY 2024/25 · Admission Benchmark",
-    scores:  [75, 80, 65, 60, 70, 80],
+    scores:  [80, 75, 60, 80, 65, 70], // 德智體群美靈
     summary: { pbl_count: 1, activity_count: 4, t3_leader_count: 0, total_autonomous_points: 180 },
   },
 };
@@ -157,8 +157,8 @@ export type HolisticBridgePayload = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// §3  HEX RADAR SVG  (custom, no recharts)
-//     6 axes, clockwise from top.  overflow:visible for edge labels.
+// §3  N-GON RADAR SVG  (custom, no recharts)
+//     N axes from live config — hexagon at 6, pentagon at 5, etc.
 // ═══════════════════════════════════════════════════════════════════════════════
 const SZ = 300;          // SVG viewBox size
 const CX = SZ / 2;       // centre-x
@@ -166,27 +166,38 @@ const CY = SZ / 2;       // centre-y
 const RD = 100;          // outer data-ring radius
 const LR = 136;          // label ring radius (outside RD)
 
-// Text anchors per axis (top → top-right → bottom-right → bottom → bottom-left → top-left)
-const ANCHORS  = ["middle","start","start","middle","end","end"] as const;
-// Nudge offsets for axis name labels
-const L_DX = [0, 6, 6, 0, -6, -6];
-const L_DY = [0, 0, 0, 8, 0, 0];
-// Nudge offsets for value (score) labels near the data dot
-const V_DX = [0, 10, 10, 0, -10, -10];
-const V_DY = [-15, 4, 4, 16, 4, 4];
+function axisAnchor(i: number, n: number): "middle" | "start" | "end" {
+  const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  const cos = Math.cos(a);
+  if (Math.abs(cos) < 0.35) return "middle";
+  return cos > 0 ? "start" : "end";
+}
+function labelNudge(i: number, n: number): { dx: number; dy: number; vdx: number; vdy: number } {
+  const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  return {
+    dx: cos > 0.35 ? 6 : cos < -0.35 ? -6 : 0,
+    dy: sin > 0.7 ? 8 : 0,
+    vdx: cos > 0.35 ? 10 : cos < -0.35 ? -10 : 0,
+    vdy: sin > 0.7 ? 16 : sin < -0.7 ? -15 : 4,
+  };
+}
 
-function rPt(dimIdx: number, value: number, radius = RD): [number, number] {
-  const a = -Math.PI / 2 + (dimIdx * 2 * Math.PI) / 6;
+function rPt(dimIdx: number, value: number, n: number, radius = RD): [number, number] {
+  const sides = Math.max(3, n);
+  const a = -Math.PI / 2 + (dimIdx * 2 * Math.PI) / sides;
   const r = (value / 100) * radius;
   return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
 }
 
-function rPath(vals: readonly number[]): string {
-  return vals.map((v, i) => { const [x, y] = rPt(i, v); return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`; }).join(" ") + " Z";
+function rPath(vals: readonly number[], n: number): string {
+  return vals.map((v, i) => { const [x, y] = rPt(i, v, n); return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`; }).join(" ") + " Z";
 }
 
-function gridHex(scale: number): string {
-  return Array.from({ length: 6 }, (_, i) => { const [x, y] = rPt(i, scale * 100); return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`; }).join(" ") + " Z";
+function gridPoly(scale: number, n: number): string {
+  const sides = Math.max(3, n);
+  return Array.from({ length: sides }, (_, i) => { const [x, y] = rPt(i, scale * 100, sides); return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`; }).join(" ") + " Z";
 }
 
 // ── Palette constants for the two radar layers ──────────────────────────────
@@ -200,12 +211,14 @@ const HexRadar: React.FC<{
   axes?: AcornAxis[];
 }> = ({
   showPrevious, scoresNow, scoresPrev, axes = DEFAULT_ACORN_AXES,
-}) => (
+}) => {
+  const n = Math.max(3, axes.length);
+  return (
   <svg
     viewBox={`0 0 ${SZ} ${SZ}`}
     width="100%" height="auto"
     style={{ overflow: "visible", display: "block" }}
-    aria-label="ACORN 六育全人特徵圖譜雷達圖"
+    aria-label={`ACORN ${n}育全人特徵圖譜雷達圖`}
   >
     <defs>
       {/* Emerald gradient fill — current year */}
@@ -233,7 +246,7 @@ const HexRadar: React.FC<{
 
     {/* Grid rings */}
     {[0.2, 0.4, 0.6, 0.8, 1.0].map(s => (
-      <path key={s} d={gridHex(s)}
+      <path key={s} d={gridPoly(s, n)}
         fill="none"
         stroke={s === 1.0 ? "#CBD5E1" : "#E2E8F0"}
         strokeWidth={s === 1.0 ? 1.5 : 0.8}
@@ -252,7 +265,7 @@ const HexRadar: React.FC<{
 
     {/* Axis lines */}
     {axes.map((ax, i) => {
-      const [ox, oy] = rPt(i, 100);
+      const [ox, oy] = rPt(i, 100, n);
       return <line key={i} x1={CX} y1={CY} x2={ox} y2={oy} stroke={ax.color} strokeWidth="1.5" strokeOpacity="0.20" />;
     })}
 
@@ -260,9 +273,9 @@ const HexRadar: React.FC<{
     {showPrevious && (
       <g>
         {/* Red semi-transparent fill */}
-        <path d={rPath(scoresPrev)} fill={CLR_PREV.fill} />
+        <path d={rPath(scoresPrev, n)} fill={CLR_PREV.fill} />
         {/* Red dashed stroke */}
-        <path d={rPath(scoresPrev)}
+        <path d={rPath(scoresPrev, n)}
           fill="none"
           stroke={CLR_PREV.stroke}
           strokeWidth="2"
@@ -271,7 +284,7 @@ const HexRadar: React.FC<{
         />
         {/* Red dots at historical vertices */}
         {scoresPrev.map((v, i) => {
-          const [px, py] = rPt(i, v);
+          const [px, py] = rPt(i, v, n);
           return (
             <circle key={i}
               cx={px} cy={py} r="4"
@@ -285,8 +298,8 @@ const HexRadar: React.FC<{
     )}
 
     {/* ── Current year polygon — BRIGHT GREEN solid, drawn on top ── */}
-    <path d={rPath(scoresNow)} fill="url(#hrGradGreen)" />
-    <path d={rPath(scoresNow)}
+    <path d={rPath(scoresNow, n)} fill="url(#hrGradGreen)" />
+    <path d={rPath(scoresNow, n)}
       fill="none"
       stroke={CLR_NOW.stroke}
       strokeWidth="2.8"
@@ -295,15 +308,16 @@ const HexRadar: React.FC<{
 
     {/* Current year dots + value labels */}
     {scoresNow.map((v, i) => {
-      const [dpx, dpy] = rPt(i, v);
-      const anchor = V_DX[i] > 0 ? "start" : V_DX[i] < 0 ? "end" : "middle";
+      const [dpx, dpy] = rPt(i, v, n);
+      const nudge = labelNudge(i, n);
+      const anchor = nudge.vdx > 0 ? "start" : nudge.vdx < 0 ? "end" : "middle";
       return (
         <g key={i}>
           <circle cx={dpx} cy={dpy} r="5.5"
             fill={CLR_NOW.dot} stroke="#fff" strokeWidth="2.5"
             filter="url(#hrDotGreen)"
           />
-          <text x={dpx + V_DX[i]} y={dpy + V_DY[i]}
+          <text x={dpx + nudge.vdx} y={dpy + nudge.vdy}
             fontSize="10.5" fontWeight="800"
             fill={CLR_NOW.label} textAnchor={anchor}
             fontFamily={ERP.font.family}
@@ -314,26 +328,29 @@ const HexRadar: React.FC<{
 
     {/* Axis labels — keep per-axis brand colors for dimension identity */}
     {axes.map((ax, i) => {
-      const a  = -Math.PI / 2 + (i * 2 * Math.PI) / 6;
+      const a  = -Math.PI / 2 + (i * 2 * Math.PI) / n;
       const lx = CX + LR * Math.cos(a);
       const ly = CY + LR * Math.sin(a);
+      const nudge = labelNudge(i, n);
+      const anchor = axisAnchor(i, n);
       return (
         <g key={i}>
-          <text x={lx + L_DX[i]} y={ly + L_DY[i]}
+          <text x={lx + nudge.dx} y={ly + nudge.dy}
             fontSize="13.5" fontWeight="800"
-            fill={ax.color} textAnchor={ANCHORS[i]}
+            fill={ax.color} textAnchor={anchor}
             fontFamily={ERP.font.family}
           >{ax.zh}</text>
-          <text x={lx + L_DX[i]} y={ly + L_DY[i] + 15}
+          <text x={lx + nudge.dx} y={ly + nudge.dy + 15}
             fontSize="9" fontWeight="400"
-            fill={ax.color} textAnchor={ANCHORS[i]}
+            fill={ax.color} textAnchor={anchor}
             opacity="0.62" fontFamily={ERP.font.family}
-          >{ax.en}</text>
+          >{ax.sub ?? ax.en}</text>
         </g>
       );
     })}
   </svg>
-);
+  );
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // §3b  BLUR WRAP — PDPO privacy blur with hover-to-reveal
@@ -922,10 +939,10 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
   const liveYears = effectiveHolistic?.years && Object.keys(effectiveHolistic.years).length > 0 ? effectiveHolistic.years : null;
   const ACORN_DATA: Record<string, AcornRecord> = liveYears ?? FALLBACK_ACORN_DATA;
   const COMPARE_OPTIONS: Record<string, string[]> = effectiveHolistic?.compare_options ?? FALLBACK_COMPARE;
-  const ACORN_AXES: AcornAxis[] = (effectiveHolistic?.axes && effectiveHolistic.axes.length === 6)
+  const ACORN_AXES: AcornAxis[] = (effectiveHolistic?.axes && effectiveHolistic.axes.length >= 3)
     ? effectiveHolistic.axes.map(a => ({
         zh: a.zh, en: a.en, color: a.color, bg: a.bg, border: a.border,
-        key: a.key, badge: a.badge ?? `${a.zh} · ${a.sub ?? a.en}`,
+        key: a.key, sub: a.sub, badge: a.badge ?? `${a.zh} · ${a.sub ?? a.en}`,
       }))
     : DEFAULT_ACORN_AXES;
 

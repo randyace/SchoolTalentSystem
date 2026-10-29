@@ -114,7 +114,7 @@ const STATUSES: { key: StatusKey; label: string }[] = [
   { key: "completed", label: "已完結" },
   { key: "paused",    label: "暫停"   },
 ];
-const ALL_ACORN_TAGS: AcornTagKey[] = ["認知", "社群", "創意", "協作", "領導", "體適能"];
+const ALL_ACORN_TAGS: AcornTagKey[] = ["德育", "智育", "體育", "群育", "美育", "靈育"];
 const LEVEL_OPTIONS: { code: LevelCode; label: string; sub: string }[] = [
   { code: "L4", label: "L4", sub: "國際 / 全港" },
   { code: "L3", label: "L3", sub: "校際"       },
@@ -158,8 +158,10 @@ const TIER_OPTIONS = [
 ];
 
 /* ── Atoms ───────────────────────────────────────────────────────────────── */
-const AcornChip: React.FC<{ tag: AcornTagKey }> = ({ tag }) => {
-  const s = ERP.acornTags[tag];
+const AcornChip: React.FC<{ tag: string }> = ({ tag }) => {
+  const s = ERP.acornTags[tag as AcornTagKey] ?? {
+    bg: "#F1F5F9", color: "#64748B", border: "#E2E8F0", label: tag || "ACORN",
+  };
   return (
     <span style={{
       display: "inline-flex", alignItems: "center",
@@ -170,8 +172,8 @@ const AcornChip: React.FC<{ tag: AcornTagKey }> = ({ tag }) => {
   );
 };
 
-const StatusBadge: React.FC<{ status: StatusKey }> = ({ status }) => {
-  const cfg = ERP.statusMap[status];
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const cfg = ERP.statusMap[status as StatusKey] ?? ERP.statusMap.planning;
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: "5px",
@@ -320,6 +322,8 @@ const inputStyle: React.CSSProperties = {
 /* ── Weight Matrix ───────────────────────────────────────────────────────── */
 // Safe ASCII class names for slider thumb CSS
 const ACORN_SAFE: Record<string, string> = {
+  "德育": "deyu", "智育": "zhiyu", "體育": "tiyu",
+  "群育": "qunyu", "美育": "meiyu", "靈育": "lingyu",
   "認知": "renzhi", "社群": "shequn", "創意": "chuangyi",
   "協作": "xiezuo", "領導": "lingdao", "體適能": "tishinen",
 };

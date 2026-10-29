@@ -387,7 +387,7 @@ export const Screen_AcornEngine: React.FC<Props> = ({
             </div>
             {!isMobile && (
               <div style={{ fontSize: 11, color: D.text4, marginTop: 2, maxWidth: 760 }}>
-                定義全人六育（德、智、體、群、美、勞）複合非線性演算法、模組權重分配與數據異常診斷 · 合約條款 5.3.5 (Mod D) 剛性規格
+                定義全人六育（德、智、體、群、美、靈）複合非線性演算法、模組權重分配與數據異常診斷 · 合約條款 5.3.5 (Mod D) 剛性規格
               </div>
             )}
           </div>

@@ -15,6 +15,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface KlaRef {
   id: number;
+  code?: string;
   name_en: string;
   name_zh_hk: string;
   theme_color?: string | null;
@@ -24,9 +25,11 @@ interface KlaRef {
 interface AcornRef {
   id: number;
   code: string;
+  key?: string;
   name_en: string;
   name_zh_hk: string;
   description?: string | null;
+  color?: string | null;
 }
 
 interface SubjectPaper {
@@ -34,6 +37,7 @@ interface SubjectPaper {
   name_en: string;
   name_zh_hk: string;
   weighting: number;
+  form?: string; // F1–F6 when per-level mode
 }
 
 interface Subject {
@@ -56,23 +60,26 @@ interface Subject {
 }
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
+/** EDB 八大學習領域 — fallback only; live list from bridge/klas */
 const FALLBACK_KLAS: KlaRef[] = [
-  { id: 1, name_en: "Languages",    name_zh_hk: "語文", theme_color: "#1D4ED8" },
-  { id: 2, name_en: "Mathematics",  name_zh_hk: "數學", theme_color: "#6D28D9" },
-  { id: 3, name_en: "Humanities",   name_zh_hk: "人文", theme_color: "#92400E" },
-  { id: 4, name_en: "Sciences",     name_zh_hk: "科學", theme_color: "#15803D" },
-  { id: 5, name_en: "Technology",   name_zh_hk: "科技", theme_color: "#0F766E" },
-  { id: 6, name_en: "Arts",         name_zh_hk: "藝術", theme_color: "#BE185D" },
-  { id: 7, name_en: "Physical Ed.", name_zh_hk: "體育", theme_color: "#C2410C" },
+  { id: 1, code: "CLE",  name_en: "Chinese Language Education",  name_zh_hk: "中國語文教育", theme_color: "#1D4ED8", label: "中國語文教育 Chinese Language Education" },
+  { id: 2, code: "ELE",  name_en: "English Language Education",  name_zh_hk: "英國語文教育", theme_color: "#2563EB", label: "英國語文教育 English Language Education" },
+  { id: 3, code: "ME",   name_en: "Mathematics Education",       name_zh_hk: "數學教育",     theme_color: "#6D28D9", label: "數學教育 Mathematics Education" },
+  { id: 4, code: "SE",   name_en: "Science Education",           name_zh_hk: "科學教育",     theme_color: "#15803D", label: "科學教育 Science Education" },
+  { id: 5, code: "TE",   name_en: "Technology Education",        name_zh_hk: "科技教育",     theme_color: "#0F766E", label: "科技教育 Technology Education" },
+  { id: 6, code: "PSHE", name_en: "Personal, Social and Humanities Education (PSHE)", name_zh_hk: "個人、社會及人文教育", theme_color: "#92400E", label: "個人、社會及人文教育 Personal, Social and Humanities Education (PSHE)" },
+  { id: 7, code: "AE",   name_en: "Arts Education",              name_zh_hk: "藝術教育",     theme_color: "#BE185D", label: "藝術教育 Arts Education" },
+  { id: 8, code: "PE",   name_en: "Physical Education",          name_zh_hk: "體育",         theme_color: "#C2410C", label: "體育 Physical Education" },
 ];
 
+/** 德智體群美靈 — tags_only organisational pills */
 const FALLBACK_ACORNS: AcornRef[] = [
-  { id: 1, code: "A", name_en: "Academic",      name_zh_hk: "認知" },
-  { id: 2, code: "C", name_en: "Collaborative", name_zh_hk: "社群" },
-  { id: 3, code: "O", name_en: "Opportunity",   name_zh_hk: "創意" },
-  { id: 4, code: "R", name_en: "Realm",         name_zh_hk: "協作" },
-  { id: 5, code: "N", name_en: "Nurturing",     name_zh_hk: "領導" },
-  { id: 6, code: "F", name_en: "Faith",         name_zh_hk: "體適能" },
+  { id: 1, code: "M",  key: "moral",        name_en: "Moral Education",        name_zh_hk: "德育", color: "#0d9488" },
+  { id: 2, code: "I",  key: "intellectual", name_en: "Intellectual Education", name_zh_hk: "智育", color: "#2563eb" },
+  { id: 3, code: "P",  key: "physical",     name_en: "Physical Education",     name_zh_hk: "體育", color: "#e11d48" },
+  { id: 4, code: "S",  key: "social",       name_en: "Social Education",       name_zh_hk: "群育", color: "#16a34a" },
+  { id: 5, code: "Ae", key: "aesthetic",    name_en: "Aesthetic Education",    name_zh_hk: "美育", color: "#ea580c" },
+  { id: 6, code: "Sp", key: "spiritual",    name_en: "Spiritual Education",    name_zh_hk: "靈育", color: "#7c3aed" },
 ];
 const ALL_LEVELS  = ["S1", "S2", "S3", "S4", "S5", "S6"];
 
@@ -91,13 +98,21 @@ const SUBJECTS_DATA: Subject[] = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const KLA_COLOR: Record<string, { bg: string; color: string }> = {
+  中國語文教育: { bg: "#DBEAFE", color: "#1D4ED8" },
+  英國語文教育: { bg: "#DBEAFE", color: "#2563EB" },
+  數學教育: { bg: "#EDE9FE", color: "#6D28D9" },
+  科學教育: { bg: "#DCFCE7", color: "#15803D" },
+  科技教育: { bg: "#CCFBF1", color: "#0F766E" },
+  "個人、社會及人文教育": { bg: "#FEF3C7", color: "#92400E" },
+  藝術教育: { bg: "#FCE7F3", color: "#BE185D" },
+  體育: { bg: "#FFEDD5", color: "#C2410C" },
+  // legacy short labels
   語文: { bg: "#DBEAFE", color: "#1D4ED8" },
   數學: { bg: "#EDE9FE", color: "#6D28D9" },
   科學: { bg: "#DCFCE7", color: "#15803D" },
   人文: { bg: "#FEF3C7", color: "#92400E" },
   科技: { bg: "#CCFBF1", color: "#0F766E" },
   藝術: { bg: "#FCE7F3", color: "#BE185D" },
-  體育: { bg: "#FFEDD5", color: "#C2410C" },
 };
 
 function klaStyleFor(s: { kla?: string; kla_color?: string | null }, klas: KlaRef[]) {
@@ -125,7 +140,7 @@ const emptyForm = (): SubjectForm => ({
   klaId: "", levels: [], acornIds: [],
 });
 
-// ─── WeightsPanel — Term weightings + Sub-papers (分卷) ───────────────────────
+// ─── WeightsPanel — Term weightings + Sub-papers (分卷, per-level capable) ───
 const WeightsPanel: React.FC<{
   subject: Subject;
   onBack: () => void;
@@ -133,26 +148,71 @@ const WeightsPanel: React.FC<{
   onSaved: (subject: Subject) => void;
 }> = ({ subject, onBack, updateUrl, onSaved }) => {
   const F = ERP.font.family;
-  const [t1, setT1] = useState(subject.t1_weighting ?? 50);
-  const [t2, setT2] = useState(subject.t2_weighting ?? 50);
+  const offered = (subject.levels || []).map(l => {
+    const m = String(l).match(/[1-6]/);
+    return m ? `F${m[0]}` : String(l).toUpperCase();
+  }).filter((v, i, a) => a.indexOf(v) === i);
+
+  const [t1, setT1] = useState(subject.t1_weighting ?? 40);
+  const [t2, setT2] = useState(subject.t2_weighting ?? 60);
   const [papers, setPapers] = useState<SubjectPaper[]>(() =>
     (subject.papers && subject.papers.length > 0)
       ? subject.papers.map(p => ({ ...p }))
       : []
   );
+  const [uniform, setUniform] = useState(true);
+  const [selectedForms, setSelectedForms] = useState<string[]>(() => [...offered]);
+  const [activeForm, setActiveForm] = useState<string>(offered[0] || "F1");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState("");
 
   const termTotal = t1 + t2;
-  const paperTotal = papers.reduce((s, p) => s + (Number(p.weighting) || 0), 0);
+  const visiblePapers = uniform
+    ? papers
+    : papers.filter(p => !p.form || p.form === activeForm);
+  const paperTotal = visiblePapers.reduce((s, p) => s + (Number(p.weighting) || 0), 0);
   const termOk = termTotal === 100;
-  const papersOk = papers.length === 0 || paperTotal === 100;
+  const papersOk = visiblePapers.length === 0 || paperTotal === 100;
 
-  const addPaper = () => setPapers(p => [...p, { name_en: "", name_zh_hk: "", weighting: 0 }]);
-  const removePaper = (idx: number) => setPapers(p => p.filter((_, i) => i !== idx));
-  const patchPaper = (idx: number, field: keyof SubjectPaper, value: string | number) =>
-    setPapers(p => p.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
+  const addPaper = () => setPapers(p => [...p, {
+    name_en: "", name_zh_hk: "", weighting: 0,
+    form: uniform ? undefined : activeForm,
+  }]);
+  const removePaper = (idxInVisible: number) => {
+    const target = visiblePapers[idxInVisible];
+    setPapers(p => p.filter(row => row !== target));
+  };
+  const patchPaper = (idxInVisible: number, field: keyof SubjectPaper, value: string | number) => {
+    const target = visiblePapers[idxInVisible];
+    setPapers(p => p.map(row => (row === target ? { ...row, [field]: value } : row)));
+  };
+
+  const toggleForm = (f: string) =>
+    setSelectedForms(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+
+  /** Copy current form's paper weights to all checked levels */
+  const copyToSelectedLevels = () => {
+    const source = papers.filter(p => !p.form || p.form === activeForm);
+    if (source.length === 0) {
+      setErr("目前級別沒有分卷可複製。");
+      return;
+    }
+    const targets = selectedForms.filter(f => f !== activeForm);
+    if (targets.length === 0) {
+      setErr("請勾選其他級別以複製。");
+      return;
+    }
+    setPapers(prev => {
+      const kept = prev.filter(p => p.form && !targets.includes(p.form) && p.form !== activeForm);
+      const currentLevel = prev.filter(p => !p.form || p.form === activeForm).map(p => ({ ...p, form: activeForm }));
+      const clones = targets.flatMap(f => source.map(p => ({
+        name_en: p.name_en, name_zh_hk: p.name_zh_hk, weighting: p.weighting, form: f,
+      })));
+      return [...kept, ...currentLevel, ...clones];
+    });
+    setErr("");
+  };
 
   const handleSave = async () => {
     if (!subject.dbId) {
@@ -170,6 +230,14 @@ const WeightsPanel: React.FC<{
     setSaving(true);
     setErr("");
     try {
+      const payloadPapers = uniform
+        ? papers.map(({ name_en, name_zh_hk, weighting }) => ({ name_en, name_zh_hk, weighting }))
+        : papers.map(p => ({
+            name_en: p.name_en,
+            name_zh_hk: p.name_zh_hk,
+            weighting: p.weighting,
+            form: p.form || activeForm,
+          }));
       const res = await fetch(`${updateUrl.replace(/\/$/, "")}/${subject.dbId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -187,7 +255,10 @@ const WeightsPanel: React.FC<{
           t1_weighting: t1,
           t2_weighting: t2,
           has_sub_papers: papers.length > 0,
-          papers,
+          papers: payloadPapers,
+          papers_uniform: uniform,
+          paper_forms: selectedForms,
+          academic_year: "2025/26",
         }),
       });
       const json = await res.json();
@@ -273,6 +344,15 @@ const WeightsPanel: React.FC<{
           </span>
         </div>
 
+        <div style={{ marginBottom: 12 }}>
+          <a
+            href={`/term-weightings?subject_id=${subject.dbId || ""}`}
+            style={{ fontSize: 12, fontWeight: 700, color: ERP.colors.accent, textDecoration: "none" }}
+          >
+            開啟完整測考評分比重矩陣 →
+          </a>
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: ERP.colors.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" as const, fontFamily: F }}>
             分卷 Sub-papers
@@ -285,17 +365,60 @@ const WeightsPanel: React.FC<{
             <Plus size={12} /> 新增分卷
           </button>
         </div>
-        <p style={{ margin: "0 0 12px", fontSize: 11, color: ERP.colors.textMuted, fontFamily: F }}>
-          語文科等可設定閱讀／寫作等分卷及其佔科總百分比。
+        <p style={{ margin: "0 0 10px", fontSize: 11, color: ERP.colors.textMuted, fontFamily: F }}>
+          語文科等可設定閱讀／寫作等分卷。儲存後會同步至評估項目（成績輸入可見）。
         </p>
 
-        {papers.length === 0 ? (
+        {/* Uniform vs per-level */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12, padding: 10, background: ERP.colors.pageBg, borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}` }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: F }}>
+            <input type="radio" checked={uniform} onChange={() => setUniform(true)} />
+            統一套用至所有級別 (Apply uniformly to all levels)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: F }}>
+            <input type="radio" checked={!uniform} onChange={() => setUniform(false)} />
+            按級別個別設定 (Set per level)
+          </label>
+          {!uniform && (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                {(offered.length ? offered : ["F1", "F2", "F3", "F4", "F5", "F6"]).map(f => (
+                  <label key={f} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedForms.includes(f)}
+                      onChange={() => toggleForm(f)}
+                    />
+                    <span
+                      onClick={() => setActiveForm(f)}
+                      style={{
+                        padding: "2px 8px", borderRadius: 6,
+                        background: activeForm === f ? ERP.colors.accentPale : "transparent",
+                        color: activeForm === f ? ERP.colors.accent : ERP.colors.textSecondary,
+                        border: activeForm === f ? `1px solid ${ERP.colors.accentLight}` : "1px solid transparent",
+                      }}
+                    >{f}</span>
+                  </label>
+                ))}
+              </div>
+              <button type="button" onClick={copyToSelectedLevels} style={{
+                alignSelf: "flex-start", marginTop: 4, padding: "6px 10px", borderRadius: ERP.radius.md,
+                border: `1px solid ${ERP.colors.accentLight}`, background: ERP.colors.accentPale,
+                color: ERP.colors.accent, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: F,
+              }}>
+                一鍵複製至勾選級別 (Copy to Selected Levels) · 來源 {activeForm}
+              </button>
+            </>
+          )}
+        </div>
+
+        {visiblePapers.length === 0 ? (
           <div style={{ padding: "20px 14px", textAlign: "center", border: `1px dashed ${ERP.colors.border}`, borderRadius: ERP.radius.lg, color: ERP.colors.textMuted, fontSize: 12, marginBottom: 12 }}>
             尚未設定分卷（選修）。按「新增分卷」加入 Reading / Writing 等。
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
-            {papers.map((p, idx) => (
+            {visiblePapers.map((p, idx) => (
               <div key={idx} style={{ border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.lg, padding: "12px 12px", background: "#FAFBFC" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 72px 32px", gap: 8, alignItems: "end" }}>
                   <div>
@@ -330,7 +453,7 @@ const WeightsPanel: React.FC<{
           </div>
         )}
 
-        {papers.length > 0 && (
+        {visiblePapers.length > 0 && (
           <div style={{ padding: "10px 12px", borderRadius: ERP.radius.md, background: papersOk ? "#F0FDF4" : "#FFF7ED", border: `1px solid ${papersOk ? "#BBF7D0" : "#FED7AA"}`, display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             {papersOk ? <Check size={14} color="#15803D" /> : <AlertCircle size={14} color="#C2410C" />}
             <span style={{ fontSize: 12, fontWeight: 700, color: papersOk ? "#15803D" : "#C2410C", fontFamily: F }}>
@@ -339,9 +462,9 @@ const WeightsPanel: React.FC<{
           </div>
         )}
 
-        {papers.length > 0 && (
+        {visiblePapers.length > 0 && (
           <div style={{ height: 10, borderRadius: 5, overflow: "hidden", display: "flex", background: ERP.colors.border, marginTop: 8 }}>
-            {papers.map((p, i) => {
+            {visiblePapers.map((p, i) => {
               const pct = Number(p.weighting) || 0;
               const colors = ["#6366F1", "#0891B2", "#D97706", "#059669", "#BE185D"];
               return pct > 0 ? <div key={i} title={`${p.name_zh_hk || p.name_en} ${pct}%`} style={{ width: `${pct}%`, background: colors[i % colors.length], height: "100%" }} /> : null;
@@ -419,6 +542,8 @@ interface Props {
   subjects?: Subject[];
   klas?: KlaRef[];
   acorns?: AcornRef[];
+  /** Open create inspector on mount (e.g. /subjects/create). */
+  startCreating?: boolean;
   toggleUrl?: string;
   storeUrl?: string;
   updateUrl?: string;
@@ -429,6 +554,7 @@ export const Screen_Subjects: React.FC<Props> = ({
   subjects,
   klas: klasProp,
   acorns: acornsProp,
+  startCreating = false,
   toggleUrl = "/subjects/toggle-dynamic-grouping",
   storeUrl = "/subjects/store",
   updateUrl = "/subjects/update",
@@ -441,7 +567,7 @@ export const Screen_Subjects: React.FC<Props> = ({
 
   // No Figma-mock preselection — table loads with inspector closed (full width).
   const [selectedId,  setSelectedId]  = useState<string | null>(null);
-  const [isCreating,  setIsCreating]  = useState(false);
+  const [isCreating,  setIsCreating]  = useState(!!startCreating);
   const [search,      setSearch]      = useState("");
   const [klaFilter,   setKlaFilter]   = useState("全部");
   const [form,        setForm]        = useState<SubjectForm>(() => emptyForm());
@@ -454,6 +580,16 @@ export const Screen_Subjects: React.FC<Props> = ({
   useEffect(() => {
     if (subjects && subjects.length > 0) setCatalog(subjects);
   }, [subjects]);
+
+  useEffect(() => {
+    if (startCreating) {
+      setSelectedId(null);
+      setIsCreating(true);
+      setDrawerView("edit");
+      setForm(emptyForm());
+      setSaveMsg(null);
+    }
+  }, [startCreating]);
 
   const toggleDynamicGrouping = async (s: Subject, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -591,14 +727,20 @@ export const Screen_Subjects: React.FC<Props> = ({
 
   const DRAWER_W = isMobile ? window.innerWidth : 440;
 
+  // Explicit viewport height so the create/edit drawer is never clipped by
+  // AppShell <main overflowY:auto> percentage-height quirks.
+  const shellH = `calc(100vh - ${ERP.layout.topHeaderH}px)`;
+
   return (
     <div style={{
       display: "flex",
-      height: isMobile ? "auto" : "100%",
-      minHeight: isMobile ? "100%" : undefined,
+      height: isMobile ? "auto" : shellH,
+      minHeight: isMobile ? "100%" : shellH,
+      alignItems: "stretch",
       overflow: isMobile ? "visible" : "hidden",
       background: ERP.colors.pageBg, fontFamily: F,
       flexDirection: isMobile ? "column" : "row",
+      position: "relative",
     }}>
 
       {/* ── LEFT PANEL ──────────────────────────────────────────────────── */}
@@ -617,12 +759,18 @@ export const Screen_Subjects: React.FC<Props> = ({
             </div>
             <button
               type="button"
-              onClick={openCreate}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openCreate();
+              }}
+              aria-label="新增科目 Add Subject"
               style={{
-                display: "flex", alignItems: "center", gap: 6,
+                display: "inline-flex", alignItems: "center", gap: 6,
                 padding: "8px 14px", borderRadius: ERP.radius.md,
                 border: "none", background: ERP.colors.accent,
                 color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer",
+                position: "relative", zIndex: 2, flexShrink: 0,
               }}
             >
               <Plus size={14} /> 新增科目
@@ -647,7 +795,7 @@ export const Screen_Subjects: React.FC<Props> = ({
                 style={{ ...inputStyle, width: 130, paddingRight: 28, appearance: "none" as const, cursor: "pointer", fontSize: 12 }}
               >
                 <option value="全部">全部學習領域</option>
-                {klas.map(k => <option key={k.id} value={String(k.id)}>{k.name_zh_hk}</option>)}
+                {klas.map(k => <option key={k.id} value={String(k.id)}>{k.name_zh_hk || k.label}</option>)}
               </select>
               <ChevronDown size={13} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: ERP.colors.textMuted }} />
             </div>
@@ -838,15 +986,36 @@ export const Screen_Subjects: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* ── RIGHT DRAWER (only mounts when open → table gets 100% width) ── */}
+      {/* Mobile backdrop when inspector open */}
+      {isInspectorOpen && isMobile && (
+        <div
+          role="presentation"
+          onClick={closeInspector}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", zIndex: 45 }}
+        />
+      )}
+
+      {/* ── RIGHT DRAWER (flex sibling on desktop; fixed overlay on mobile) ── */}
       {isInspectorOpen && (
       <div style={{
         width: DRAWER_W,
+        maxWidth: "100vw",
         transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
         overflow: "hidden",
         flexShrink: 0,
+        alignSelf: "stretch",
         borderLeft: `1px solid ${ERP.colors.border}`,
         boxShadow: "-4px 0 16px rgba(0,0,0,0.06)",
+        background: ERP.colors.surface,
+        ...(isMobile ? {
+          position: "fixed" as const,
+          top: 0, right: 0, bottom: 0,
+          zIndex: 50,
+          height: "100%",
+        } : {
+          height: "100%",
+          minHeight: 0,
+        }),
       }}>
         {/* Slide-track: edit + weights panels */}
         <div style={{ width: DRAWER_W, height: "100%", overflow: "hidden", position: "relative" }}>
@@ -859,7 +1028,7 @@ export const Screen_Subjects: React.FC<Props> = ({
         }}>
 
         {/* ── Panel 1: Edit / Create form ── */}
-        <div style={{ width: DRAWER_W, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", background: ERP.colors.surface }}>
+        <div style={{ width: DRAWER_W, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", background: ERP.colors.surface, minHeight: 0 }}>
 
           {/* Drawer header */}
           <div style={{
@@ -916,14 +1085,16 @@ export const Screen_Subjects: React.FC<Props> = ({
             <FormField label="學習領域" sub="Key Learning Area" required>
               <div style={{ position: "relative" }}>
                 <select
-                  name="kla_id"
+                  name="learning_area"
                   value={form.klaId === "" ? "" : String(form.klaId)}
                   onChange={e => setForm(f => ({ ...f, klaId: e.target.value === "" ? "" : Number(e.target.value) }))}
                   style={{ ...inputStyle, paddingRight: 32, appearance: "none" as const, cursor: "pointer" }}
                 >
-                  <option value="">— 選擇學習領域 —</option>
+                  <option value="">— 選擇學習領域 Key Learning Area —</option>
                   {klas.map(k => (
-                    <option key={k.id} value={k.id}>{k.name_zh_hk} / {k.name_en}</option>
+                    <option key={k.id} value={k.id}>
+                      {k.label || `${k.name_zh_hk} ${k.name_en}`}
+                    </option>
                   ))}
                 </select>
                 <ChevronDown size={13} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: ERP.colors.textMuted }} />
@@ -957,13 +1128,14 @@ export const Screen_Subjects: React.FC<Props> = ({
               )}
             </FormField>
 
-            {/* ACORN — shared Figma component (same as Assessment) */}
+            {/* ACORN tags_only — organisational 德智體群美靈 pills (no weight sliders) */}
             <div style={{ marginBottom: 24 }}>
               <AcornBinding
                 showDividerTitle
                 summaryMode="when-selected"
                 inputName="acorn_ids[]"
                 selectedValues={form.acornIds}
+                hintText="選擇此科目自動關聯的 ACORN 評估維度（標籤用途）。修讀科目本身不計分，需透過評估表現才納入分數。"
                 items={acorns.map(a => ({
                   value: String(a.id),
                   nameZh: a.name_zh_hk,

@@ -109,10 +109,11 @@ const NAV_GROUPS: NavGroup[] = [
     id: "system-admin", zhTitle: "系統管理", enTitle: "System Admin",
     items: [
       { id: "system-settings",   zhLabel: "系統設定",         enLabel: "System Settings",      icon: <Settings    size={15} />, screenId: "1.F.S",   href: "/settings" },
-      { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings", todo: true },
-      { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster", todo: true },
+      { id: "system-users",      zhLabel: "系統用戶管理",     enLabel: "System Users",         icon: <ShieldCheck size={15} />, screenId: "1.F.U",   href: "/admin/system-users" },
+      { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings" },
+      { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster" },
       { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/ai-workspace", todo: true },
-      { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.6,8", href: "/admin/settings", todo: true },
+      { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.0.8", href: "/admin/audit-logs" },
       { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8", href: "/api/docs", todo: true },
       { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7",   href: "/api/docs", todo: true },
       { id: "acorn-engine",      zhLabel: "ACORN 演算法引擎", enLabel: "Algorithm & Params",   icon: <Cpu         size={15} />, screenId: "1.G.0",   href: "/admin/acorn-engine" },
@@ -120,7 +121,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "conduct-types",     zhLabel: "行為考勤類別",     enLabel: "Conduct & Att. Types", icon: <Sliders     size={15} />, screenId: "1.G.2",   href: "/teacher/conduct-types" },
       { id: "dev-routes",        zhLabel: "路由標籤元件",     enLabel: "Dev Route Labels",     icon: <Code2       size={15} />, screenId: "DEV",     href: "/dashboard", todo: true },
       { id: "roles-positions",   zhLabel: "角色與崗位",       enLabel: "Roles & Positions",    icon: <Tag         size={15} />, screenId: "1.D.6",   href: "/teacher/roles" },
-      { id: "desensitize-audit", zhLabel: "脫敏與審計",       enLabel: "De-sensitize & Audit", icon: <ShieldCheck size={15} />, screenId: "1.F.4,6", href: "/admin/settings", todo: true },
+      { id: "desensitize-audit", zhLabel: "脫敏與審計",       enLabel: "De-sensitize & Audit", icon: <ShieldCheck size={15} />, screenId: "1.F.0.8", href: "/admin/audit-logs" },
     ],
   },
 ];
@@ -321,6 +322,25 @@ export type AppShellUser = {
   avatarUrl?: string | null;
 };
 
+/** Split English school name into two display lines (e.g. Stewards Pooi Tun / Secondary School). */
+function splitSchoolEn(en: string): [string, string] {
+  const raw = (en || "").trim();
+  if (!raw) return ["School", ""];
+  const m = raw.match(/^(.*?)\s+(Secondary School|College|School)$/i);
+  if (m) return [m[1].trim(), m[2].trim()];
+  const parts = raw.split(/\s+/);
+  if (parts.length >= 4) {
+    return [parts.slice(0, -2).join(" "), parts.slice(-2).join(" ")];
+  }
+  return [raw, ""];
+}
+
+function formatAyLabel(year: string): string {
+  const y = (year || "").trim();
+  if (!y) return "AY 2025/26"; // FIXME: wire to global school settings when available
+  return /^AY\b/i.test(y) ? y : `AY ${y}`;
+}
+
 /* ── Sidebar Panel (shared between desktop and mobile drawer) ────────────── */
 const SidebarPanel: React.FC<{
   effectiveId: string; isAdmin: boolean;
@@ -330,7 +350,8 @@ const SidebarPanel: React.FC<{
   logoutUrl?: string;
   profileUrl?: string;
   onClose?: () => void;
-}> = ({ effectiveId, isAdmin, expandedGroups, onToggleGroup, onNav, logoutUrl = "/logout", profileUrl = "/profile", onClose }) => (
+  academicYear?: string;
+}> = ({ effectiveId, isAdmin, expandedGroups, onToggleGroup, onNav, logoutUrl = "/logout", profileUrl = "/profile", onClose, academicYear = "2025/26" }) => (
   <div style={{
     width: ERP.layout.sidebarWidth, height: "100%",
     background: SB.bg, borderRight: `1px solid ${SB.border}`,
@@ -338,48 +359,31 @@ const SidebarPanel: React.FC<{
     display: "flex", flexDirection: "column",
     overflowY: "auto",
   }}>
-    {/* School identity header */}
-    <div style={{
-      padding: "14px 14px 10px",
-      borderBottom: `1px solid ${SB.border}`,
-      background: SB.headerBg,
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: ERP.radius.sm, flexShrink: 0,
-          background: `linear-gradient(135deg, ${ERP.colors.accent}, #1D4ED8)`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <GraduationCap size={18} color="#fff" />
-        </div>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.textPrimary, lineHeight: 1.2 }}>Stewards Pooi Tun</div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: ERP.colors.accent, lineHeight: 1.2 }}>Secondary School</div>
-          <div style={{ fontSize: 9, color: ERP.colors.textMuted, lineHeight: 1.2, marginTop: 1 }}>香港神託會培敦中學</div>
-        </div>
-      </div>
-      {/* Close button on mobile drawer */}
-      {onClose && (
-        <button onClick={onClose} style={{
+    {/* Mobile drawer only: close control (school brand lives in top header) */}
+    {onClose && (
+      <div style={{
+        padding: "10px 14px",
+        borderBottom: `1px solid ${SB.border}`,
+        background: SB.headerBg,
+        display: "flex", alignItems: "center", justifyContent: "flex-end",
+      }}>
+        <button type="button" onClick={onClose} aria-label="Close menu" style={{
           background: "none", border: "none", cursor: "pointer",
           padding: 4, color: ERP.colors.textMuted, display: "flex",
         }}>
           <X size={18} />
         </button>
-      )}
-    </div>
+      </div>
+    )}
 
-    {/* AY chips */}
+    {/* Compact AY context chips (branding moved to top header) */}
     <div style={{ display: "flex", gap: 6, padding: "8px 14px 6px", flexWrap: "wrap" as const }}>
-      {["AY 25/26", "學期 2"].map(tag => (
-        <span key={tag} style={{
-          fontSize: 10, color: ERP.colors.accent, fontWeight: 600,
-          background: ERP.colors.accentPale,
-          border: `1px solid ${ERP.colors.accentLight}`,
-          borderRadius: ERP.radius.xs, padding: "1px 7px",
-        }}>{tag}</span>
-      ))}
+      <span style={{
+        fontSize: 10, color: ERP.colors.accent, fontWeight: 600,
+        background: ERP.colors.accentPale,
+        border: `1px solid ${ERP.colors.accentLight}`,
+        borderRadius: ERP.radius.xs, padding: "1px 7px",
+      }}>{formatAyLabel(academicYear)}</span>
     </div>
 
     {/* Nav groups */}
@@ -455,6 +459,12 @@ export interface AppShellProps {
   currentUser?: AppShellUser | null;
   logoutUrl?: string;
   profileUrl?: string;
+  /** Chinese school name (sidebar / chrome) */
+  schoolName?: string;
+  /** English school name */
+  schoolNameEn?: string;
+  /** Active academic year, e.g. 2025/26 */
+  academicYear?: string;
 }
 
 /* ── Main Export ─────────────────────────────────────────────────────────── */
@@ -467,6 +477,9 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
   currentUser = null,
   logoutUrl = "/logout",
   profileUrl = "/profile",
+  schoolName = "香港神託會培敦中學",
+  schoolNameEn = "Stewards Pooi Tun Secondary School",
+  academicYear = "2025/26", // FIXME: prefer bridge / global settings
 }) => {
   const displayName = (currentUser?.name || "").trim() || "使用者";
   const displayRole = (currentUser?.role || "").trim() || "staff";
@@ -504,6 +517,9 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
 
   const activeGroup = NAV_GROUPS.find(g => g.items.some(i => i.id === effectiveId));
   const activeItem  = NAV_GROUPS.flatMap(g => g.items).find(i => i.id === effectiveId);
+  const [enLine1, enLine2] = splitSchoolEn(schoolNameEn);
+  const ayLabel = formatAyLabel(academicYear);
+  const zhLine = (schoolName || "").trim() || "學校";
 
   return (
     <div style={{
@@ -513,7 +529,7 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
 
       {/* ── TOP HEADER ─────────────────────────────────────────────────── */}
       <header style={{
-        height: ERP.layout.topHeaderH,
+        height: Math.max(ERP.layout.topHeaderH, 64),
         background: ERP.colors.surface,
         borderBottom: `1px solid ${ERP.colors.border}`,
         boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
@@ -536,24 +552,42 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
           </button>
         )}
 
-        {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        {/* School brand (replaces former LALP wordmark) */}
+        <a
+          href="/"
+          title={`${schoolNameEn} · ${zhLine}`}
+          style={{
+            display: "flex", alignItems: "center", gap: 10, flexShrink: 1, minWidth: 0,
+            textDecoration: "none", maxWidth: isMobile ? 220 : 280,
+          }}
+        >
           <div style={{
-            width: 32, height: 32, borderRadius: ERP.radius.sm,
-            background: `linear-gradient(135deg, ${ERP.colors.accent}, ${ERP.colors.purple})`,
+            width: 40, height: 40, borderRadius: ERP.radius.sm, flexShrink: 0,
+            background: `linear-gradient(135deg, ${ERP.colors.accent}, #1D4ED8)`,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <GraduationCap size={16} color="#fff" />
+            <GraduationCap size={18} color="#fff" />
           </div>
-          {!isMobile && (
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary, lineHeight: 1.1 }}>LALP</div>
-              <div style={{ fontSize: 10, color: ERP.colors.textMuted, whiteSpace: "nowrap" }}>
-                香港神託會培敦中學 · AY 2025/26
-              </div>
+          <div style={{ minWidth: 0, overflow: "hidden", lineHeight: 1.2 }}>
+            <div style={{
+              fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>{enLine1}</div>
+            {enLine2 ? (
+              <div style={{
+                fontSize: 12, fontWeight: 700, color: ERP.colors.textPrimary,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>{enLine2}</div>
+            ) : null}
+            <div style={{
+              fontSize: 11, color: ERP.colors.textMuted, marginTop: 1,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>
+              {zhLine}
+              <span style={{ marginLeft: 6, fontWeight: 600 }}>· {ayLabel}</span>
             </div>
-          )}
-        </div>
+          </div>
+        </a>
 
         {/* Divider */}
         {!isMobile && (
@@ -736,6 +770,7 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
               onNav={handleNav}
               logoutUrl={logoutUrl}
               profileUrl={profileUrl}
+              academicYear={academicYear}
               onClose={() => setMobileOpen(false)}
             />
           </div>
@@ -749,6 +784,7 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
             onNav={handleNav}
             logoutUrl={logoutUrl}
             profileUrl={profileUrl}
+            academicYear={academicYear}
           />
         )}
 

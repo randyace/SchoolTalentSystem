@@ -3,13 +3,14 @@
 // UI Pattern: Kanban Board + PBL Create Modal
 // Mod M6a: AI 鷹架指令 (AI Scaffold Prompt) — prominent textarea
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ERP } from "./erpTokens";
 import {
   Plus, X, Calendar, Users, BookOpen, ChevronDown,
   Sparkles, Columns, MoreHorizontal, Clock,
-  CheckCircle2, Circle, AlertCircle, Tag, Send,
+  CheckCircle2, Circle, AlertCircle, Tag, Send, Loader2, Sliders,
 } from "lucide-react";
+import { AcornBinding, DEFAULT_ACORN_ITEMS, normalizeAcornTagKeys } from "./AcornBinding";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type KanbanStatus = "draft" | "active" | "completed";
@@ -26,13 +27,20 @@ export interface Project {
   status:     KanbanStatus;
   acornDims:  string[];
   acornIds?:  number[];
+  acornWeights?: Record<string, number>;
+  acorn_weights?: Record<string, number>;
   scaffold:   string;
   form?:      string;
+  targetForms?: string[];
+  target_forms?: string[];
+  teacherIds?: number[];
+  teachers?: Array<{ id: number; name: string }>;
   academic_year?: string;
 }
 
 export type ProjectSubjectOpt = { id: number; label: string; name_zh_hk?: string; code?: string };
 export type ProjectAcornOpt = { id: number; code: string; name_en: string; name_zh_hk: string };
+export type ProjectTeacherOpt = { id: number; name: string; label?: string; role?: string };
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const SUBJECT_OPTIONS = ["數學", "英語文學", "中國語文", "物理", "化學", "生物", "歷史", "地理", "視覺藝術", "音樂"];
@@ -155,9 +163,9 @@ const ProjectCard: React.FC<{ project: Project; onEdit: () => void; groupsUrl?: 
         {project.subjects.map(s => (
           <span key={s} style={{ fontSize: 10, padding: "1px 6px", borderRadius: ERP.radius.xs, background: ERP.colors.accentPale, color: ERP.colors.accent, fontWeight: 600 }}>{s}</span>
         ))}
-        {project.form && (
-          <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: ERP.radius.xs, background: "#FEF3C7", color: "#92400E", fontWeight: 700, border: "1px solid #FCD34D" }}>{project.form}</span>
-        )}
+        {(project.targetForms || project.target_forms || (project.form ? [project.form] : [])).map(f => (
+          <span key={f} style={{ fontSize: 10, padding: "1px 6px", borderRadius: ERP.radius.xs, background: "#FEF3C7", color: "#92400E", fontWeight: 700, border: "1px solid #FCD34D" }}>{f}</span>
+        ))}
       </div>
 
       {/* ACORN dims */}
@@ -203,6 +211,7 @@ interface Props {
   projects?: Project[];
   subjects?: ProjectSubjectOpt[];
   acorns?: ProjectAcornOpt[];
+  teachers?: ProjectTeacherOpt[];
   academicYear?: string;
   openForm?: boolean;
   projectId?: number | null;
@@ -211,17 +220,42 @@ interface Props {
   updateUrl?: string;
   listUrl?: string;
   groupsUrlBase?: string;
+  generateScaffoldUrl?: string;
   flashSuccess?: string;
   flashError?: string;
 }
 
 const FORM_OPTIONS = ["F1", "F2", "F3", "F4", "F5", "F6"];
 
+function initialTargetForms(p?: Project | null): string[] {
+  const raw = p?.targetForms || p?.target_forms;
+  if (Array.isArray(raw) && raw.length) return raw.map(String);
+  if (p?.form) return [String(p.form)];
+  return ["F3"];
+}
+
+function initialAcornTags(p?: Project | null): string[] {
+  const dims = normalizeAcornTagKeys(p?.acornDims || []);
+  if (dims.length) return dims;
+  const w = p?.acornWeights || p?.acorn_weights || {};
+  return normalizeAcornTagKeys(Object.keys(w).filter(k => (w as Record<string, number>)[k] > 0));
+}
+
+function evenWeights(tags: string[]): Record<string, number> {
+  if (!tags.length) return {};
+  const base = Math.floor(100 / tags.length);
+  const rem = 100 - base * tags.length;
+  const out: Record<string, number> = {};
+  tags.forEach((t, i) => { out[t] = base + (i < rem ? 1 : 0); });
+  return out;
+}
+
 export const Screen_GroupProjects: React.FC<Props> = ({
   lang = "zh-HK",
   projects: projectsProp,
   subjects: subjectsProp,
   acorns: acornsProp,
+  teachers: teachersProp,
   academicYear = "2025/26",
   openForm = false,
   projectId = null,
@@ -230,6 +264,7 @@ export const Screen_GroupProjects: React.FC<Props> = ({
   updateUrl = "/projects/update",
   listUrl = "/projects",
   groupsUrlBase = "/projects/groups",
+  generateScaffoldUrl = "/projects/generate-scaffold",
   flashSuccess,
   flashError,
 }) => {
@@ -239,6 +274,9 @@ export const Screen_GroupProjects: React.FC<Props> = ({
   const [editId,    setEditId]    = useState<string | null>(initialProject ? String(initialProject.id) : (projectId ? String(projectId) : null));
   const [isMobile,  setIsMobile]  = useState(false);
   const [saving, setSaving] = useState<"draft" | "publish" | null>(null);
+  const [scaffoldBusy, setScaffoldBusy] = useState(false);
+  const [scaffoldFlash, setScaffoldFlash] = useState(false);
+  const scaffoldRef = useRef<HTMLTextAreaElement | null>(null);
 
   const subjectOptions = subjectsProp && subjectsProp.length
     ? subjectsProp.map(s => ({ id: s.id, label: s.label || s.name_zh_hk || s.code || String(s.id) }))
@@ -246,16 +284,30 @@ export const Screen_GroupProjects: React.FC<Props> = ({
   const acornOptions = acornsProp && acornsProp.length
     ? acornsProp
     : ACORN_DIMS.map((zh, i) => ({ id: i + 1, code: "", name_en: zh, name_zh_hk: zh }));
+  const teacherOptions = teachersProp && teachersProp.length
+    ? teachersProp
+    : [
+        { id: 1, name: "陳老師", label: "陳老師 (teacher)" },
+        { id: 2, name: "李老師", label: "李老師 (teacher)" },
+        { id: 3, name: "王老師", label: "王老師 (teacher)" },
+      ];
 
   // Form state
   const [fName,      setFName]      = useState(initialProject?.name || "");
-  const [fForm,      setFForm]      = useState(initialProject?.form || "F3");
+  const [fForms,     setFForms]     = useState<string[]>(() => initialTargetForms(initialProject));
+  const [fTeacherIds, setFTeacherIds] = useState<number[]>(initialProject?.teacherIds || []);
   const [fSubjectIds, setFSubjectIds] = useState<number[]>(initialProject?.subjectIds || []);
   const [fGroupMode, setFGroupMode] = useState<GroupMode>(initialProject?.groupMode || "teacher");
   const [fDeadline,  setFDeadline]  = useState(initialProject?.deadline || "");
   const [fScaffold,  setFScaffold]  = useState(initialProject?.scaffold || "");
-  const [fAcornIds,  setFAcornIds]  = useState<number[]>(initialProject?.acornIds || []);
+  const [fAcornTags, setFAcornTags] = useState<string[]>(() => initialAcornTags(initialProject));
+  const [fAcornWeights, setFAcornWeights] = useState<Record<string, number>>(() => {
+    const w = initialProject?.acornWeights || initialProject?.acorn_weights || {};
+    const tags = initialAcornTags(initialProject);
+    return Object.keys(w).length ? { ...w } : evenWeights(tags);
+  });
   const [fSubOpen,   setFSubOpen]   = useState(false);
+  const [fTeachOpen, setFTeachOpen] = useState(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -272,34 +324,98 @@ export const Screen_GroupProjects: React.FC<Props> = ({
 
   const openCreate = () => {
     setEditId(null);
-    setFName(""); setFForm("F3"); setFSubjectIds([]); setFGroupMode("teacher");
-    setFDeadline(""); setFScaffold(""); setFAcornIds([]);
+    setFName(""); setFForms(["F3"]); setFTeacherIds([]); setFSubjectIds([]); setFGroupMode("teacher");
+    setFDeadline(""); setFScaffold(""); setFAcornTags([]); setFAcornWeights({});
     setModalOpen(true);
   };
 
   const openEdit = (p: Project) => {
     setEditId(String(p.id));
     setFName(p.name);
-    setFForm(p.form || "F3");
+    setFForms(initialTargetForms(p));
+    setFTeacherIds([...(p.teacherIds || (p.teachers || []).map(t => t.id))]);
     setFSubjectIds([...(p.subjectIds || [])]);
     setFGroupMode(p.groupMode);
     setFDeadline(p.deadline);
     setFScaffold(p.scaffold);
-    setFAcornIds([...(p.acornIds || [])]);
-    // Resolve subject names → ids when only names present
+    const tags = initialAcornTags(p);
+    setFAcornTags(tags);
+    const w = p.acornWeights || p.acorn_weights || {};
+    setFAcornWeights(Object.keys(w).length ? { ...w } : evenWeights(tags));
     if ((!p.subjectIds || p.subjectIds.length === 0) && p.subjects?.length) {
       const ids = p.subjects
         .map(name => subjectOptions.find(s => s.label === name)?.id)
         .filter((x): x is number => typeof x === "number");
       setFSubjectIds(ids);
     }
-    if ((!p.acornIds || p.acornIds.length === 0) && p.acornDims?.length) {
-      const ids = p.acornDims
-        .map(zh => acornOptions.find(a => a.name_zh_hk === zh)?.id)
-        .filter((x): x is number => typeof x === "number");
-      setFAcornIds(ids);
-    }
     setModalOpen(true);
+  };
+
+  const toggleAcornTag = (value: string) => {
+    setFAcornTags(prev => {
+      const next = prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value];
+      setFAcornWeights(evenWeights(next));
+      return next;
+    });
+  };
+
+  const handleWeightChange = (tag: string, val: number) => {
+    setFAcornWeights(prev => {
+      const others = fAcornTags.filter(t => t !== tag);
+      const remaining = Math.max(0, 100 - val);
+      const othersOldSum = others.reduce((s, t) => s + (prev[t] ?? 0), 0);
+      const next: Record<string, number> = { ...prev, [tag]: val };
+      if (others.length === 0) return next;
+      let allocated = 0;
+      others.forEach((t, i) => {
+        if (i === others.length - 1) {
+          next[t] = Math.max(0, remaining - allocated);
+        } else {
+          const share = othersOldSum > 0
+            ? Math.round((prev[t] ?? 0) / othersOldSum * remaining)
+            : Math.floor(remaining / others.length);
+          next[t] = share;
+          allocated += share;
+        }
+      });
+      return next;
+    });
+  };
+
+  const generateScaffold = async () => {
+    if (scaffoldBusy) return;
+    setScaffoldBusy(true);
+    try {
+      const subjectNames = fSubjectIds
+        .map(id => subjectOptions.find(s => s.id === id)?.label || "")
+        .filter(Boolean);
+      const res = await fetch(generateScaffoldUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          title: fName || "未命名專題",
+          subjects: subjectNames,
+          classes: fForms,
+          target_forms: fForms,
+          acorn_virtues: fAcornTags,
+          acorn_dims: fAcornTags,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !data?.prompt) {
+        throw new Error(data?.message || "GB10 產生失敗");
+      }
+      setFScaffold(String(data.prompt));
+      setScaffoldFlash(true);
+      window.setTimeout(() => setScaffoldFlash(false), 1200);
+      scaffoldRef.current?.focus();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "GB10 產生失敗";
+      window.alert(msg);
+    } finally {
+      setScaffoldBusy(false);
+    }
   };
 
   const persist = (publish: boolean) => {
@@ -311,7 +427,7 @@ export const Screen_GroupProjects: React.FC<Props> = ({
       fd.action = action;
       const fields: Record<string, string> = {
         title: fName || "未命名專題",
-        form: fForm || "F3",
+        form: fForms[0] || "F3",
         academic_year: academicYear,
         assignment_method: GROUP_MODE_CFG[fGroupMode].enLabel,
         groupMode: fGroupMode,
@@ -319,19 +435,33 @@ export const Screen_GroupProjects: React.FC<Props> = ({
         ai_scaffold_prompt: fScaffold,
         status: publish ? "in_progress" : "draft",
         publish: publish ? "1" : "0",
+        acorn_weights: JSON.stringify(fAcornWeights),
       };
       if (editId) fields.id = editId;
       Object.entries(fields).forEach(([k, v]) => {
         const i = document.createElement("input");
         i.type = "hidden"; i.name = k; i.value = v; fd.appendChild(i);
       });
+      fForms.forEach(f => {
+        const i = document.createElement("input");
+        i.type = "hidden"; i.name = "target_forms[]"; i.value = f; fd.appendChild(i);
+      });
+      fTeacherIds.forEach(id => {
+        const i = document.createElement("input");
+        i.type = "hidden"; i.name = "teacher_ids[]"; i.value = String(id); fd.appendChild(i);
+      });
       fSubjectIds.forEach(id => {
         const i = document.createElement("input");
         i.type = "hidden"; i.name = "subject_ids[]"; i.value = String(id); fd.appendChild(i);
       });
-      fAcornIds.forEach(id => {
+      fAcornTags.forEach(tag => {
         const i = document.createElement("input");
-        i.type = "hidden"; i.name = "acorn_ids[]"; i.value = String(id); fd.appendChild(i);
+        i.type = "hidden"; i.name = "acorn_tags[]"; i.value = tag; fd.appendChild(i);
+        const aid = acornOptions.find(a => a.name_zh_hk === tag || normalizeAcornTagKeys([a.name_zh_hk])[0] === tag)?.id;
+        if (aid) {
+          const j = document.createElement("input");
+          j.type = "hidden"; j.name = "acorn_ids[]"; j.value = String(aid); fd.appendChild(j);
+        }
       });
       document.body.appendChild(fd);
       fd.submit();
@@ -339,16 +469,18 @@ export const Screen_GroupProjects: React.FC<Props> = ({
     }
 
     const subjectNames = fSubjectIds.map(id => subjectOptions.find(s => s.id === id)?.label || "").filter(Boolean);
-    const acornNames = fAcornIds.map(id => acornOptions.find(a => a.id === id)?.name_zh_hk || "").filter(Boolean);
     const newProject: Project = {
       id: editId ?? `p-${Date.now()}`,
       name: fName || "未命名專題",
       subjects: subjectNames.length ? subjectNames : SUBJECT_OPTIONS.filter((_, i) => fSubjectIds.includes(i + 1)),
       subjectIds: fSubjectIds,
+      teacherIds: fTeacherIds,
+      targetForms: fForms,
+      form: fForms[0],
       groupMode: fGroupMode,
       deadline: fDeadline, scaffold: fScaffold,
-      acornDims: acornNames.length ? acornNames : ACORN_DIMS.filter((_, i) => fAcornIds.includes(i + 1)),
-      acornIds: fAcornIds,
+      acornDims: fAcornTags,
+      acornWeights: fAcornWeights,
       teamCount: 0,
       status: publish ? "active" : "draft",
     };
@@ -361,10 +493,16 @@ export const Screen_GroupProjects: React.FC<Props> = ({
   };
 
   const toggleSubject = (id: number) => setFSubjectIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  const toggleAcorn   = (id: number) => setFAcornIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleTeacher = (id: number) => setFTeacherIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleForm = (f: string) => setFForms(prev => {
+    if (prev.includes(f)) return prev.length <= 1 ? prev : prev.filter(x => x !== f);
+    return [...prev, f];
+  });
 
   const byStatus = (status: KanbanStatus) => projects.filter(p => p.status === status);
   const selectedSubjectLabels = fSubjectIds.map(id => subjectOptions.find(s => s.id === id)?.label).filter(Boolean) as string[];
+  const selectedTeacherLabels = fTeacherIds.map(id => teacherOptions.find(t => t.id === id)?.label || teacherOptions.find(t => t.id === id)?.name).filter(Boolean) as string[];
+  const weightTotal = Object.values(fAcornWeights).reduce((a, b) => a + b, 0);
 
   const inputStyle: React.CSSProperties = {
     width: "100%", boxSizing: "border-box",
@@ -523,18 +661,65 @@ export const Screen_GroupProjects: React.FC<Props> = ({
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <FieldLabel label="目標級別" sub="Target Form (students loaded for grouping)" />
-                <select value={fForm} onChange={e => setFForm(e.target.value)} name="form" style={inputStyle}>
-                  {FORM_OPTIONS.map(f => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
-                </select>
+                <FieldLabel label="負責老師" sub="Teacher(s) in Charge" />
+                <div style={{ position: "relative" }}>
+                  <button type="button" onClick={() => { setFTeachOpen(o => !o); setFSubOpen(false); }} style={{
+                    ...inputStyle, display: "flex", alignItems: "center", justifyContent: "space-between",
+                    cursor: "pointer", textAlign: "left" as const, background: ERP.colors.surface,
+                  }}>
+                    <span style={{ color: selectedTeacherLabels.length ? ERP.colors.textPrimary : ERP.colors.textMuted, fontSize: 13 }}>
+                      {selectedTeacherLabels.length ? selectedTeacherLabels.join("、") : "選擇負責老師…"}
+                    </span>
+                    <ChevronDown size={13} color={ERP.colors.textMuted} />
+                  </button>
+                  {fTeachOpen && (
+                    <div style={{
+                      position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+                      background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
+                      borderRadius: ERP.radius.md, boxShadow: ERP.shadow.md, zIndex: 10,
+                      maxHeight: 200, overflow: "auto",
+                    }}>
+                      {teacherOptions.map(t => (
+                        <div key={t.id} onClick={() => toggleTeacher(t.id)} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "8px 14px",
+                          cursor: "pointer", fontSize: 13, fontFamily: F,
+                          color: ERP.colors.textPrimary,
+                          background: fTeacherIds.includes(t.id) ? ERP.colors.accentPale : "transparent",
+                        }}>
+                          <div style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${fTeacherIds.includes(t.id) ? ERP.colors.accent : ERP.colors.borderStrong}`, background: fTeacherIds.includes(t.id) ? ERP.colors.accent : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {fTeacherIds.includes(t.id) && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900 }}>✓</span>}
+                          </div>
+                          {t.label || t.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <FieldLabel label="適用班級／級別" sub="Target Classes / Forms" />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+                  {FORM_OPTIONS.map(f => {
+                    const on = fForms.includes(f);
+                    return (
+                      <button type="button" key={f} onClick={() => toggleForm(f)} style={{
+                        padding: "7px 14px", borderRadius: ERP.radius.md, cursor: "pointer",
+                        fontSize: 12, fontWeight: 700, fontFamily: F,
+                        border: `2px solid ${on ? ERP.colors.accent : ERP.colors.border}`,
+                        background: on ? ERP.colors.accentPale : ERP.colors.surface,
+                        color: on ? ERP.colors.accent : ERP.colors.textSecondary,
+                      }}>{f}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, color: ERP.colors.textMuted }}>分組學生池將由此級別抽取。</div>
               </div>
 
               <div style={{ marginBottom: 16 }}>
                 <FieldLabel label="關聯科目" sub="Subject Links (multi-select)" />
                 <div style={{ position: "relative" }}>
-                  <button type="button" onClick={() => setFSubOpen(o => !o)} style={{
+                  <button type="button" onClick={() => { setFSubOpen(o => !o); setFTeachOpen(false); }} style={{
                     ...inputStyle, display: "flex", alignItems: "center", justifyContent: "space-between",
                     cursor: "pointer", textAlign: "left" as const, background: ERP.colors.surface,
                   }}>
@@ -587,25 +772,43 @@ export const Screen_GroupProjects: React.FC<Props> = ({
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <FieldLabel label="ACORN 維度綁定" sub="Dimension Tags (select all that apply)" />
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
-                  {acornOptions.map(a => {
-                    const t       = ERP.acornTags[a.name_zh_hk] ?? { bg: ERP.colors.accentPale, color: ERP.colors.accent, border: ERP.colors.accentLight };
-                    const checked = fAcornIds.includes(a.id);
-                    return (
-                      <button type="button" key={a.id} onClick={() => toggleAcorn(a.id)} style={{
-                        padding: "4px 10px", borderRadius: 9999, cursor: "pointer",
-                        fontSize: 11, fontWeight: 700, fontFamily: F,
-                        border: `2px solid ${checked ? t.color : ERP.colors.border}`,
-                        background: checked ? t.bg : ERP.colors.surface,
-                        color: checked ? t.color : ERP.colors.textMuted,
-                        transition: "all 0.1s",
-                      }}>
-                        {a.name_zh_hk}
-                      </button>
-                    );
-                  })}
-                </div>
+                <FieldLabel label="ACORN 維度綁定" sub="德智體群美靈 · Weighted Binding" />
+                <AcornBinding
+                  items={DEFAULT_ACORN_ITEMS}
+                  selectedValues={fAcornTags}
+                  onToggle={toggleAcornTag}
+                  inputName="acorn_tags[]"
+                  summaryMode="always"
+                  hintText="選擇維度並分配權重（合計須為 100%），供 Engagement Index 計算。"
+                />
+                {fAcornTags.length > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${ERP.colors.border}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                      <Sliders size={13} color={ERP.colors.accent} />
+                      <span style={{ fontSize: 12, fontWeight: 800 }}>權重分配 Weight Distribution</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {fAcornTags.map(tag => {
+                        const s = ERP.acornTags[tag as keyof typeof ERP.acornTags] ?? { color: ERP.colors.accent, label: tag };
+                        const val = fAcornWeights[tag] ?? 0;
+                        return (
+                          <div key={tag}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{s.label || tag}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800 }}>{val}%</span>
+                            </div>
+                            <input type="range" min={0} max={100} value={val}
+                              onChange={e => handleWeightChange(tag, Number(e.target.value))}
+                              style={{ width: "100%", accentColor: s.color }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: weightTotal === 100 ? ERP.colors.success : ERP.colors.red }}>
+                      合計 {weightTotal}%
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div style={{ marginBottom: 16 }}>
@@ -633,6 +836,8 @@ export const Screen_GroupProjects: React.FC<Props> = ({
                   </p>
                 </div>
                 <textarea
+                  ref={scaffoldRef}
+                  name="scaffold_prompt"
                   value={fScaffold}
                   onChange={e => setFScaffold(e.target.value)}
                   placeholder={AI_SCAFFOLD_PLACEHOLDER}
@@ -640,17 +845,22 @@ export const Screen_GroupProjects: React.FC<Props> = ({
                   style={{
                     ...inputStyle,
                     borderRadius: `0 0 ${ERP.radius.md} ${ERP.radius.md}`,
-                    border: "1.5px solid #C4B5FD", borderTop: "1px dashed #DDD6FE",
-                    background: "#FDFAFF", resize: "vertical" as const,
+                    border: scaffoldFlash ? "2px solid #8B5CF6" : "1.5px solid #C4B5FD",
+                    borderTop: "1px dashed #DDD6FE",
+                    background: scaffoldFlash ? "#EDE9FE" : "#FDFAFF",
+                    boxShadow: scaffoldFlash ? "0 0 0 3px rgba(139,92,246,0.25)" : "none",
+                    transition: "background 0.35s, box-shadow 0.35s, border-color 0.35s",
+                    resize: "vertical" as const,
                     lineHeight: 1.6, padding: 14,
                     color: fScaffold ? ERP.colors.textPrimary : ERP.colors.textMuted,
                   }}
                 />
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-                <button type="button" onClick={() => setFScaffold("你認為這個問題的核心假設是什麼？\n你會如何設計實驗來驗證你的想法？\n如果你的假設被推翻了，你下一步會怎麼做？")}
-                  style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#7C3AED", fontFamily: F, padding: "2px 0" }}>
-                  <Sparkles size={10} /> 使用預設蘇格拉底式提示
+                <button type="button" disabled={scaffoldBusy} onClick={() => void generateScaffold()}
+                  style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: scaffoldBusy ? "wait" : "pointer", fontSize: 11, color: "#7C3AED", fontFamily: F, padding: "2px 0", opacity: scaffoldBusy ? 0.7 : 1 }}>
+                  {scaffoldBusy ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                  {scaffoldBusy ? "GB10 產生中…" : "✨ 使用預設蘇格拉底式提示"}
                 </button>
               </div>
 

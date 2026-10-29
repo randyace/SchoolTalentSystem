@@ -14,14 +14,14 @@ export type AcornBindingItem = {
   nameEn: string;
 };
 
-/** Default six dimensions — storage ZH keys; display uses 六育 badge labels. */
+/** Default active dimensions — 德智體群美靈 (legacy ZH aliases still resolve via ERP.acornTags). */
 export const DEFAULT_ACORN_ITEMS: AcornBindingItem[] = [
-  { value: "認知", nameZh: ERP.acornTags["認知"].label, nameEn: "Academic" },
-  { value: "社群", nameZh: ERP.acornTags["社群"].label, nameEn: "Collaborative" },
-  { value: "創意", nameZh: ERP.acornTags["創意"].label, nameEn: "Opportunity" },
-  { value: "協作", nameZh: ERP.acornTags["協作"].label, nameEn: "Realm" },
-  { value: "領導", nameZh: ERP.acornTags["領導"].label, nameEn: "Nurturing" },
-  { value: "體適能", nameZh: ERP.acornTags["體適能"].label, nameEn: "Faith" },
+  { value: "德育", nameZh: ERP.acornTags["德育"].label, nameEn: "Moral Education" },
+  { value: "智育", nameZh: ERP.acornTags["智育"].label, nameEn: "Intellectual Education" },
+  { value: "體育", nameZh: ERP.acornTags["體育"].label, nameEn: "Physical Education" },
+  { value: "群育", nameZh: ERP.acornTags["群育"].label, nameEn: "Social Education" },
+  { value: "美育", nameZh: ERP.acornTags["美育"].label, nameEn: "Aesthetic Education" },
+  { value: "靈育", nameZh: ERP.acornTags["靈育"].label, nameEn: "Spiritual Education" },
 ];
 
 export function acornPastel(zh: string) {

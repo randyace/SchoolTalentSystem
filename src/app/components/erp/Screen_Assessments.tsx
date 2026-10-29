@@ -347,6 +347,16 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
     return { ...base, acorn_tags: normalizeAcornTagKeys(base.acorn_tags) };
   });
   const [acornTags, setAcornTags] = useState<AcornTagKey[]>(() => normalizeAcornTagKeys(initialAssessment?.acorn_tags));
+  const [termsSel, setTermsSel] = useState<string[]>(() =>
+    initialAssessment?.term ? [initialAssessment.term] : ["T1"]
+  );
+  const [formsSel, setFormsSel] = useState<string[]>(() =>
+    initialAssessment?.form ? [initialAssessment.form] : [...forms]
+  );
+  const [subjectsSel, setSubjectsSel] = useState<number[]>(() =>
+    initialAssessment?.subject_id ? [Number(initialAssessment.subject_id)] : []
+  );
+  const [isRegular, setIsRegular] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(flashError || "");
   const isEdit = (assessmentId != null && assessmentId > 0) || form.id > 0;
@@ -356,11 +366,21 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
     const k = key as AcornTagKey;
     setAcornTags(prev => prev.includes(k) ? prev.filter(t => t !== k) : [...prev, k]);
   };
+  const toggleIn = <T,>(list: T[], v: T, set: (n: T[]) => void) =>
+    set(list.includes(v) ? list.filter(x => x !== v) : [...list, v]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     const max = Number(form.max_score);
-    if (!form.name.trim() || !form.subject_id || !form.term || !form.form) {
+    if (!form.name.trim()) {
+      setErr("請填寫評估名稱。");
+      return;
+    }
+    if (!isEdit && (termsSel.length === 0 || formsSel.length === 0 || subjectsSel.length === 0)) {
+      setErr("請至少選擇一個學期、年級與科目。");
+      return;
+    }
+    if (isEdit && (!form.subject_id || !form.term || !form.form)) {
       setErr("請填寫學期、年級、科目與評估名稱。");
       return;
     }
@@ -372,12 +392,13 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
     setErr("");
     const id = form.id || assessmentId || 0;
     const url = id > 0 ? `${updateUrl.replace(/\/$/, "")}/${id}` : storeUrl;
+    const combo = termsSel.length * formsSel.length * subjectsSel.length;
     try {
       const res = await fetch(url, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(isEdit ? {
           id,
           academic_year: form.academic_year,
           term: form.term,
@@ -386,12 +407,35 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
           name: form.name.trim(),
           max_score: max,
           acorn_tags: acornTags,
+          is_regular: isRegular ? 1 : 0,
+        } : {
+          academic_year: form.academic_year,
+          terms: termsSel,
+          forms: formsSel,
+          subjects: subjectsSel,
+          name: form.name.trim(),
+          max_score: max,
+          acorn_tags: acornTags,
+          is_regular: isRegular ? 1 : 0,
+          nature: isRegular ? "regular" : "one_off",
         }),
       });
       const json = await res.json();
-      if (!json?.ok) {
+      if (!json?.ok && !json?.success) {
         setErr(json?.message || "儲存失敗");
         return;
+      }
+      const created = Number(json.created || 0);
+      if (json.redirect) {
+        const go = window.confirm(
+          (json.message || (created > 0 ? `已新增 ${created} 項（共 ${combo} 組合）` : "評估項目已新增") + "。請設定測考評分比重。")
+          + "\n\n立即前往測考評分比重？"
+        );
+        window.location.href = go ? json.redirect : listUrl;
+        return;
+      }
+      if (created > 0) {
+        window.alert(json.message || `已成功新增 ${created} 項評估項目`);
       }
       window.location.href = listUrl;
     } catch {
@@ -416,35 +460,89 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
         {err && <p style={{ margin: "0 0 14px", fontSize: 13, color: ERP.colors.red, fontWeight: 600 }}>{err}</p>}
 
         <form onSubmit={save}>
-          <Section label="測考範圍" sub="Academic Scope">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <Field label="學年 Academic Year" required>
-                <select value={form.academic_year} onChange={e => setForm({ ...form, academic_year: e.target.value })} style={inputStyle}>
-                  {years.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </Field>
-              <Field label="學期 Term" required>
-                <div style={{ position: "relative" }}>
-                  <select value={form.term} onChange={e => setForm({ ...form, term: e.target.value })} style={{ ...inputStyle, appearance: "none" as const, paddingRight: 28 }}>
+          <Section label="測考範圍" sub="Academic Scope — 新增時可多選批次建立">
+            <Field label="學年 Academic Year" required>
+              <select value={form.academic_year} onChange={e => setForm({ ...form, academic_year: e.target.value })} style={inputStyle}>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </Field>
+
+            {isEdit ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <Field label="學期 Term" required>
+                  <select value={form.term} onChange={e => setForm({ ...form, term: e.target.value })} style={inputStyle}>
                     {terms.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
-                  <ChevronDown size={13} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: ERP.colors.textMuted }} />
-                </div>
-              </Field>
-              <Field label="年級 Form" required>
-                <select value={form.form} onChange={e => setForm({ ...form, form: e.target.value })} style={inputStyle}>
-                  {forms.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
-              </Field>
-              <Field label="科目 Subject" required>
-                <select value={String(form.subject_id || "")} onChange={e => setForm({ ...form, subject_id: Number(e.target.value) })} style={inputStyle}>
-                  <option value="">選擇科目</option>
-                  {activeSubjects.map(s => (
-                    <option key={String(s.id)} value={String(s.id)}>{s.label || [s.code, s.name_zh_hk || s.name_en].filter(Boolean).join(" ")}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
+                </Field>
+                <Field label="年級 Form" required>
+                  <select value={form.form} onChange={e => setForm({ ...form, form: e.target.value })} style={inputStyle}>
+                    {forms.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </Field>
+                <Field label="科目 Subject" required>
+                  <select value={String(form.subject_id || "")} onChange={e => setForm({ ...form, subject_id: Number(e.target.value) })} style={inputStyle}>
+                    <option value="">選擇科目</option>
+                    {activeSubjects.map(s => (
+                      <option key={String(s.id)} value={String(s.id)}>{s.label || [s.code, s.name_zh_hk || s.name_en].filter(Boolean).join(" ")}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            ) : (
+              <>
+                <Field label="學期 Term（可多選）" required>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {terms.map(t => {
+                      const on = termsSel.includes(t.value);
+                      return (
+                        <button key={t.value} type="button" onClick={() => toggleIn(termsSel, t.value, setTermsSel)} style={{
+                          padding: "6px 12px", borderRadius: ERP.radius.md, fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                          border: `1.5px solid ${on ? ERP.colors.accent : ERP.colors.border}`,
+                          background: on ? ERP.colors.accentPale : ERP.colors.pageBg,
+                          color: on ? ERP.colors.accent : ERP.colors.textMuted,
+                        }}>{t.label}</button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="年級 Form Level（可多選）" required>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {forms.map(f => {
+                      const on = formsSel.includes(f);
+                      return (
+                        <button key={f} type="button" onClick={() => toggleIn(formsSel, f, setFormsSel)} style={{
+                          padding: "6px 12px", borderRadius: ERP.radius.md, fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                          border: `1.5px solid ${on ? ERP.colors.accent : ERP.colors.border}`,
+                          background: on ? ERP.colors.accentPale : ERP.colors.pageBg,
+                          color: on ? ERP.colors.accent : ERP.colors.textMuted,
+                        }}>{f}</button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+                    <button type="button" onClick={() => setFormsSel([...forms])} style={{ fontSize: 11, border: "none", background: "none", color: ERP.colors.accent, cursor: "pointer", fontWeight: 700 }}>全選</button>
+                    <button type="button" onClick={() => setFormsSel([])} style={{ fontSize: 11, border: "none", background: "none", color: ERP.colors.textMuted, cursor: "pointer" }}>清除</button>
+                  </div>
+                </Field>
+                <Field label="科目 Subject（可多選）" required>
+                  <div style={{ maxHeight: 180, overflow: "auto", border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md, padding: 8, background: ERP.colors.pageBg }}>
+                    {activeSubjects.map(s => {
+                      const id = Number(s.id);
+                      const on = subjectsSel.includes(id);
+                      return (
+                        <label key={String(s.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px", fontSize: 12, cursor: "pointer", fontFamily: F }}>
+                          <input type="checkbox" checked={on} onChange={() => toggleIn(subjectsSel, id, setSubjectsSel)} />
+                          <span>{s.label || [s.code, s.name_zh_hk || s.name_en].filter(Boolean).join(" ")}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p style={{ margin: "6px 0 0", fontSize: 11, color: ERP.colors.textMuted }}>
+                    將建立 {termsSel.length} × {formsSel.length} × {subjectsSel.length} = <strong>{termsSel.length * formsSel.length * subjectsSel.length}</strong> 項評估
+                  </p>
+                </Field>
+              </>
+            )}
           </Section>
 
           <Section label="評估項目" sub="Assessment Item">
@@ -453,6 +551,16 @@ const AssessmentFormPage: React.FC<AssessmentsScreenProps> = ({
             </Field>
             <Field label="滿分 Max Score" required>
               <input type="number" min={0.01} step="0.01" value={form.max_score} onChange={e => setForm({ ...form, max_score: Number(e.target.value) })} style={{ ...inputStyle, maxWidth: 200 }} />
+            </Field>
+            <Field label="性質 Nature" hint="常規會於下學年自動複製；單次僅本學年">
+              <div style={{ display: "flex", gap: 16 }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  <input type="radio" checked={isRegular} onChange={() => setIsRegular(true)} /> 常規常設 (Regular)
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  <input type="radio" checked={!isRegular} onChange={() => setIsRegular(false)} /> 單次活動 (One-off)
+                </label>
+              </div>
             </Field>
           </Section>
 
