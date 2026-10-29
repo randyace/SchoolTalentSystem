@@ -236,9 +236,21 @@ export const Screen_ProjectGroups: React.FC<{
       window.alert("請輸入 2–20 的整數。");
       return;
     }
-    if (localGroups.some(g => g.students.length > 0)
-      && !window.confirm("系統隨機分組會清除現有組別並重建，確定繼續？")) {
-      return;
+    const hasGroups = localGroups.length > 0;
+    let mode: "unassigned_only" | "reset_all" = "reset_all";
+    if (hasGroups) {
+      const onlyUnassigned = window.confirm(
+        "現有組別已存在。\n\n按「確定」：僅分配尚未入組的學生（安全預設 unassigned_only）\n按「取消」：進入「清空重建」確認。"
+      );
+      if (onlyUnassigned) {
+        mode = "unassigned_only";
+      } else {
+        const wipe = window.confirm(
+          "確認清空並重建所有組別？\n此操作會移除現有組員分配且不可復原（reset_all）。\n\n按「確定」繼續，按「取消」中止。"
+        );
+        if (!wipe) return;
+        mode = "reset_all";
+      }
     }
     setRandomizing(true);
     try {
@@ -246,7 +258,7 @@ export const Screen_ProjectGroups: React.FC<{
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ group_size: size }),
+        body: JSON.stringify({ group_size: size, mode }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok === false) {

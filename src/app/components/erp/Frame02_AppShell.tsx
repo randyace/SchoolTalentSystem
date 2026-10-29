@@ -109,7 +109,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "system-admin", zhTitle: "系統管理", enTitle: "System Admin",
     items: [
       { id: "system-settings",   zhLabel: "系統設定",         enLabel: "System Settings",      icon: <Settings    size={15} />, screenId: "1.F.S",   href: "/settings" },
-      { id: "system-users",      zhLabel: "系統用戶管理",     enLabel: "System Users",         icon: <ShieldCheck size={15} />, screenId: "1.F.U",   href: "/admin/system-users" },
+      { id: "system-users",      zhLabel: "系統用戶管理",     enLabel: "System Users",         icon: <ShieldCheck size={15} />, screenId: "1.F.U",   href: "/admin/users" },
       { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings" },
       { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster" },
       { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/ai-workspace", todo: true },

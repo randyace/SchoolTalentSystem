@@ -363,7 +363,7 @@ export const Screen_DataImport: React.FC<Props> = ({
       <div style={{ padding: "18px 22px 28px", maxWidth: 1180, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 16, flexWrap: "wrap" as const }}>
-          <div>
+            <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Database size={18} color={C.accent} />
               <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.textPrimary }}>數據遷移與匯入引擎</h1>
@@ -411,8 +411,8 @@ export const Screen_DataImport: React.FC<Props> = ({
             fontSize: 13, fontWeight: 600, display: "flex", gap: 8, alignItems: "center",
           }}>
             <XCircle size={16} /> {error}
-          </div>
-        )}
+              </div>
+            )}
 
         {/* ── STEP 1 ── */}
         {step === 1 && (
@@ -453,7 +453,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                     </button>
                   );
                 })}
-              </div>
+                  </div>
             </SectionCard>
 
             {/* Excel guide */}
@@ -510,7 +510,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                         <strong style={{ color: C.accent }}>{i + 1}.</strong> {r}
                       </div>
                     ))}
-                  </div>
+                      </div>
                   <div style={{
                     background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 14,
                     display: "flex", flexDirection: "column", gap: 10,
@@ -544,7 +544,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                   </div>
                 </div>
               )}
-            </div>
+                  </div>
 
             <SectionCard step="02" zh="檔案上傳區" en="Upload Zone" icon={<UploadCloud size={14} />}>
               <div
@@ -557,7 +557,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                   if (f) void parseFile(f);
                 }}
                 onClick={() => inputRef.current?.click()}
-                style={{
+                    style={{
                   border: `2px dashed ${dragOver ? C.accent : C.border}`,
                   borderRadius: R.lg, padding: "28px 16px", textAlign: "center" as const,
                   background: dragOver ? C.accentPale : "#FAFBFC", cursor: "pointer",
@@ -568,17 +568,17 @@ export const Screen_DataImport: React.FC<Props> = ({
                   {parsing ? "解析中…" : "拖放 CSV / XLSX 至此，或點擊選取檔案"}
                 </div>
                 <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>支援 .csv · .xls · .xlsx · WebSAMS 大分紙</div>
-                <input
+            <input
                   ref={inputRef}
-                  type="file"
-                  accept=".csv,.xls,.xlsx"
-                  style={{ display: "none" }}
+              type="file"
+              accept=".csv,.xls,.xlsx"
+              style={{ display: "none" }}
                   onChange={e => {
                     const f = e.target.files?.[0];
                     if (f) void parseFile(f);
                   }}
-                />
-              </div>
+            />
+          </div>
               {fileName && (
                 <div style={{
                   marginTop: 10, display: "flex", alignItems: "center", gap: 8,
@@ -589,16 +589,16 @@ export const Screen_DataImport: React.FC<Props> = ({
                   <span style={{ fontSize: 11, color: "#047857" }}>· {rowCount} 列</span>
                   {isBroadsheet && <span style={{ fontSize: 10, fontWeight: 700, color: C.accent }}>大分紙模式</span>}
                   {skippedSummary > 0 && <span style={{ fontSize: 10, color: C.textMuted }}>已略過統計列 {skippedSummary}</span>}
-                </div>
+        </div>
               )}
             </SectionCard>
 
-            <SectionCard
+        <SectionCard
               step="03"
-              zh="智能欄位映射"
-              en="Smart Field Mapping"
+          zh="智能欄位映射"
+          en="Smart Field Mapping"
               icon={<Sparkles size={14} />}
-              badge={
+          badge={
                 <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: canNext ? "#15803D" : C.textMuted }}>
                   {processed} / {mapping.length || 0} 個欄位已處理
                 </span>

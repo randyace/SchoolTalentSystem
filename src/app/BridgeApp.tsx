@@ -368,7 +368,9 @@ export interface StsBridgeConfig {
   initialCertIndex?: number;
   uploadUrl?: string;
   extractUrl?: string;
+  aiQueueStatusUrl?: string;
   saveUrlBase?: string;
+  draftUrl?: string;
   searchStudentsUrl?: string;
   environmentLevelsUrl?: string;
   tierRolesUrl?: string;
@@ -951,7 +953,9 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           initialCertIndex={config.initialCertIndex ?? 0}
           uploadUrl={config.uploadUrl || ""}
           extractUrl={config.extractUrl || "/achievements/api/extract"}
+          aiQueueStatusUrl={config.aiQueueStatusUrl || "/api/system/ai-queue-status"}
           saveUrlBase={config.saveUrlBase || "/achievements/review/save"}
+          draftUrl={config.draftUrl || "/achievements/api/save-draft"}
           searchStudentsUrl={config.searchStudentsUrl || "/api/students/search"}
           environmentLevelsUrl={config.environmentLevelsUrl || "/api/settings/environment-levels"}
           tierRolesUrl={config.tierRolesUrl || "/api/settings/tier-roles"}
