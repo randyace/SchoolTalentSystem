@@ -186,21 +186,34 @@ const ProjectCard: React.FC<{ project: Project; onEdit: () => void; groupsUrl?: 
         <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 9999, background: gm.bg, color: gm.color }}>{gm.label}</span>
       </div>
 
-      {groupsUrl && (
+      <div style={{ display: "flex", gap: 8 }} onClick={e => e.stopPropagation()}>
+        {groupsUrl && (
+          <a
+            href={groupsUrl}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flex: 1,
+              boxSizing: "border-box", padding: "7px 10px",
+              borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.accent}55`,
+              background: ERP.colors.accentPale, color: ERP.colors.accent,
+              fontSize: 12, fontWeight: 700, fontFamily: F, textDecoration: "none",
+            }}
+          >
+            <Users size={13} /> 管理分組
+          </a>
+        )}
         <a
-          href={groupsUrl}
-          onClick={e => e.stopPropagation()}
+          href="/role-anchoring"
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            width: "100%", boxSizing: "border-box", padding: "7px 10px",
-            borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.accent}55`,
-            background: ERP.colors.accentPale, color: ERP.colors.accent,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flex: 1,
+            boxSizing: "border-box", padding: "7px 10px",
+            borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.teal}55`,
+            background: ERP.colors.tealLight, color: ERP.colors.teal,
             fontSize: 12, fontWeight: 700, fontFamily: F, textDecoration: "none",
           }}
         >
-          <Users size={13} /> 管理分組 Manage Groups
+          ⚓ 角色定錨
         </a>
-      )}
+      </div>
     </div>
   );
 };

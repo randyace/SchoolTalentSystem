@@ -13,6 +13,7 @@ import { Screen_Subjects } from "./components/erp/Screen_Subjects";
 import { Screen_DataImport } from "./components/erp/Screen_DataImport";
 import { Screen_ApprovalInbox } from "./components/erp/Screen_ApprovalInbox";
 import { Screen_TalentFilter } from "./components/erp/Screen_TalentFilter";
+import { Screen_ExemplarLibrary } from "./components/erp/Screen_ExemplarLibrary";
 import { Screen_BatchOCR } from "./components/erp/Screen_BatchOCR";
 import { Screen_BulkGroupAward } from "./components/erp/Screen_BulkGroupAward";
 import { Screen_CertificateTemplates } from "./components/erp/Screen_CertificateTemplates";
@@ -24,6 +25,7 @@ import { Screen_ConductTypes } from "./components/erp/Screen_ConductTypes";
 import { Screen_RolesPositions } from "./components/erp/Screen_RolesPositions";
 import { Screen_AIDataAssistant } from "./components/erp/Screen_AIDataAssistant";
 import { Screen_AIWritingWorkspace } from "./components/erp/Screen_AIWritingWorkspace";
+import { Screen_PromptPortal, type PromptProfile } from "./components/erp/Screen_PromptPortal";
 import { Screen_SystemAdminHome } from "./components/erp/Screen_SystemAdminHome";
 import { Screen_APIDocs } from "./components/erp/Screen_APIDocs";
 import { Frame03_ActivityTable } from "./components/erp/Frame03_ActivityTable";
@@ -41,6 +43,7 @@ import { Screen_Staff } from "./components/erp/Screen_Staff";
 import { Screen_ClubManagement, ClubRosterView } from "./components/erp/Screen_ClubManagement";
 import { Screen_GroupProjects } from "./components/erp/Screen_GroupProjects";
 import { Screen_ProjectGroups } from "./components/erp/Screen_ProjectGroups";
+import { Screen_RoleAnchoring } from "./components/erp/Screen_RoleAnchoring";
 import { Screen_SystemUserList, Screen_SystemUserSecurity } from "./components/erp/Screen_SystemUserList";
 import { Screen_AuditLog } from "./components/erp/Screen_AuditLog";
 import { Screen_PhpContent, type PhpContentAssets } from "./components/erp/Screen_PhpContent";
@@ -68,8 +71,10 @@ export type StsBridgePage =
   | "certificate-bulk"
   | "certificate-templates"
   | "talent"
+  | "exemplar-library"
   | "ai-assistant"
   | "ai-workspace"
+  | "prompt-portal"
   | "settings"
   | "system-settings"
   | "tier-mapping"
@@ -87,7 +92,8 @@ export type StsBridgePage =
   | "clubs"
   | "club-roster"
   | "projects"
-  | "project-groups";
+  | "project-groups"
+  | "role-anchoring";
 
 export interface StsBridgeConfig {
   page: StsBridgePage;
@@ -428,6 +434,13 @@ export interface StsBridgeConfig {
   editUrlBase?: string;
   csrfName?: string;
   csrfHash?: string;
+  /** 1.F.3 Prompt Portal */
+  profiles?: PromptProfile[];
+  serverStatus?: { connected?: boolean; model?: string; endpoint?: string };
+  profileUrl?: string;
+  testUrl?: string;
+  statusUrl?: string;
+  saveUrl?: string;
   /** Achievement batch listing */
   batches?: Array<{
     id: number;
@@ -602,7 +615,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
     case "dynamic-group-create":
       return wrap(nav || "dynamic-groups", (
         <Screen_DynamicGroupForm
-          lockedForm={config.lockedForm || "F3"}
+          lockedForm={config.lockedForm || config.initialGroup?.form || ""}
           forms={config.forms}
           academicYear={config.academicYear || "2025/26"}
           subjects={(config.subjects || []).map((s: any) => ({
@@ -825,6 +838,25 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         />
       ));
 
+    case "role-anchoring":
+      return wrap(nav || "role-anchoring", (
+        <Screen_RoleAnchoring
+          academicYear={config.academicYear || "2025/26"}
+          initialGroupId={(config as any).initialGroupId ?? null}
+          initialPayload={(config as any).initialPayload ?? null}
+          listUrl={(config as any).listUrl || "/api/pbl/role-anchoring"}
+          updateRoleUrl={(config as any).updateRoleUrl || "/api/pbl/role-anchoring/update-role"}
+          bulkRoleUrl={(config as any).bulkRoleUrl || "/api/pbl/role-anchoring/bulk-role"}
+          bulkNotifyUrl={(config as any).bulkNotifyUrl || "/api/pbl/role-anchoring/bulk-notify"}
+          exportUrl={(config as any).exportUrl || "/api/pbl/role-anchoring/export"}
+          projectsUrl={(config as any).projectsUrl || "/projects"}
+          csrfName={(config as any).csrfName}
+          csrfHash={(config as any).csrfHash}
+          flashSuccess={config.flashSuccess}
+          flashError={config.flashError}
+        />
+      ));
+
     case "activities":
       return wrap(nav || "activities", (
         <Frame03_ActivityTable
@@ -1025,6 +1057,19 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         />
       ));
 
+    case "exemplar-library":
+      return wrap(nav || "exemplar-library", (
+        <Screen_ExemplarLibrary
+          initialPayload={(config as any).initialPayload ?? null}
+          listUrl={(config as any).listUrl || "/api/exemplar-library/list"}
+          createUrl={(config as any).createUrl || "/api/exemplar-library/create"}
+          bulkUrl={(config as any).bulkUrl || "/api/exemplar-library/bulk-action"}
+          syncUrl={(config as any).syncUrl || "/api/exemplar-library/sync"}
+          csrfName={(config as any).csrfName}
+          csrfHash={(config as any).csrfHash}
+        />
+      ));
+
     case "ai-assistant":
       return wrap(nav || "ai-data-assistant", (
         <Screen_AIDataAssistant
@@ -1058,6 +1103,21 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           csrfHash={config.csrfHash}
         />,
       );
+
+    case "prompt-portal":
+      return wrap(nav || "prompt-portal", (
+        <Screen_PromptPortal
+          profiles={(config.profiles as PromptProfile[]) || []}
+          serverStatus={config.serverStatus || undefined}
+          listUrl={config.listUrl || "/api/admin/ai-prompts"}
+          profileUrl={config.profileUrl || "/api/admin/ai-prompts"}
+          saveUrl={config.saveUrl || "/api/admin/ai-prompts/save"}
+          testUrl={config.testUrl || "/api/admin/ai-prompts/test"}
+          statusUrl={config.statusUrl || "/api/admin/ai-prompts/status"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />
+      ));
 
     case "system-settings":
       return wrap(
@@ -1144,7 +1204,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
             "roles-positions": "/teacher/roles",
             "data-import": "/roster",
             "api-docs": "/api/docs",
-            "prompt-portal": "/ai-workspace",
+            "prompt-portal": "/admin/ai-prompts",
             "ai-workspace": "/ai-workspace",
             "sync-permissions": "/admin/audit-logs",
             "desensitize-audit": "/admin/audit-logs",
@@ -1158,7 +1218,20 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
 
     case "dashboard":
     default:
-      return wrap(nav || "today-overview", <Screen01_Dashboard />);
+      return wrap(nav || "today-overview", (
+        <Screen01_Dashboard
+          initialOverview={(config as any).initialOverview ?? null}
+          overviewUrl={(config as any).overviewUrl || "/api/dashboard/overview"}
+          exportUrl={(config as any).exportUrl || "/api/dashboard/export"}
+          announceUrl={(config as any).announceUrl || "/api/dashboard/announce"}
+          csrfName={(config as any).csrfName}
+          csrfHash={(config as any).csrfHash}
+          engagementData={(config as any).initialOverview?.engagementData}
+          classOverview={(config as any).initialOverview?.classOverview}
+          stats={(config as any).initialOverview?.stats}
+          activities={(config as any).initialOverview?.activities}
+        />
+      ));
   }
 };
 

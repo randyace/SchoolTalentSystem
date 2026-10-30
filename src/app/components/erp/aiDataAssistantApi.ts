@@ -18,8 +18,11 @@ export type AssistantSession = {
 export type AssistantStructuredData = {
   columns?: Array<{ key: string; label?: string } | string>;
   rows?: Array<Record<string, string | number | null>>;
+  /** Legacy alternate row payload (backend may also set preview). */
+  preview?: Array<Record<string, string | number | null>>;
   total_count?: number;
   export_title?: string;
+  title?: string;
   preview_rows?: number;
 };
 

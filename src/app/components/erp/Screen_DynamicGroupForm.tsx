@@ -87,6 +87,13 @@ const selectCss: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
+/** Prevent blue text highlight when double-/triple-clicking checkboxes & tabs. */
+const noSelect: React.CSSProperties = {
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  msUserSelect: "none",
+};
+
 const CLASS_PAL: Record<string, { bg: string; color: string; border: string }> = {
   "1A": { bg: "#DBEAFE", color: "#1D4ED8", border: "#93C5FD" },
   "1B": { bg: "#EDE9FE", color: "#6D28D9", border: "#C4B5FD" },
@@ -129,7 +136,7 @@ function formPal(form: string) {
 }
 
 export const Screen_DynamicGroupForm: React.FC<Props> = ({
-  lockedForm = "F3",
+  lockedForm = "",
   forms = ["F1", "F2", "F3", "F4"],
   academicYear = "2025/26",
   subjects = [],
@@ -145,29 +152,22 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
   flashSuccess,
   flashError,
 }) => {
-  const [groupForm, setGroupForm] = useState((initialGroup?.form || lockedForm || "F3").toUpperCase());
-  const [groupName, setGroupName] = useState(
-    initialGroup?.name
-      || (lockedForm === "F3"
-        ? "25/26 中三視覺藝術選修組 (F3 Visual Arts Elective)"
-        : `25/26 ${lockedForm} 選修組`)
+  // Create: empty until user picks. Edit: only the group's saved values (never options[0]).
+  const [groupForm, setGroupForm] = useState(() =>
+    (initialGroup?.form || "").toUpperCase()
   );
+  const [groupName, setGroupName] = useState(initialGroup?.name || "");
   const [subjectCode, setSubjectCode] = useState(() => {
-    if (!initialGroup?.subject_area || subjects.length === 0) {
-      return subjects.find(s => s.code === "VA")?.code
-        || subjects.find(s => s.allow_dynamic_grouping)?.code
-        || subjects[0]?.code
-        || "";
-    }
+    if (!initialGroup?.subject_area) return "";
     const hit = subjects.find(
       s => s.name_en === initialGroup.subject_area
         || s.name_zh_hk === initialGroup.subject_area
         || s.code === initialGroup.subject_area
     );
-    return hit?.code || subjects[0]?.code || "";
+    return hit?.code || "";
   });
   const [teacherId, setTeacherId] = useState(() => {
-    if (!initialGroup) return teachers[0] ? String(teachers[0].id) : "";
+    if (!initialGroup) return "";
     if (initialGroup.teacher_id) return String(initialGroup.teacher_id);
     const hit = teachers.find(
       t => t.name_en === initialGroup.teacher_en
@@ -175,7 +175,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
         || t.name === initialGroup.teacher_en
         || (initialGroup.teacher_en && t.label.includes(initialGroup.teacher_en))
     );
-    return hit ? String(hit.id) : (teachers[0] ? String(teachers[0].id) : "");
+    return hit ? String(hit.id) : "";
   });
 
   const [roster, setRoster] = useState<RosterStudent[]>(() =>
@@ -204,7 +204,8 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
 
   const [tabs, setTabs] = useState<FormTab[]>([]);
   const [tabsLoading, setTabsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>("");
+  /** null until the user explicitly clicks a Form tab */
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   const [subjectAllowsDyn, setSubjectAllowsDyn] = useState(false);
   /** Selected Roster filter: "all" | form code (e.g. "F3") */
   const [rosterFormTab, setRosterFormTab] = useState<string>("all");
@@ -314,18 +315,12 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
             source: "tab" as const,
           })),
         }));
-        // Prefer tabs that have students
+        // Prefer tabs that have students — but do NOT auto-activate any tab.
         const usable = nextTabs.filter(t => t.count > 0);
         setTabs(usable.length ? usable : nextTabs);
-        const prefer = usable.find(t => t.form === groupForm)
-          || usable[0]
-          || nextTabs[0];
-        setActiveTab(prefer?.form || "");
-        if (prefer && !initialGroup) {
-          setGroupForm(prefer.form);
-        }
+        setActiveTab(null);
       })
-      .catch(() => { setTabs([]); setSubjectAllowsDyn(false); })
+      .catch(() => { setTabs([]); setSubjectAllowsDyn(false); setActiveTab(null); })
       .finally(() => setTabsLoading(false));
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -443,9 +438,14 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
   };
 
   const handleSubmit = (e: React.FormEvent) => {
-    if (roster.length === 0) {
+    if (!groupName.trim()) {
       e.preventDefault();
-      setParseMsg("請至少勾選一名學生。");
+      setParseMsg("請輸入群組名稱。");
+      return;
+    }
+    if (!groupForm) {
+      e.preventDefault();
+      setParseMsg("請選擇所屬年級 Form。");
       return;
     }
     if (!subjectCode) {
@@ -453,10 +453,15 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
       setParseMsg("請選擇科目 / KLA。");
       return;
     }
+    if (roster.length === 0) {
+      e.preventDefault();
+      setParseMsg("請至少勾選一名學生。");
+      return;
+    }
     setSaving(true);
   };
 
-  const activeTabData = tabs.find(t => t.form === activeTab);
+  const activeTabData = activeTab ? tabs.find(t => t.form === activeTab) : undefined;
 
   return (
     <form
@@ -500,8 +505,9 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
               {groupId ? "編輯群組 Edit Group" : "建立新群組 Create Group"}
             </h1>
             <p style={{ margin: "4px 0 0", fontSize: 12.5, color: ERP.colors.textSecondary }}>
-              {selectedSubject ? `${selectedSubject.name_zh_hk || selectedSubject.name_en}` : "科目"}
-              {" · "}Form 鎖定 {groupForm} · AY {academicYear}
+              {selectedSubject ? `${selectedSubject.name_zh_hk || selectedSubject.name_en}` : "尚未選擇科目"}
+              {" · "}{groupForm ? `Form 鎖定 ${groupForm}` : "尚未選擇年級"}
+              {" · "}AY {academicYear}
               {" · "}已選 {roster.length} 人
             </p>
           </div>
@@ -561,14 +567,28 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
         <Card icon={<BookOpen size={15} color={ERP.colors.accent} />} title="群組基本資訊" subtitle="Section 1 · Basic Group Information" accent={ERP.colors.accent}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
             <Field label="群組名稱" en="Group Name" required>
-              <input value={groupName} onChange={e => setGroupName(e.target.value)} required style={selectCss} placeholder="輸入群組名稱…" />
+              <input
+                value={groupName}
+                onChange={e => setGroupName(e.target.value)}
+                required
+                style={selectCss}
+                placeholder="請輸入群組名稱…"
+              />
             </Field>
             <Field label="所屬年級 Form（鎖定）" en="Form Lock" required>
               <select
                 value={groupForm}
                 onChange={e => onFormChange(e.target.value)}
-                style={{ ...selectCss, borderColor: ERP.colors.accent, background: ERP.colors.accentPale, fontWeight: 700, color: ERP.colors.accent }}
+                required
+                style={{
+                  ...selectCss,
+                  borderColor: groupForm ? ERP.colors.accent : ERP.colors.border,
+                  background: groupForm ? ERP.colors.accentPale : "#fff",
+                  fontWeight: groupForm ? 700 : 500,
+                  color: groupForm ? ERP.colors.accent : ERP.colors.textMuted,
+                }}
               >
+                <option value="" disabled hidden>請選擇 (Please select)</option>
                 {(subjectAllowsDyn && tabs.length
                   ? tabs.map(t => t.form)
                   : forms
@@ -582,9 +602,9 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                   value={subjectCode}
                   onChange={e => onSubjectChange(e.target.value)}
                   required
-                  style={{ ...selectCss, paddingLeft: 30 }}
+                  style={{ ...selectCss, paddingLeft: 30, color: subjectCode ? ERP.colors.textPrimary : ERP.colors.textMuted }}
                 >
-                  <option value="" disabled>選擇科目…</option>
+                  <option value="" disabled hidden>請選擇 (Please select)</option>
                   {subjects.map(s => (
                     <option key={s.code} value={s.code}>{s.label}</option>
                   ))}
@@ -594,8 +614,12 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
             <Field label="負責教師" en="Teacher in Charge">
               <div style={{ position: "relative" }}>
                 <UserCog size={13} style={{ position: "absolute", left: 10, top: 12, color: ERP.colors.textMuted }} />
-                <select value={teacherId} onChange={e => setTeacherId(e.target.value)} style={{ ...selectCss, paddingLeft: 30 }}>
-                  <option value="">選擇教師…</option>
+                <select
+                  value={teacherId}
+                  onChange={e => setTeacherId(e.target.value)}
+                  style={{ ...selectCss, paddingLeft: 30, color: teacherId ? ERP.colors.textPrimary : ERP.colors.textMuted }}
+                >
+                  <option value="" disabled hidden>請選擇 (Please select)</option>
                   {teachers.map(t => <option key={String(t.id)} value={String(t.id)}>{t.label || t.name || t.name_zh_hk || t.name_en}</option>)}
                 </select>
               </div>
@@ -608,10 +632,15 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
           }}>
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
             <span>
-              <strong>嚴格年級邊界：</strong>單一群組僅能含 <strong>{groupForm}</strong> 學生。
+              <strong>嚴格年級邊界：</strong>
+              {groupForm
+                ? <>單一群組僅能含 <strong>{groupForm}</strong> 學生。</>
+                : "請先選擇所屬年級 Form。"}
               {subjectAllowsDyn
                 ? " 請在下方年級分頁勾選修讀此科目的學生。"
-                : " 此科目未啟用動態分組，請使用手動搜尋（僅鎖定年級）。"}
+                : subjectCode
+                  ? " 此科目未啟用動態分組，請使用手動搜尋（僅鎖定年級）。"
+                  : ""}
             </span>
           </div>
         </Card>
@@ -656,10 +685,11 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
               </div>
             ) : (
               <>
-                {/* Tabs */}
+                {/* Tabs — none active until user clicks */}
                 <div style={{
                   display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14,
                   borderBottom: `1px solid ${ERP.colors.border}`, paddingBottom: 10,
+                  ...noSelect,
                 }}>
                   {tabs.map(t => {
                     const active = t.form === activeTab;
@@ -674,6 +704,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                           background: active ? ERP.colors.accentPale : "#fff",
                           color: active ? ERP.colors.accent : ERP.colors.textSecondary,
                           fontWeight: active ? 800 : 600, fontSize: 13,
+                          ...noSelect,
                         }}
                       >
                         {t.label}
@@ -687,12 +718,21 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                   })}
                 </div>
 
-                {activeTabData && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {!activeTabData ? (
+                  <div style={{
+                    padding: "28px 16px", textAlign: "center", color: ERP.colors.textMuted,
+                    fontSize: 13, background: ERP.colors.pageBg, borderRadius: 12,
+                    border: `1px dashed ${ERP.colors.border}`,
+                    ...noSelect,
+                  }}>
+                    請點選上方年級分頁（如 Form 1 / 中一）以載入學生名單
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14, ...noSelect }}>
                     {Object.keys(activeTabData.classes).sort().map(cls => {
                       const list = activeTabData.classes[cls] || [];
                       const p = pal(cls);
-                      const allChecked = list.every(s => rosterIds.has(s.pk));
+                      const allChecked = list.length > 0 && list.every(s => rosterIds.has(s.pk));
                       return (
                         <div key={cls} style={{
                           border: `1px solid ${ERP.colors.border}`, borderRadius: 12, overflow: "hidden",
@@ -700,6 +740,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                           <div style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between",
                             padding: "8px 12px", background: p.bg, borderBottom: `1px solid ${p.border}`,
+                            ...noSelect,
                           }}>
                             <span style={{ fontWeight: 800, fontSize: 13, color: p.color }}>{cls} · {list.length} 人</span>
                             <button
@@ -716,6 +757,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                                 border: `1px solid ${p.border}`, background: "#fff", borderRadius: 8,
                                 padding: "4px 10px", fontSize: 11, fontWeight: 700, color: p.color,
                                 cursor: "pointer", fontFamily: F,
+                                ...noSelect,
                               }}
                             >
                               {allChecked ? "取消全選" : "全選本班"}
@@ -736,6 +778,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                                     padding: "9px 12px", cursor: "pointer", fontFamily: F,
                                     borderBottom: `1px solid ${ERP.colors.divider}`,
                                     background: checked ? "#EFF6FF" : "#fff",
+                                    ...noSelect,
                                   }}
                                 >
                                   <input
@@ -861,6 +904,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                 style={{
                   display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14,
                   paddingBottom: 12, borderBottom: `1px solid ${ERP.colors.border}`,
+                  ...noSelect,
                 }}
               >
                 <button
@@ -868,7 +912,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                   role="tab"
                   aria-selected={rosterFormTab === "all"}
                   onClick={() => setRosterFormTab("all")}
-                  style={rosterTabStyle(rosterFormTab === "all", ERP.colors.accent, ERP.colors.accentPale)}
+                  style={{ ...rosterTabStyle(rosterFormTab === "all", ERP.colors.accent, ERP.colors.accentPale), ...noSelect }}
                 >
                   <Layers size={12} />
                   All Students 全部
@@ -884,7 +928,7 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                       role="tab"
                       aria-selected={active}
                       onClick={() => setRosterFormTab(form)}
-                      style={rosterTabStyle(active, p.color, p.bg, p.border)}
+                      style={{ ...rosterTabStyle(active, p.color, p.bg, p.border), ...noSelect }}
                     >
                       {form}
                       <span style={{

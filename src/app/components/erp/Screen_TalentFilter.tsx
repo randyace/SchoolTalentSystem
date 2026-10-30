@@ -11,7 +11,7 @@ import {
   X, Check, ExternalLink,
   ChevronUp, Users, Sparkles,
   Trophy, BookOpen, Palette, Heart, Cpu, Star,
-  Filter, ArrowUpDown, Layers, Loader2,
+  Filter, ArrowUpDown, Loader2,
 } from "lucide-react";
 
 // ── Tokens ─────────────────────────────────────────────────────────────────────
@@ -819,9 +819,6 @@ export const Screen_TalentFilter: React.FC<ScreenTalentFilterProps> = ({
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: T.emerald, border: "none", borderRadius: T.radius, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: F, boxShadow: "0 2px 8px rgba(5,150,105,0.4)" }}
           >
             <FileSpreadsheet size={14} /> ⬇️ 匯出已選 {selectedIds.size} 人
-          </button>
-          <button style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#7C3AED", border: "none", borderRadius: T.radius, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: F }}>
-            <Layers size={14} /> 批量生成證書
           </button>
         </div>
       )}

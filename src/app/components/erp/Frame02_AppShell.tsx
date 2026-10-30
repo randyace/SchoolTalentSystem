@@ -60,7 +60,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "workspace", zhTitle: "工作台", enTitle: "Workspace",
     items: [
-      { id: "today-overview",  zhLabel: "今日概覽", enLabel: "Today Overview", icon: <LayoutDashboard size={15} />, screenId: "1.A.1", href: "/dashboard", todo: true },
+      { id: "today-overview",  zhLabel: "今日概覽", enLabel: "Today Overview", icon: <LayoutDashboard size={15} />, screenId: "1.A.1", href: "/dashboard" },
       { id: "approval-inbox",  zhLabel: "待辦審批", enLabel: "Approval Inbox",  icon: <ClipboardList size={15} />,  screenId: "1.A.3", href: "/approval", todo: true },
     ],
   },
@@ -93,8 +93,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "activities",       zhLabel: "活動／比賽／事件", enLabel: "Activities / Events",  icon: <CalendarDays size={15} />, screenId: "1.D.1", href: "/activity" },
       { id: "achievements",     zhLabel: "成就與證書上載",   enLabel: "Achievements & Cert Upload", icon: <Award size={15} />,  screenId: "1.D.4", href: "/achievements", todo: false },
       { id: "group-awards",     zhLabel: "證書範本管理",     enLabel: "Certificate Templates", icon: <Layers size={15} />,       screenId: "1.D.4B", href: "/certificates", todo: false },
-      { id: "talent-filter",    zhLabel: "人才篩選與匯出",   enLabel: "Talent Pool & Filter", icon: <Users size={15} />,        screenId: "1.D.5", href: "/talent", todo: true },
-      { id: "exemplar-library", zhLabel: "成果課件庫",       enLabel: "Exemplar Library",     icon: <FolderOpen size={15} />,   screenId: "1.D.7", href: "/dashboard", todo: true },
+      { id: "talent-filter",    zhLabel: "人才篩選與匯出",   enLabel: "Talent Pool & Filter", icon: <Users size={15} />,        screenId: "1.D.5", href: "/talent" },
+      { id: "exemplar-library", zhLabel: "成果課件庫",       enLabel: "Exemplar Library",     icon: <FolderOpen size={15} />,   screenId: "1.D.7", href: "/exemplar-library" },
       { id: "club-management",  zhLabel: "學會管理",         enLabel: "Club & Society Mgmt",  icon: <Users size={15} />,        screenId: "1.D.8", href: "/clubs" },
     ],
   },
@@ -102,7 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "collaboration", zhTitle: "專題研習", enTitle: "Project Learning",
     items: [
       { id: "group-projects", zhLabel: "分組專題", enLabel: "Group Projects", icon: <Layers size={15} />,    screenId: "1.E.1", href: "/projects" },
-      { id: "role-anchoring", zhLabel: "角色定錨", enLabel: "Role Anchoring", icon: <UserCheck size={15} />, screenId: "1.E.3", href: "/dashboard", todo: true },
+      { id: "role-anchoring", zhLabel: "角色定錨", enLabel: "Role Anchoring", icon: <UserCheck size={15} />, screenId: "1.E.3", href: "/role-anchoring" },
     ],
   },
   {
@@ -112,7 +112,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "system-users",      zhLabel: "系統用戶管理",     enLabel: "System Users",         icon: <ShieldCheck size={15} />, screenId: "1.F.U",   href: "/admin/users" },
       { id: "system-admin-home", zhLabel: "系統設定總覽",     enLabel: "Admin Overview",       icon: <Settings    size={15} />, screenId: "1.F.0",   href: "/admin/settings" },
       { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster" },
-      { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/ai-workspace", todo: true },
+      { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/admin/ai-prompts" },
       { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.0.8", href: "/admin/audit-logs" },
       { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8", href: "/api/docs", todo: true },
       { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7",   href: "/api/docs", todo: true },

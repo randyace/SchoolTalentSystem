@@ -36,9 +36,15 @@ function loadSortableJs(): Promise<void> {
 }
 
 const ROLE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  T3: { bg: "#FEF3C7", color: "#92400E", label: "T3 組長" },
-  T2: { bg: "#E0E7FF", color: "#3730A3", label: "T2 副組長" },
-  T1: { bg: "#F1F5F9", color: "#475569", label: "T1 組員" },
+  T3: { bg: "#F5F3FF", color: "#7C3AED", label: "組長 (T3)" },
+  T2: { bg: "#EFF6FF", color: "#2563EB", label: "支援 (T2)" },
+  T1: { bg: "#FEF3C7", color: "#B45309", label: "成員 (T1)" },
+};
+
+const CONFIRM_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  confirmed: { bg: "#DBEAFE", color: "#1D4ED8", label: "已確認" },
+  pending:   { bg: "#F1F5F9", color: "#64748B", label: "待確認" },
+  rejected:  { bg: "#FFEDD5", color: "#C2410C", label: "已拒絕" },
 };
 
 const F = ERP.font.family;
@@ -69,7 +75,10 @@ export type GroupMember = {
   name_en?: string;
   class_name?: string;
   role?: string;
+  role_tier?: string;
   role_label?: string;
+  role_confirm_status?: string;
+  submission_status?: string;
 };
 
 export type ProjectGroupCard = {
@@ -365,9 +374,14 @@ export const Screen_ProjectGroups: React.FC<{
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 28px 64px", fontFamily: F }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-        <a href={listUrl} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: ERP.colors.accent, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
-          <ArrowLeft size={14} /> 返回專題看板
-        </a>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <a href={listUrl} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: ERP.colors.accent, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+            <ArrowLeft size={14} /> 返回專題看板
+          </a>
+          <a href="/role-anchoring" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: ERP.colors.teal, fontSize: 12, fontWeight: 700, textDecoration: "none", padding: "6px 10px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface }}>
+            角色定錨 1.E.3 →
+          </a>
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginBottom: 18, flexWrap: "wrap" as const }}>
@@ -659,10 +673,22 @@ export const Screen_ProjectGroups: React.FC<{
             }}>
               <div style={{
                 padding: "12px 14px", borderBottom: `1px solid ${ERP.colors.border}`,
-                background: ERP.colors.pageBg, display: "flex", justifyContent: "space-between", alignItems: "center",
+                background: ERP.colors.pageBg, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" as const,
               }}>
                 <span style={{ fontSize: 14, fontWeight: 800 }}>{g.group_name}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.accent }}>{g.students.length} 人</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.accent }}>{g.students.length} 人</span>
+                  <a
+                    href={`/role-anchoring?group_id=${g.id}`}
+                    title="前往角色定錨"
+                    style={{
+                      fontSize: 11, fontWeight: 800, textDecoration: "none",
+                      padding: "4px 8px", borderRadius: 6,
+                      border: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface,
+                      color: ERP.colors.teal, whiteSpace: "nowrap",
+                    }}
+                  >⚓ 前往角色定錨</a>
+                </div>
               </div>
               <div
                 data-group-list
@@ -673,8 +699,10 @@ export const Screen_ProjectGroups: React.FC<{
                   <div style={{ padding: "16px 8px", textAlign: "center", fontSize: 12, color: ERP.colors.textMuted }}>尚無成員 · 可拖入學生</div>
                 )}
                 {g.students.map(s => {
-                  const role = (s.role || "T1").toUpperCase();
+                  const role = (s.role_tier || s.role || "T1").toUpperCase();
                   const rs = ROLE_STYLE[role] || ROLE_STYLE.T1;
+                  const confirm = (s.role_confirm_status || "pending").toLowerCase();
+                  const cs = CONFIRM_STYLE[confirm] || CONFIRM_STYLE.pending;
                   return (
                     <div
                       key={s.id}
@@ -693,6 +721,10 @@ export const Screen_ProjectGroups: React.FC<{
                             fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 9999,
                             background: rs.bg, color: rs.color,
                           }}>{s.role_label || rs.label}</span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 9999,
+                            background: cs.bg, color: cs.color,
+                          }}>{cs.label}</span>
                         </div>
                         <div style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: ERP.font.mono, marginTop: 2 }}>
                           {s.student_id}{s.class_name ? ` · ${s.class_name}` : ""}

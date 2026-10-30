@@ -125,15 +125,36 @@ const THINKING_STEPS = [
   "📊 正在整理數據表格與生成分析建議...",
 ];
 
+/** Client-side last-mile: never render SQL / think blocks in chat bubbles. */
+export function sanitizeAssistantContent(text: string): string {
+  let t = text || "";
+  t = t.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  t = t.replace(/\[SQL\s*used\][\s\S]*$/i, "");
+  t = t.replace(/\[SQL\][\s\S]*$/i, "");
+  t = t.replace(/```sql\b[\s\S]*?```/gi, "");
+  t = t.replace(/\bWITH\s+\w+\s+AS\s*\([\s\S]*$/i, "");
+  t = t.replace(/\bSELECT\s+[\s\S]*?\s+FROM\s+\w+[\s\S]*$/i, "");
+  return t.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function mapStructuredToTable(sd?: AssistantStructuredData | null): TableData | undefined {
   if (!sd) return undefined;
-  const cols: TableCol[] = (sd.columns || []).map((c) => {
+  let cols: TableCol[] = (sd.columns || []).map((c) => {
     if (typeof c === "string") return { key: c, label: c };
     return { key: c.key, label: c.label || c.key };
   });
+  // Support legacy / alternate shapes: preview[] without columns, or string column keys.
+  const sourceRows = (sd.rows && sd.rows.length > 0)
+    ? sd.rows
+    : (Array.isArray((sd as { preview?: Record<string, unknown>[] }).preview)
+      ? (sd as { preview: Record<string, unknown>[] }).preview
+      : []);
+  if (cols.length === 0 && sourceRows.length > 0) {
+    cols = Object.keys(sourceRows[0]).map((k) => ({ key: k, label: k }));
+  }
   if (cols.length === 0) return undefined;
-  const allRows = (sd.rows || []).map((r) => {
+  const allRows = sourceRows.map((r) => {
     const out: Record<string, string | number> = {};
     for (const col of cols) {
       const v = r[col.key];
@@ -141,8 +162,9 @@ export function mapStructuredToTable(sd?: AssistantStructuredData | null): Table
     }
     return out;
   });
-  const previewN = sd.preview_rows ?? 5;
-  const rows = allRows.slice(0, previewN);
+  // Show the full returned set in-bubble (backend already caps at LIMIT 100).
+  const previewN = Math.max(sd.preview_rows ?? allRows.length, allRows.length);
+  const rows = allRows.slice(0, Math.min(previewN, 100));
   const totalCount = sd.total_count ?? allRows.length;
   return { cols, rows, totalCount };
 }
@@ -189,15 +211,17 @@ function mapApiMessage(m: AssistantMessage): ChatMessage {
   const tableData = mapStructuredToTable(m.structured_data);
   const total = tableData?.totalCount ?? m.structured_data?.total_count;
   const numericId = typeof m.id === "number" ? m.id : Number(m.id);
+  const rawContent = m.content || "";
+  const content = role === "ai" ? sanitizeAssistantContent(rawContent) : rawContent;
   return {
     id: String(m.id),
     messageId: Number.isFinite(numericId) ? numericId : undefined,
     role,
-    content: m.content || "",
+    content,
     timestamp: formatMsgTime(m.created_at),
     tableData,
     suggestions: m.suggested_actions?.length ? m.suggested_actions : undefined,
-    exportLabel: tableData
+    exportLabel: tableData && tableData.rows.length > 0
       ? `📗 匯出完整名單為 Excel (${total ?? tableData.rows.length} 人)`
       : undefined,
   };
