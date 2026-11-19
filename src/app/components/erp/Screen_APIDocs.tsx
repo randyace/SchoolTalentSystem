@@ -49,28 +49,41 @@ interface EndpointGroup { id: string; zh: string; en: string; endpoints: Endpoin
 
 const GROUPS: EndpointGroup[] = [
   {
+    id: "auth", zh: "認證與身分", en: "Auth",
+    endpoints: [
+      { id: "me", method: "GET", path: "/api/v1/external/me", label: "Current Teacher / Token" },
+    ],
+  },
+  {
     id: "students", zh: "學生數據", en: "Students",
     endpoints: [
-      { id: "list-students",  method: "GET",  path: "/api/v1/students",      label: "List Students"    },
-      { id: "get-student",    method: "GET",  path: "/api/v1/students/{id}", label: "Get Student"      },
+      { id: "list-students", method: "GET", path: "/api/v1/external/students", label: "List Students (PDPO-masked)" },
+      { id: "student-acorn", method: "GET", path: "/api/v1/external/students/{id}/acorn", label: "Student ACORN Profile" },
     ],
   },
   {
     id: "achievements", zh: "成就紀錄", en: "Achievements",
     endpoints: [
-      { id: "list-achv",   method: "GET",    path: "/api/v1/achievements",       label: "List Achievements" },
-      { id: "create-achv", method: "POST",   path: "/api/v1/achievements",       label: "Create Record"     },
-      { id: "update-achv", method: "PUT",    path: "/api/v1/achievements/{id}",  label: "Update Record"     },
-      { id: "delete-achv", method: "DELETE", path: "/api/v1/achievements/{id}",  label: "Delete Record"     },
+      { id: "list-achv", method: "GET", path: "/api/v1/external/achievements", label: "List Achievements" },
+      { id: "draft-achv", method: "POST", path: "/api/v1/external/achievements/draft", label: "Create Achievement Draft" },
     ],
   },
   {
-    id: "attendance", zh: "考勤數據", en: "Attendance",
+    id: "acorn-ai", zh: "ACORN / AI", en: "ACORN & AI",
     endpoints: [
-      { id: "daily-att", method: "GET", path: "/api/v1/attendance/daily", label: "Daily Attendance" },
+      { id: "exemplars", method: "GET", path: "/api/v1/external/exemplars", label: "ACORN Growth Exemplars" },
+      { id: "ai-query", method: "POST", path: "/api/v1/external/ai/query", label: "Read-only AI Query" },
     ],
   },
 ];
+
+export interface ScreenAPIDocsProps {
+  externalBase?: string;
+  automationUrl?: string;
+  stateUrl?: string;
+  csrfName?: string;
+  csrfHash?: string;
+}
 
 // ── Parameter definitions (for list-students endpoint) ────────────────────────
 const PARAMS = [
@@ -219,14 +232,24 @@ const SectionDivider: React.FC<{ icon: React.ReactNode; zh: string; en: string }
 );
 
 // ── Main Screen ────────────────────────────────────────────────────────────────
-export const Screen_APIDocs: React.FC = () => {
-  const [activeId,       setActiveId]       = useState("list-students");
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["students"]));
+export const Screen_APIDocs: React.FC<ScreenAPIDocsProps> = ({
+  externalBase,
+  automationUrl = "/api/automation",
+}) => {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const base = (externalBase || `${origin}/api/v1/external`).replace(/\/$/, "");
+
+  const [activeId,       setActiveId]       = useState("me");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["auth", "students"]));
   const [sideSearch,     setSideSearch]     = useState("");
   const [activeTab,      setActiveTab]      = useState("docs");
-  const [params,         setParams]         = useState({ class_id: "3A", keyword: "", page: "1" });
+  const [params,         setParams]         = useState({ class: "1A", limit: "20", page: "1", student_id: "1", prompt: "本學年 STEM 成就數量？" });
+  const [apiToken,       setApiToken]       = useState("");
   const [responseSent,   setResponseSent]   = useState(false);
   const [sending,        setSending]        = useState(false);
+  const [liveStatus,     setLiveStatus]     = useState(0);
+  const [liveMs,         setLiveMs]         = useState(0);
+  const [liveBody,       setLiveBody]       = useState("");
   const [expandedResp,   setExpandedResp]   = useState<Set<number>>(new Set([200]));
   const [isMobile,       setIsMobile]       = useState(false);
   const [sidebarOpen,    setSidebarOpen]    = useState(false);
@@ -237,6 +260,26 @@ export const Screen_APIDocs: React.FC = () => {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  const allEndpoints = GROUPS.flatMap((g) => g.endpoints);
+  const activeEp = allEndpoints.find((e) => e.id === activeId) || allEndpoints[0];
+
+  const resolvePath = () => {
+    let path = activeEp.path.replace("/api/v1/external", "");
+    path = path.replace("{id}", params.student_id || "1");
+    if (activeEp.id === "list-students") {
+      const q = new URLSearchParams();
+      if (params.class) q.set("class", params.class);
+      if (params.limit) q.set("limit", params.limit);
+      if (params.page) q.set("page", params.page);
+      const qs = q.toString();
+      return qs ? `${path}?${qs}` : path;
+    }
+    if (activeEp.id === "list-achv") {
+      return `${path}?status=approved&limit=${params.limit || "20"}`;
+    }
+    return path;
+  };
 
   const toggleGroup = (id: string) =>
     setExpandedGroups(prev => {
@@ -252,45 +295,75 @@ export const Screen_APIDocs: React.FC = () => {
       return s;
     });
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (!apiToken.trim()) {
+      setLiveStatus(0);
+      setLiveBody(JSON.stringify({ ok: false, error: "請先貼上 sts_live_… Token（可於 API 自動化串接頁生成）" }, null, 2));
+      setResponseSent(true);
+      return;
+    }
     setSending(true);
-    setTimeout(() => { setSending(false); setResponseSent(true); }, 1100);
+    setResponseSent(false);
+    const path = resolvePath();
+    const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
+    const t0 = performance.now();
+    try {
+      const init: RequestInit = {
+        method: activeEp.method,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${apiToken.trim()}`,
+          ...(activeEp.method !== "GET" ? { "Content-Type": "application/json" } : {}),
+        },
+      };
+      if (activeEp.id === "draft-achv") {
+        init.body = JSON.stringify({
+          student_id: Number(params.student_id) || 1,
+          achievement_title: "External API Draft Test",
+          category: "STEM",
+        });
+      } else if (activeEp.id === "ai-query") {
+        init.body = JSON.stringify({ prompt: params.prompt || "hello" });
+      }
+      const res = await fetch(url, init);
+      const text = await res.text();
+      let pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch { /* keep */ }
+      setLiveStatus(res.status);
+      setLiveMs(Math.round(performance.now() - t0));
+      setLiveBody(pretty);
+      setResponseSent(true);
+    } catch (e: any) {
+      setLiveStatus(0);
+      setLiveMs(Math.round(performance.now() - t0));
+      setLiveBody(String(e?.message || e));
+      setResponseSent(true);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const CURL_TEXT = `curl --request GET \\
-  --url 'https://api.stewards.edu.hk/api/v1/students?class_id=${params.class_id || "3A"}&page=${params.page || "1"}' \\
+  const fullUrl = `${base}${resolvePath()}`;
+  const CURL_TEXT = `curl --request ${activeEp.method} \\
+  --url '${fullUrl}' \\
   --header 'Accept: application/json' \\
-  --header 'Authorization: Bearer YOUR_TOKEN_HERE'`;
+  --header 'Authorization: Bearer ${apiToken || "YOUR_TOKEN_HERE"}'${
+    activeEp.method !== "GET"
+      ? ` \\\n  --header 'Content-Type: application/json' \\\n  --data '${activeEp.id === "ai-query" ? JSON.stringify({ prompt: params.prompt }) : JSON.stringify({ student_id: Number(params.student_id) || 1, achievement_title: "External API Draft Test" })}'`
+      : ""
+  }`;
 
-  const RESPONSE_JSON = `{
-  "status": "success",
-  "data": [
-    {
-      "student_id": "2024001",
-      "name_zh": "陳大文",
-      "name_en": "Chan Tai Man",
-      "class": "3A",
-      "class_no": 1
-    },
-    {
-      "student_id": "2024002",
-      "name_zh": "李美玲",
-      "name_en": "Lee Mei Ling",
-      "class": "3A",
-      "class_no": 2
-    }
-  ],
-  "meta": {
-    "current_page": 1,
-    "per_page": 20,
-    "total": 32
-  }
+  const RESPONSE_JSON = responseSent && liveBody
+    ? liveBody
+    : `{
+  "ok": true,
+  "hint": "Click Send to call ${activeEp.path} on ${origin || "this host"}"
 }`;
 
   const TABS = [
-    { id: "overview", zh: "API 總覽",    icon: <Layers size={13} />    },
-    { id: "webhooks", zh: "Webhook 管理", icon: <Webhook size={13} />   },
     { id: "docs",     zh: "接口文檔",     icon: <BookOpen size={13} />  },
+    { id: "overview", zh: "前往自動化",   icon: <Layers size={13} />    },
+    { id: "webhooks", zh: "Webhook 管理", icon: <Webhook size={13} />   },
     { id: "tokens",   zh: "存取權杖",     icon: <KeyRound size={13} />  },
   ];
 
@@ -316,7 +389,10 @@ export const Screen_APIDocs: React.FC = () => {
           {TABS.map(tab => {
             const active = activeTab === tab.id;
             return (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "10px 14px" : "9px 16px", border: "none", borderBottom: active ? `2px solid ${C.accent}` : "2px solid transparent", background: "transparent", fontSize: isMobile ? 12 : 13, fontWeight: active ? 700 : 500, color: active ? C.accent : C.textSecondary, cursor: "pointer", fontFamily: F, transition: "all 0.12s", marginBottom: -1, whiteSpace: "nowrap" as const }}>
+              <button key={tab.id} onClick={() => {
+                if (tab.id === "docs") setActiveTab("docs");
+                else window.location.href = automationUrl;
+              }} style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "10px 14px" : "9px 16px", border: "none", borderBottom: active ? `2px solid ${C.accent}` : "2px solid transparent", background: "transparent", fontSize: isMobile ? 12 : 13, fontWeight: active ? 700 : 500, color: active ? C.accent : C.textSecondary, cursor: "pointer", fontFamily: F, transition: "all 0.12s", marginBottom: -1, whiteSpace: "nowrap" as const }}>
                 {tab.icon}
                 {tab.zh}
               </button>
@@ -326,7 +402,7 @@ export const Screen_APIDocs: React.FC = () => {
           {!isMobile && (
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, paddingBottom: 8 }}>
               <Globe size={11} color={C.textMuted} />
-              <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted }}>https://api.stewards.edu.hk</span>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted }}>{origin || base}</span>
               <span style={{ padding: "1px 7px", borderRadius: R.full, background: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 9.5, fontWeight: 700, color: "#15803D", fontFamily: MONO }}>v1</span>
             </div>
           )}
@@ -782,12 +858,34 @@ export const Screen_APIDocs: React.FC = () => {
               <Code2 size={11} color={DK.muted} />Parameters
             </div>
 
-            {/* Param inputs */}
+            {/* Bearer token + params */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+              <div>
+                <label style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 5, fontSize: 11, fontFamily: MONO }}>
+                  <span style={{ fontWeight: 700, color: "#FBBF24" }}>Authorization Bearer</span>
+                  <span style={{ fontSize: 10, color: DK.muted }}>sts_live_…</span>
+                </label>
+                <input
+                  value={apiToken}
+                  onChange={(e) => setApiToken(e.target.value)}
+                  placeholder="貼上個人 API Token"
+                  style={{
+                    width: "100%", boxSizing: "border-box" as const,
+                    height: 34, padding: "0 10px",
+                    background: DK.input,
+                    border: `1px solid ${DK.inputBorder}`,
+                    borderRadius: R.md,
+                    fontFamily: MONO, fontSize: 12,
+                    color: DK.text, outline: "none",
+                  }}
+                />
+              </div>
               {[
-                { key: "class_id", label: "class_id", placeholder: 'e.g., "3A"',  hint: "string | null" },
-                { key: "keyword",  label: "keyword",  placeholder: 'e.g., "Chan"', hint: "string | null" },
-                { key: "page",     label: "page",     placeholder: "1",             hint: "integer | null" },
+                { key: "class", label: "class", placeholder: 'e.g., "1A"', hint: "students filter" },
+                { key: "limit", label: "limit", placeholder: "20", hint: "1–100" },
+                { key: "page", label: "page", placeholder: "1", hint: "integer" },
+                { key: "student_id", label: "student_id", placeholder: "1", hint: "for /acorn & draft" },
+                { key: "prompt", label: "prompt", placeholder: "AI query…", hint: "POST /ai/query" },
               ].map(field => (
                 <div key={field.key}>
                   <label style={{
@@ -820,7 +918,7 @@ export const Screen_APIDocs: React.FC = () => {
 
             {/* Send button */}
             <button
-              onClick={handleSend}
+              onClick={() => void handleSend()}
               disabled={sending}
               style={{
                 width: "100%", padding: "10px 0",
@@ -927,9 +1025,12 @@ export const Screen_APIDocs: React.FC = () => {
                 </span>
                 <span style={{
                   padding: "1px 7px", borderRadius: R.full,
-                  background: "rgba(74,222,128,0.14)", border: "1px solid rgba(74,222,128,0.25)",
-                  fontSize: 10.5, fontWeight: 800, color: "#4ADE80", fontFamily: MONO,
-                }}>200 OK</span>
+                  background: liveStatus >= 200 && liveStatus < 300 ? "rgba(74,222,128,0.14)" : "rgba(248,113,113,0.14)",
+                  border: `1px solid ${liveStatus >= 200 && liveStatus < 300 ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,
+                  fontSize: 10.5, fontWeight: 800,
+                  color: liveStatus >= 200 && liveStatus < 300 ? "#4ADE80" : "#F87171",
+                  fontFamily: MONO,
+                }}>{responseSent ? `${liveStatus || "ERR"}` : "—"}</span>
                 {responseSent && (
                   <span style={{
                     display: "flex", alignItems: "center", gap: 4,
@@ -950,6 +1051,7 @@ export const Screen_APIDocs: React.FC = () => {
               padding: "16px",
               overflowX: "auto",
               transition: "border-color 0.3s",
+              maxHeight: 420,
             }}>
               <JsonBlock>{RESPONSE_JSON}</JsonBlock>
             </div>
@@ -961,12 +1063,12 @@ export const Screen_APIDocs: React.FC = () => {
                 background: "rgba(74,222,128,0.06)",
                 border: "1px solid rgba(74,222,128,0.2)",
                 borderRadius: R.md,
-                display: "flex", alignItems: "center", gap: 12,
+                display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" as const,
               }}>
                 {[
-                  { label: "Status",   val: "200 OK",  color: "#4ADE80"  },
-                  { label: "Time",     val: "142ms",   color: DK.subtle  },
-                  { label: "Size",     val: "1.2 kB",  color: DK.subtle  },
+                  { label: "Status", val: String(liveStatus || "ERR"), color: liveStatus >= 200 && liveStatus < 300 ? "#4ADE80" : "#F87171" },
+                  { label: "Time", val: `${liveMs}ms`, color: DK.subtle },
+                  { label: "Size", val: `${(liveBody.length / 1024).toFixed(1)} kB`, color: DK.subtle },
                 ].map(m => (
                   <div key={m.label} style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
                     <span style={{ fontSize: 10, color: DK.muted, fontFamily: F }}>{m.label}</span>

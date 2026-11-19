@@ -161,6 +161,22 @@ const CAT_FORM_OPTIONS: { value: ClubCategory; zh: string; en: string }[] = [
   { value: "culture", zh: "文化", en: "Culture" },
 ];
 
+/** Selected-state palettes for category toggle badges (BASIC INFO multi-select). */
+const CAT_BADGE_ACTIVE: Record<string, { bg: string; border: string; text: string }> = {
+  arts:     { bg: "#F3E8FF", border: "#9333EA", text: "#6B21A8" },
+  tech:     { bg: "#EEF2FF", border: "#4F46E5", text: "#3730A3" },
+  sports:   { bg: "#ECFDF5", border: "#059669", text: "#065F46" },
+  service:  { bg: "#FFFBEB", border: "#D97706", text: "#92400E" },
+  academic: { bg: "#E0F2FE", border: "#0284C7", text: "#075985" },
+  culture:  { bg: "#FDF4FF", border: "#C026D3", text: "#86198F" },
+};
+const CAT_BADGE_ACTIVE_DEFAULT = { bg: "#FFF7ED", border: "#EA580C", text: "#9A3412" };
+const CAT_BADGE_IDLE = { bg: "#F3F4F6", border: "#D1D5DB", text: "#6B7280" };
+
+function categoryBadgePalette(key: string) {
+  return CAT_BADGE_ACTIVE[key] ?? CAT_BADGE_ACTIVE_DEFAULT;
+}
+
 const fieldLabel: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: ERP.colors.textSecondary };
 const fieldInput: React.CSSProperties = {
   padding: "8px 10px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`,
@@ -482,6 +498,10 @@ export const ClubRosterView: React.FC<{
     setAcornWeights(newW);
   };
 
+  const toggleCategory = (tag: string) => {
+    setCategories((prev) => (prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]));
+  };
+
   const addCategoryTag = (raw: string) => {
     const v = raw.trim();
     if (!v) return;
@@ -490,6 +510,8 @@ export const ClubRosterView: React.FC<{
     setCategories(prev => prev.includes(tag) ? prev : [...prev, tag]);
     setCategoryDraft("");
   };
+
+  const customCategories = categories.filter((c) => !CAT_FORM_OPTIONS.some((o) => o.value === c));
 
   const roleLabel = (role: ClubMember["role"]) => {
     if (role === "主席") return shortTitle(roleTitles.t4, "主席");
@@ -770,50 +792,83 @@ export const ClubRosterView: React.FC<{
                 <span style={fieldLabel}>學會名稱 (英) name_en</span>
                 <input name="name_en" value={nameEn} onChange={e => setNameEn(e.target.value)} style={fieldInput} />
               </label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, gridColumn: "1 / -1" }}>
                 <span style={fieldLabel}>類別 Categories（多選／自訂標籤）</span>
-                <select
-                  multiple
-                  value={categories}
-                  onChange={e => {
-                    const opts = Array.from(e.target.selectedOptions).map(o => o.value);
-                    setCategories(opts);
-                  }}
-                  style={{ ...fieldInput, minHeight: 110 }}
-                >
-                  {CAT_FORM_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.zh} · {o.en}</option>
-                  ))}
-                  {categories.filter(c => !CAT_FORM_OPTIONS.some(o => o.value === c)).map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-                  {categories.map(c => {
-                    const preset = CAT_FORM_OPTIONS.find(o => o.value === c);
+                <div style={{
+                  display: "flex", flexWrap: "wrap", gap: 8, padding: 12,
+                  background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB",
+                }}>
+                  {CAT_FORM_OPTIONS.map((o) => {
+                    const selected = categories.includes(o.value);
+                    const pal = selected ? categoryBadgePalette(o.value) : CAT_BADGE_IDLE;
                     return (
-                      <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, background: "#FFF7ED", border: "1px solid #FED7AA", fontSize: 11, fontWeight: 700, color: "#C2410C" }}>
-                        {preset ? `${preset.zh}` : c}
-                        <button type="button" onClick={() => setCategories(prev => prev.filter(x => x !== c))} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, color: "#C2410C", display: "flex" }}>
-                          <X size={11} />
-                        </button>
-                </span>
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => toggleCategory(o.value)}
+                        onMouseEnter={(e) => {
+                          if (!selected) e.currentTarget.style.borderColor = "#9CA3AF";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!selected) e.currentTarget.style.borderColor = CAT_BADGE_IDLE.border;
+                        }}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5,
+                          padding: "6px 12px", borderRadius: 999, cursor: "pointer",
+                          background: pal.bg, border: `1px solid ${pal.border}`, color: pal.text,
+                          fontSize: 12, fontWeight: selected ? 600 : 500, fontFamily: F,
+                          boxShadow: selected ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                          transition: "border-color 0.12s, background 0.12s, box-shadow 0.12s",
+                        }}
+                      >
+                        {selected ? "✓ " : ""}{o.zh} · {o.en}
+                      </button>
                     );
                   })}
-              </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                  {customCategories.map((c) => {
+                    const pal = categoryBadgePalette(c);
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => toggleCategory(c)}
+                        title="移除自訂標籤"
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5,
+                          padding: "6px 10px 6px 12px", borderRadius: 999, cursor: "pointer",
+                          background: pal.bg, border: `1px solid ${pal.border}`, color: pal.text,
+                          fontSize: 12, fontWeight: 600, fontFamily: F,
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+                        }}
+                      >
+                        ✓ {c}
+                        <X size={12} style={{ opacity: 0.85 }} />
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <input
                     value={categoryDraft}
                     onChange={e => setCategoryDraft(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCategoryTag(categoryDraft); } }}
                     placeholder="輸入自訂類別後 Enter…"
-                    style={{ ...fieldInput, flex: 1 }}
+                    style={{ ...fieldInput, flex: "1 1 160px", minWidth: 0 }}
                   />
-                  <button type="button" onClick={() => addCategoryTag(categoryDraft)} style={{ padding: "8px 12px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: F }}>
+                  <button
+                    type="button"
+                    onClick={() => addCategoryTag(categoryDraft)}
+                    style={{
+                      padding: "8px 12px", borderRadius: ERP.radius.md,
+                      border: `1px solid ${ERP.colors.border}`, background: "#fff",
+                      fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: F,
+                      flex: "0 0 auto", minHeight: 38, whiteSpace: "nowrap",
+                    }}
+                  >
                     加入標籤
-              </button>
-            </div>
-          </div>
+                  </button>
+                </div>
+              </div>
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={fieldLabel}>成立年份 Established Year</span>
                 <input name="established_year" type="number" min={1900} max={2100} value={founded} onChange={e => setFounded(e.target.value)} style={fieldInput} />

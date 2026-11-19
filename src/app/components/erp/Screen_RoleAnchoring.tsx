@@ -4,6 +4,7 @@ import {
   ChevronDown, Edit3, Download, Shield, Zap, Info, Timer,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
+import { ResponsiveBulkBar, rwdKpiGrid4, useIsMobile } from "./erpResponsive";
 
 type RoleTier = "T1" | "T2" | "T3";
 type ConfirmStatus = "pending" | "confirmed" | "rejected";
@@ -120,6 +121,7 @@ export const Screen_RoleAnchoring: React.FC<{
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [bulkRole, setBulkRole] = useState<RoleTier>("T1");
+  const isMobile = useIsMobile(768);
 
   const students = payload.students || [];
 
@@ -302,7 +304,10 @@ export const Screen_RoleAnchoring: React.FC<{
   };
 
   return (
-    <div style={{ padding: "20px 24px 80px", fontFamily: ERP.font.family, color: ERP.colors.textPrimary, position: "relative" }}>
+    <div style={{
+      padding: isMobile ? "14px 14px 110px" : "20px 24px 80px",
+      fontFamily: ERP.font.family, color: ERP.colors.textPrimary, position: "relative",
+    }}>
       {(toast || error) && (
         <div style={{
           position: "fixed", top: 16, right: 16, zIndex: 100,
@@ -371,7 +376,7 @@ export const Screen_RoleAnchoring: React.FC<{
       )}
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
+      <div style={{ ...rwdKpiGrid4(isMobile), marginBottom: 16 }}>
         {[
           { label: "學生總數", value: stats.total, color: ERP.colors.accent },
           { label: "已指派崗位", value: stats.assigned, color: ERP.colors.teal },
@@ -380,10 +385,11 @@ export const Screen_RoleAnchoring: React.FC<{
         ].map((s) => (
           <div key={s.label} style={{
             background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
-            borderRadius: ERP.radius.lg, padding: "14px 16px", boxShadow: ERP.shadow.xs,
+            borderRadius: ERP.radius.lg, padding: isMobile ? "12px" : "14px 16px", boxShadow: ERP.shadow.xs,
+            minWidth: 0,
           }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 6 }}>{s.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{loading ? "…" : s.value}</div>
+            <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 800, color: s.color }}>{loading ? "…" : s.value}</div>
           </div>
         ))}
       </div>
@@ -395,7 +401,7 @@ export const Screen_RoleAnchoring: React.FC<{
         background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
         borderRadius: ERP.radius.lg,
       }}>
-        <div style={{ position: "relative", flex: "1 1 200px" }}>
+        <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "1 1 200px", width: isMobile ? "100%" : undefined }}>
           <Search size={14} color={ERP.colors.textMuted} style={{ position: "absolute", left: 10, top: 9 }} />
           <input
             value={searchQuery}
@@ -404,41 +410,128 @@ export const Screen_RoleAnchoring: React.FC<{
             style={{
               width: "100%", boxSizing: "border-box", padding: "7px 12px 7px 32px",
               border: `1px solid ${ERP.colors.borderStrong}`, borderRadius: ERP.radius.md,
-              fontSize: 12, fontFamily: ERP.font.family, outline: "none",
+              fontSize: 12, fontFamily: ERP.font.family, outline: "none", minHeight: isMobile ? 40 : undefined,
             }}
           />
         </div>
-        <div style={{ position: "relative" }}>
-          <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} style={selectStyle}>
-            <option value="all">所有班別</option>
-            {(payload.filters?.classes || []).map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          <ChevronDown size={12} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: 10, pointerEvents: "none" }} />
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr 1fr" : "auto auto",
+          gap: 10,
+          width: isMobile ? "100%" : undefined,
+          flex: isMobile ? "1 1 100%" : undefined,
+        }}>
+          <div style={{ position: "relative" }}>
+            <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} style={{ ...selectStyle, width: isMobile ? "100%" : undefined, minHeight: isMobile ? 40 : undefined }}>
+              <option value="all">所有班別</option>
+              {(payload.filters?.classes || []).map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: 10, pointerEvents: "none" }} />
+          </div>
+          <div style={{ position: "relative" }}>
+            <select
+              value={groupFilter}
+              onChange={(e) => {
+                setGroupFilter(e.target.value);
+                void reload(e.target.value);
+              }}
+              style={{ ...selectStyle, width: isMobile ? "100%" : undefined, minHeight: isMobile ? 40 : undefined }}
+            >
+              <option value="all">所有組別</option>
+              {(payload.filters?.groups || []).map((g) => (
+                <option key={g.id} value={String(g.id)}>{g.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: 10, pointerEvents: "none" }} />
+          </div>
         </div>
-        <div style={{ position: "relative" }}>
-          <select
-            value={groupFilter}
-            onChange={(e) => {
-              setGroupFilter(e.target.value);
-              void reload(e.target.value);
-            }}
-            style={selectStyle}
-          >
-            <option value="all">所有組別</option>
-            {(payload.filters?.groups || []).map((g) => (
-              <option key={g.id} value={String(g.id)}>{g.label}</option>
-            ))}
-          </select>
-          <ChevronDown size={12} color={ERP.colors.textMuted} style={{ position: "absolute", right: 10, top: 10, pointerEvents: "none" }} />
-        </div>
-        <span style={{ fontSize: 11, color: ERP.colors.textMuted, marginLeft: "auto" }}>
+        <span style={{ fontSize: 11, color: ERP.colors.textMuted, marginLeft: isMobile ? 0 : "auto", width: isMobile ? "100%" : undefined }}>
           顯示 {filtered.length} 名學生 · {academicYear}
         </span>
       </div>
 
-      {/* Table */}
+      {/* Mobile cards */}
+      {isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {loading && (
+            <div style={{ padding: 28, textAlign: "center", color: ERP.colors.textMuted, background: ERP.colors.surface, borderRadius: ERP.radius.lg }}>載入中…</div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div style={{ padding: 28, textAlign: "center", color: ERP.colors.textMuted, background: ERP.colors.surface, borderRadius: ERP.radius.lg }}>尚無分組成員。請先於分組專題建立小組。</div>
+          )}
+          {grouped.map(([gid, g]) => (
+            <div key={gid} style={{
+              background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
+              borderRadius: ERP.radius.lg, overflow: "hidden", boxShadow: ERP.shadow.xs,
+            }}>
+              <div style={{ padding: "10px 14px", background: "#F3F4F6", display: "flex", alignItems: "center", gap: 8 }}>
+                <Users size={14} color={ERP.colors.textSecondary} />
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{g.code}</span>
+                <span style={{ fontSize: 12, color: ERP.colors.textSecondary, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.title || g.name}</span>
+                <span style={{ fontSize: 11, color: ERP.colors.textMuted }}>{g.members.length}人</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {g.members.map((s) => {
+                  const rm = ROLE_META[s.role_tier] || ROLE_META.T1;
+                  const cm = CONFIRM_META[s.role_confirm_status] || CONFIRM_META.pending;
+                  const sm = SUB_META[s.submission_status] || SUB_META.not_started;
+                  const isConflict = s.role_tier === "T3" && conflictGroups.includes(s.group_id);
+                  return (
+                    <div key={s.id} style={{ padding: "12px 14px", borderTop: `1px solid ${ERP.colors.divider}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(s.id)}
+                          onChange={() => setSelected((prev) => {
+                            const n = new Set(prev);
+                            n.has(s.id) ? n.delete(s.id) : n.add(s.id);
+                            return n;
+                          })}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14 }}>{s.name_zh_hk || s.name_en || "—"}</div>
+                          <div style={{ fontSize: 11, color: ERP.colors.textMuted, fontFamily: ERP.font.mono }}>{s.student_id}</div>
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "#EFF6FF", color: "#1D4ED8" }}>{s.class_name || "—"}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "#F1F5F9", color: "#475569" }}>{g.code}</span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: cm.bg, color: cm.color }}>{cm.label}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: sm.bg, color: sm.color }}>{sm.label}</span>
+                        {isConflict && <span style={{ fontSize: 10, fontWeight: 700, color: ERP.colors.error }}>⚠ 重複組長</span>}
+                      </div>
+                      <select
+                        value={s.role_tier}
+                        disabled={busy}
+                        onChange={(e) => void patchMember(s, { role_tier: e.target.value as RoleTier, role_confirm_status: "pending" })}
+                        style={{
+                          ...selectStyle,
+                          width: "100%", minHeight: 40, color: rm.color, background: rm.bg,
+                          borderColor: isConflict ? "#FCA5A5" : ERP.colors.borderStrong, fontWeight: 800,
+                        }}
+                      >
+                        {(["T3", "T2", "T1"] as RoleTier[]).map((t) => (
+                          <option key={t} value={t}>{ROLE_META[t].label}</option>
+                        ))}
+                      </select>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <button type="button" onClick={() => setDrawerId(s.id)} style={{ ...iconBtn, flex: 1, minHeight: 38, justifyContent: "center" }}>
+                          <Edit3 size={13} /> 詳情
+                        </button>
+                        <a href={`/students/details/${encodeURIComponent(s.student_id)}`} style={{ ...iconBtn, flex: 1, minHeight: 38, justifyContent: "center", textDecoration: "none", color: ERP.colors.accent }}>
+                          <Shield size={13} /> 檔案
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
       <div style={{
         background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
         borderRadius: ERP.radius.lg, overflow: "hidden", boxShadow: ERP.shadow.xs,
@@ -607,36 +700,43 @@ export const Screen_RoleAnchoring: React.FC<{
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Batch bar */}
       {selected.size > 0 && (
-        <div style={{
+        <ResponsiveBulkBar isMobile={isMobile} style={isMobile ? undefined : {
           position: "fixed", left: "50%", bottom: 24, transform: "translateX(-50%)",
           zIndex: 90, display: "flex", alignItems: "center", gap: 10,
-          padding: "10px 14px", borderRadius: 999,
+          padding: "10px 14px", borderRadius: 999, width: "auto", maxWidth: "none",
           background: "#0F172A", color: "#fff", boxShadow: ERP.shadow.lg,
+          border: "none", flexWrap: "nowrap",
         }}>
-          <span style={{ fontSize: 12, fontWeight: 700, padding: "0 6px" }}>已選取 {selected.size} 項</span>
+          <span style={{ fontSize: 12, fontWeight: 700, padding: "0 6px", color: "#fff", width: isMobile ? "100%" : undefined }}>
+            已選取 {selected.size} 項
+          </span>
           <select
             value={bulkRole}
             onChange={(e) => setBulkRole(e.target.value as RoleTier)}
-            style={{ ...selectStyle, background: "#1E293B", color: "#fff", borderColor: "#334155" }}
+            style={{
+              ...selectStyle, background: "#1E293B", color: "#fff", borderColor: "#334155",
+              flex: isMobile ? "1 1 100%" : undefined, minHeight: isMobile ? 38 : undefined,
+            }}
           >
             {(["T3", "T2", "T1"] as RoleTier[]).map((t) => (
               <option key={t} value={t}>{ROLE_META[t].label}</option>
             ))}
           </select>
-          <button type="button" disabled={busy} onClick={() => void runBulkRole()} style={batchBtn}>
+          <button type="button" disabled={busy} onClick={() => void runBulkRole()} style={{ ...batchBtn, minHeight: isMobile ? 38 : undefined, flex: isMobile ? "1 1 auto" : undefined }}>
             <Zap size={12} /> 批量指派崗位
           </button>
-          <button type="button" disabled={busy} onClick={() => void runBulkNotify()} style={batchBtn}>
-            <Bell size={12} /> 發送確認通知
+          <button type="button" disabled={busy} onClick={() => void runBulkNotify()} style={{ ...batchBtn, minHeight: isMobile ? 38 : undefined, flex: isMobile ? "1 1 auto" : undefined }}>
+            <Bell size={12} /> {isMobile ? "發送通知" : "發送確認通知"}
           </button>
-          <button type="button" onClick={runExport} style={batchBtn}>
-            <Download size={12} /> 匯出名單
+          <button type="button" onClick={runExport} style={{ ...batchBtn, minHeight: isMobile ? 38 : undefined }}>
+            <Download size={12} /> {isMobile ? "匯出" : "匯出名單"}
           </button>
-          <button type="button" onClick={() => setSelected(new Set())} style={{ ...batchBtn, opacity: 0.7 }}>清除</button>
-        </div>
+          <button type="button" onClick={() => setSelected(new Set())} style={{ ...batchBtn, opacity: 0.7, minHeight: isMobile ? 38 : undefined }}>清除</button>
+        </ResponsiveBulkBar>
       )}
 
       {/* Drawer */}
@@ -646,7 +746,8 @@ export const Screen_RoleAnchoring: React.FC<{
             position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 110,
           }} />
           <aside style={{
-            position: "fixed", top: 0, right: 0, bottom: 0, width: 400, maxWidth: "100vw",
+            position: "fixed", top: 0, right: 0, bottom: 0,
+            width: isMobile ? "100vw" : 400, maxWidth: "100vw",
             background: ERP.colors.surface, zIndex: 120, boxShadow: ERP.shadow.lg,
             display: "flex", flexDirection: "column",
           }}>

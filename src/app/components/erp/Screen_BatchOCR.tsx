@@ -7,7 +7,7 @@ import {
   Sparkles, CheckCircle2, Star, User, Search, Trash2,
   ChevronRight, ChevronLeft, Save, ArrowRight,
   AlertCircle, FileCheck, Layers, Upload, Link2,
-  ChevronDown, Plus, X, ScanLine, Clock, RefreshCw,
+  ChevronDown, Plus, X, ScanLine, Clock, RefreshCw, Eye,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 
@@ -954,6 +954,8 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
   const [discarded,    setDiscarded]    = useState<Set<number>>(new Set());
   const [submitDone,   setSubmitDone]   = useState(false);
   const [isMobile,     setIsMobile]     = useState(false);
+  const [mobilePane,   setMobilePane]   = useState<"queue" | "form">("queue");
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const eventChoices = activities.length
     ? ["（未關聯活動）— No linked event", ...activities.map(a => a.label)]
     : MOCK_EVENTS;
@@ -2885,6 +2887,37 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
         </div>
       )}
 
+      {/* ── Mobile segmented: Preview/Queue | Form ── */}
+      {isMobile && (
+        <div style={{
+          position: "sticky", top: 0, zIndex: 40, flexShrink: 0,
+          display: "flex", background: C.surface,
+          borderBottom: `1px solid ${C.border}`,
+          boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+        }}>
+          {([
+            { id: "queue" as const, label: `📄 證書與縮圖 (${totalCerts})` },
+            { id: "form" as const, label: `✏️ 審核表單 (當前 #${Math.min(activeIdx + 1, Math.max(totalCerts, 1))})` },
+          ]).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setMobilePane(tab.id)}
+              style={{
+                flex: 1, padding: "11px 8px",
+                background: mobilePane === tab.id ? C.accentPale : "transparent",
+                border: "none",
+                borderBottom: `2px solid ${mobilePane === tab.id ? C.accent : "transparent"}`,
+                cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: F,
+                color: mobilePane === tab.id ? C.accent : C.textMuted,
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Two-panel body ── */}
       <div style={{
         flex: isMobile ? "none" : 1,
@@ -2898,7 +2931,8 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
           flex: isMobile ? "none" : "0 0 42%",
           minWidth: isMobile ? 0 : 360,
           maxWidth: isMobile ? "none" : 520,
-          display: "flex", flexDirection: "column",
+          display: isMobile && mobilePane !== "queue" ? "none" : "flex",
+          flexDirection: "column",
           borderRight: isMobile ? "none" : `1px solid ${C.border}`,
           borderBottom: isMobile ? `1px solid ${C.border}` : "none",
           background: C.surface,
@@ -3061,6 +3095,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
                 onClick={() => {
                   selectCert(i);
                   ensureOcrForCert(dynCertsRef.current[i] ?? c, true);
+                  if (isMobile) setMobilePane("form");
                 }}
               />
             ))}
@@ -3218,11 +3253,70 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
         <div style={{
           flex: isMobile ? "none" : "1 1 0",
           minWidth: isMobile ? 0 : 420,
-          display: "flex", flexDirection: "column",
+          display: isMobile && mobilePane !== "form" ? "none" : "flex",
+          flexDirection: "column",
           background: C.pageBg,
           // Allow student autocomplete to float over Extracted Data below
           overflow: (isMobile || activeStudentUi.hits.length > 0) ? "visible" : "hidden",
         }}>
+          {/* Mobile form: compact thumbnail strip + collapsible preview */}
+          {isMobile && (
+            <>
+              <div style={{
+                padding: "8px 12px",
+                borderBottom: `1px solid ${C.divider}`,
+                display: "flex", gap: 8,
+                overflowX: "auto",
+                flexShrink: 0,
+                background: C.surface,
+                WebkitOverflowScrolling: "touch",
+              }}>
+                {dynCerts.map((c, i) => (
+                  <Thumbnail
+                    key={`m-form-${committedDbId(c) || c.id}`}
+                    cert={c} index={i}
+                    active={i === activeIdx}
+                    saved={saved.has(i)}
+                    discarded={discarded.has(i)}
+                    scanning={scanningIds.has(c.id) || scanningIds.has(Number(c.dbId || 0)) || c.ocrStatus === "scanning"}
+                    onClick={() => {
+                      selectCert(i);
+                      ensureOcrForCert(dynCertsRef.current[i] ?? c, true);
+                    }}
+                  />
+                ))}
+                {dynCerts.length === 0 && (
+                  <div style={{ fontSize: 12, color: C.textMuted, padding: "12px 4px" }}>尚無證書 — 請先於「證書與縮圖」上傳</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobilePreviewOpen((v) => !v)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  width: "100%", padding: "8px 12px", flexShrink: 0,
+                  border: "none", borderBottom: `1px solid ${C.border}`,
+                  background: mobilePreviewOpen ? C.accentPale : C.surface,
+                  color: C.accent, fontSize: 12, fontWeight: 700, fontFamily: F, cursor: "pointer",
+                }}
+              >
+                <Eye size={13} />
+                {mobilePreviewOpen ? "收合證書原圖預覽" : "展開證書原圖預覽"}
+              </button>
+              {mobilePreviewOpen && cert && (
+                <div style={{
+                  padding: "10px 12px",
+                  borderBottom: `1px solid ${C.border}`,
+                  background: C.surface,
+                  flexShrink: 0,
+                  maxHeight: "42vh",
+                  overflow: "auto",
+                }}>
+                  <CertPreview cert={cert} />
+                </div>
+              )}
+            </>
+          )}
           {/* Right header */}
           <div style={{
             padding: isMobile ? "10px 16px" : "12px 24px",
@@ -3922,6 +4016,12 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
             alignItems: isMobile ? "stretch" : "center",
             gap: isMobile ? 10 : 16,
             boxShadow: "0 -2px 10px rgba(0,0,0,0.07)",
+            ...(isMobile ? {
+              position: "sticky" as const,
+              bottom: 0,
+              zIndex: 30,
+              paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+            } : {}),
           }}>
 
             {/* ── Progress section ── */}

@@ -806,20 +806,54 @@ export const Screen_TalentFilter: React.FC<ScreenTalentFilterProps> = ({
           STICKY FOOTER
       ══════════════════════════════════════════════════════════════════ */}
       {selectedIds.size > 0 && (
-        <div style={{ position: "sticky", bottom: 0, background: T.text1, borderTop: `1px solid #1E293B`, padding: `10px ${isMobile ? "16px" : "24px"}`, display: "flex", alignItems: "center", gap: 12, zIndex: 50, flexShrink: 0, boxShadow: "0 -4px 20px rgba(15,23,42,0.25)" }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.blue, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Check size={14} color="#fff" />
+        <div style={{
+          position: "sticky", bottom: 0, background: T.text1, borderTop: `1px solid #1E293B`,
+          padding: isMobile ? "10px 12px max(10px, env(safe-area-inset-bottom))" : "10px 24px",
+          display: "flex", alignItems: "center", gap: isMobile ? 8 : 12,
+          zIndex: 50, flexShrink: 0, boxShadow: "0 -4px 20px rgba(15,23,42,0.25)",
+          flexWrap: isMobile ? "wrap" : "nowrap",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: isMobile ? "1 1 auto" : undefined, minWidth: 0 }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.blue, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Check size={14} color="#fff" />
+            </div>
+            <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>
+              已選取 <strong style={{ color: "#60A5FA" }}>{selectedIds.size}</strong> 位學生
+            </span>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>已選取 <strong style={{ color: "#60A5FA" }}>{selectedIds.size}</strong> 位學生</span>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 12, color: "#94A3B8", background: "none", border: "none", cursor: "pointer", fontFamily: F }}>取消選取</button>
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: T.emerald, border: "none", borderRadius: T.radius, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: F, boxShadow: "0 2px 8px rgba(5,150,105,0.4)" }}
-          >
-            <FileSpreadsheet size={14} /> ⬇️ 匯出已選 {selectedIds.size} 人
-          </button>
+          {!isMobile && <div style={{ flex: 1 }} />}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            width: isMobile ? "100%" : undefined,
+            flex: isMobile ? "1 1 100%" : undefined,
+          }}>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              style={{
+                fontSize: 12, color: "#94A3B8", background: "none", border: "none",
+                cursor: "pointer", fontFamily: F, minHeight: isMobile ? 38 : undefined,
+                padding: isMobile ? "0 8px" : undefined, flexShrink: 0,
+              }}
+            >
+              取消選取
+            </button>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                padding: isMobile ? "8px 12px" : "8px 16px",
+                background: T.emerald, border: "none", borderRadius: T.radius,
+                color: "#fff", fontSize: isMobile ? 12 : 12.5, fontWeight: 700,
+                cursor: "pointer", fontFamily: F, boxShadow: "0 2px 8px rgba(5,150,105,0.4)",
+                flex: isMobile ? 1 : undefined, minHeight: isMobile ? 38 : undefined,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <FileSpreadsheet size={14} /> {isMobile ? `⬇️ 匯出 ${selectedIds.size} 人` : `⬇️ 匯出已選 ${selectedIds.size} 人`}
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import {
   X, Zap, CheckCircle2, Clock, ChevronDown, RefreshCw,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
+import { ResponsiveBulkBar, rwdKpiGrid4, useIsMobile } from "./erpResponsive";
 
 type RoleStatus = "confirmed" | "pending" | "rejected";
 
@@ -110,6 +111,7 @@ export const Screen_ExemplarLibrary: React.FC<{
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const isMobile = useIsMobile(768);
 
   const events = payload.events || [];
   const kpis = payload.kpis || {
@@ -219,13 +221,17 @@ export const Screen_ExemplarLibrary: React.FC<{
   };
 
   return (
-    <div style={{ padding: "20px 24px 90px", fontFamily: ERP.font.family, color: ERP.colors.textPrimary, background: ERP.colors.pageBg, minHeight: "100%" }}>
+    <div style={{
+      padding: isMobile ? "14px 14px 110px" : "20px 24px 90px",
+      fontFamily: ERP.font.family, color: ERP.colors.textPrimary,
+      background: ERP.colors.pageBg, minHeight: "100%",
+    }}>
       {toast && (
         <div style={{
           position: "fixed", top: 16, right: 16, zIndex: 200,
           padding: "10px 14px", borderRadius: ERP.radius.md, fontSize: 13, fontWeight: 700,
           background: ERP.colors.successLight, color: ERP.colors.success, border: "1px solid #A7F3D0",
-          boxShadow: ERP.shadow.md,
+          boxShadow: ERP.shadow.md, maxWidth: "calc(100vw - 32px)",
         }}>{toast}</div>
       )}
 
@@ -237,31 +243,41 @@ export const Screen_ExemplarLibrary: React.FC<{
               fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4,
               background: ERP.colors.accentPale, color: ERP.colors.accent,
             }}>1.D.7</span>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Exemplar & Portfolio Library</h1>
+            <h1 style={{ margin: 0, fontSize: isMobile ? 17 : 20, fontWeight: 800 }}>Exemplar & Portfolio Library</h1>
           </div>
-          <p style={{ margin: 0, fontSize: 13, color: ERP.colors.textSecondary, maxWidth: 780 }}>
-            模組六：優秀成果課件與 ACORN 成長事件庫 · 追蹤每位學生的關鍵表現與 ACORN 指數變動紀錄（點擊任一列檢視算式與詳情）
-          </p>
+          {!isMobile && (
+            <p style={{ margin: 0, fontSize: 13, color: ERP.colors.textSecondary, maxWidth: 780 }}>
+              模組六：優秀成果課件與 ACORN 成長事件庫 · 追蹤每位學生的關鍵表現與 ACORN 指數變動紀錄（點擊任一列檢視算式與詳情）
+            </p>
+          )}
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-          <button type="button" disabled={busy} onClick={() => void runSync()} style={hdrBtn}>
-            <RefreshCw size={14} /> Sync ACORN Events
-          </button>
-          <button type="button" style={hdrBtn} onClick={() => setToast("eClass 匯入即將開放")}>
-            <Upload size={14} /> Import from eClass
+        <div style={{
+          display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap",
+          width: isMobile ? "100%" : undefined,
+        }}>
+          {!isMobile && (
+            <button type="button" disabled={busy} onClick={() => void runSync()} style={hdrBtn}>
+              <RefreshCw size={14} /> Sync ACORN Events
+            </button>
+          )}
+          <button type="button" style={{ ...hdrBtn, flex: isMobile ? "1 1 auto" : undefined, minHeight: isMobile ? 38 : undefined }} onClick={() => setToast("eClass 匯入即將開放")}>
+            <Upload size={14} /> {isMobile ? "⬆️ Import from eClass" : "Import from eClass"}
           </button>
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            style={{ ...hdrBtn, background: ERP.colors.accent, color: "#fff", borderColor: ERP.colors.accent }}
+            style={{
+              ...hdrBtn, background: ERP.colors.accent, color: "#fff", borderColor: ERP.colors.accent,
+              flex: isMobile ? "1 1 auto" : undefined, minHeight: isMobile ? 38 : undefined,
+            }}
           >
-            <Sparkles size={14} /> Generate New Portfolio
+            <Sparkles size={14} /> {isMobile ? "✨ Generate New Portfolio" : "Generate New Portfolio"}
           </button>
         </div>
       </div>
 
       {/* KPIs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12, marginBottom: 16 }}>
+      <div style={{ ...rwdKpiGrid4(isMobile), marginBottom: 16 }}>
         {[
           { label: "Total ACORN Events / Portfolios", value: kpis.total_events, color: ERP.colors.accent, bg: ERP.colors.accentPale },
           { label: "Avg Quality Score", value: kpis.avg_quality_score.toFixed(1), color: "#B45309", bg: "#FFFBEB" },
@@ -270,13 +286,17 @@ export const Screen_ExemplarLibrary: React.FC<{
         ].map((k) => (
           <div key={k.label} style={{
             background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
-            borderRadius: ERP.radius.lg, padding: "14px 16px", boxShadow: ERP.shadow.xs,
+            borderRadius: ERP.radius.lg, padding: isMobile ? "12px" : "14px 16px", boxShadow: ERP.shadow.xs,
+            minWidth: 0,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 6 }}>{k.label}</div>
+            <div style={{
+              fontSize: isMobile ? 10 : 11, fontWeight: 700, color: ERP.colors.textMuted, marginBottom: 6,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isMobile ? "nowrap" : undefined,
+            }}>{k.label}</div>
             <div style={{
               display: "inline-flex", alignItems: "center", justifyContent: "center",
               minWidth: 48, padding: "4px 10px", borderRadius: 8, background: k.bg,
-              fontSize: 22, fontWeight: 800, color: k.color,
+              fontSize: isMobile ? 18 : 22, fontWeight: 800, color: k.color,
             }}>{loading ? "…" : k.value}</div>
           </div>
         ))}
@@ -288,7 +308,7 @@ export const Screen_ExemplarLibrary: React.FC<{
         padding: "12px 14px", background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
         borderRadius: ERP.radius.lg,
       }}>
-        <div style={{ position: "relative", flex: "1 1 260px" }}>
+        <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "1 1 260px", width: isMobile ? "100%" : undefined }}>
           <Search size={14} color={ERP.colors.textMuted} style={{ position: "absolute", left: 10, top: 10 }} />
           <input
             value={q}
@@ -297,30 +317,55 @@ export const Screen_ExemplarLibrary: React.FC<{
             style={{
               width: "100%", boxSizing: "border-box", padding: "8px 12px 8px 32px",
               border: `1px solid ${ERP.colors.borderStrong}`, borderRadius: ERP.radius.md,
-              fontSize: 12, fontFamily: ERP.font.family, outline: "none",
+              fontSize: 12, fontFamily: ERP.font.family, outline: "none", minHeight: isMobile ? 40 : undefined,
             }}
           />
         </div>
-        <FilterSelect value={sourceType} onChange={setSourceType} style={selectStyle} options={[
-          { value: "all", label: "All Event Types（所有事件類型）" },
-          { value: "certificate", label: "證書獲獎" },
-          { value: "pbl_project", label: "PBL 專題" },
-          { value: "assessment", label: "學科優異成績" },
-          { value: "activity", label: "活動參與" },
-        ]} />
-        <FilterSelect value={subject} onChange={setSubject} style={selectStyle} options={[
-          { value: "all", label: "All Subjects（所有科目/領域）" },
-          ...(payload.filters?.subjects || []).map((s) => ({ value: s, label: s })),
-        ]} />
-        <FilterSelect value={formLevel} onChange={setFormLevel} style={selectStyle} options={[
-          { value: "all", label: "All Levels（所有級別）" },
-          ...(payload.filters?.forms || []).map((s) => ({ value: s, label: s })),
-        ]} />
-        <FilterSelect value={sort} onChange={setSort} style={selectStyle} options={[
-          { value: "latest_date", label: "Sort: Latest Date" },
-          { value: "highest_score", label: "Sort: Highest Score" },
-          { value: "highest_acorn_delta", label: "Sort: Highest ACORN Impact" },
-        ]} />
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, auto)",
+          gap: 10,
+          width: isMobile ? "100%" : undefined,
+          flex: isMobile ? "1 1 100%" : undefined,
+        }}>
+          <FilterSelect value={sourceType} onChange={setSourceType} style={{ ...selectStyle, width: isMobile ? "100%" : undefined, minHeight: isMobile ? 40 : undefined }} options={[
+            { value: "all", label: isMobile ? "所有事件類型" : "All Event Types（所有事件類型）" },
+            { value: "certificate", label: "證書獲獎" },
+            { value: "pbl_project", label: "PBL 專題" },
+            { value: "assessment", label: "學科優異成績" },
+            { value: "activity", label: "活動參與" },
+          ]} />
+          <FilterSelect value={subject} onChange={setSubject} style={{ ...selectStyle, width: isMobile ? "100%" : undefined, minHeight: isMobile ? 40 : undefined }} options={[
+            { value: "all", label: isMobile ? "所有科目" : "All Subjects（所有科目/領域）" },
+            ...(payload.filters?.subjects || []).map((s) => ({ value: s, label: s })),
+          ]} />
+          {!isMobile && (
+            <>
+              <FilterSelect value={formLevel} onChange={setFormLevel} style={selectStyle} options={[
+                { value: "all", label: "All Levels（所有級別）" },
+                ...(payload.filters?.forms || []).map((s) => ({ value: s, label: s })),
+              ]} />
+              <FilterSelect value={sort} onChange={setSort} style={selectStyle} options={[
+                { value: "latest_date", label: "Sort: Latest Date" },
+                { value: "highest_score", label: "Sort: Highest Score" },
+                { value: "highest_acorn_delta", label: "Sort: Highest ACORN Impact" },
+              ]} />
+            </>
+          )}
+        </div>
+        {isMobile && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, width: "100%" }}>
+            <FilterSelect value={formLevel} onChange={setFormLevel} style={{ ...selectStyle, width: "100%", minHeight: 40 }} options={[
+              { value: "all", label: "所有級別" },
+              ...(payload.filters?.forms || []).map((s) => ({ value: s, label: s })),
+            ]} />
+            <FilterSelect value={sort} onChange={setSort} style={{ ...selectStyle, width: "100%", minHeight: 40 }} options={[
+              { value: "latest_date", label: "最新日期" },
+              { value: "highest_score", label: "最高分數" },
+              { value: "highest_acorn_delta", label: "最高 ACORN" },
+            ]} />
+          </div>
+        )}
       </div>
 
       {/* Select all */}
@@ -342,6 +387,88 @@ export const Screen_ExemplarLibrary: React.FC<{
         {events.map((ev) => {
           const ss = subjectStyle(ev.subject_or_category);
           const confirmed = ev.role_status === "confirmed";
+          if (isMobile) {
+            return (
+              <div
+                key={ev.id}
+                onClick={() => setDrawer(ev)}
+                style={{
+                  display: "flex", flexDirection: "column", gap: 10,
+                  background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
+                  borderRadius: ERP.radius.lg, padding: "12px 14px", cursor: "pointer",
+                  boxShadow: ERP.shadow.xs,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(ev.id)}
+                    onChange={() => setSelected((prev) => {
+                      const n = new Set(prev);
+                      n.has(ev.id) ? n.delete(ev.id) : n.add(ev.id);
+                      return n;
+                    })}
+                  />
+                  <div style={{
+                    flex: 1, minWidth: 0, borderRadius: 8, background: ss.bg, border: `1px solid ${ss.border}`,
+                    padding: "6px 8px", fontSize: 11, fontWeight: 800, color: ss.color,
+                    display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+                  }}>
+                    <span>{ev.subject_or_category || "Event"}</span>
+                    {ev.raw_score != null && <span>{Math.round(ev.raw_score)}/100</span>}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                      <Zap size={10} /> +{ev.acorn_delta.toFixed(1)}
+                    </span>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: ERP.font.mono }}>{formatDate(ev.event_date)}</div>
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: 3, marginTop: 4,
+                      fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 999,
+                      background: confirmed ? "#D1FAE5" : "#FEF3C7",
+                      color: confirmed ? "#047857" : "#B45309",
+                    }}>
+                      {confirmed ? <CheckCircle2 size={10} /> : <Clock size={10} />}
+                      {confirmed ? "Confirmed" : "Pending"}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: ERP.colors.textSecondary }}>
+                  <strong style={{ color: ERP.colors.textPrimary }}>{ev.student_name_zh || "—"}</strong>
+                  {ev.class_name ? ` · ${ev.class_name}` : ""} · #{ev.student_code || "—"}
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{ev.event_title}</div>
+                {ev.event_narrative && (
+                  <div style={{
+                    fontSize: 12, color: ERP.colors.textSecondary, lineHeight: 1.55,
+                    borderLeft: `3px solid ${ss.border}`, paddingLeft: 10,
+                  }}>{ev.event_narrative}</div>
+                )}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {Object.entries(ev.dimension_deltas || {}).map(([k, v]) => (
+                    <span key={k} style={{
+                      fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                      background: "#F8FAFC", border: `1px solid ${ERP.colors.border}`, color: ERP.colors.textSecondary,
+                    }}>{DIM_ICON[k] || "•"} {k} +{Number(v).toFixed(1)}</span>
+                  ))}
+                  {(ev.tags || []).map((t) => (
+                    <span key={t} style={{
+                      fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                      background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`,
+                    }}>{t}</span>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={() => setDrawer(ev)} style={{ ...miniBtn, minHeight: 38, justifyContent: "center" }}>
+                    <Eye size={12} /> View 檢視詳情
+                  </button>
+                  <button type="button" onClick={() => { setSelected(new Set([ev.id])); void runBulk("export_csv"); }} style={{ ...miniBtn, minHeight: 38, justifyContent: "center" }}>
+                    <Download size={12} /> Export 匯出
+                  </button>
+                </div>
+              </div>
+            );
+          }
           return (
             <div
               key={ev.id}
@@ -443,23 +570,26 @@ export const Screen_ExemplarLibrary: React.FC<{
 
       {/* Bulk bar */}
       {selected.size > 0 && (
-        <div style={{
+        <ResponsiveBulkBar isMobile={isMobile} style={isMobile ? undefined : {
           position: "fixed", left: "50%", bottom: 24, transform: "translateX(-50%)", zIndex: 120,
           display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 999,
-          background: "#0F172A", color: "#fff", boxShadow: ERP.shadow.lg,
+          width: "auto", maxWidth: "none", background: "#0F172A", color: "#fff",
+          boxShadow: ERP.shadow.lg, border: "none", flexWrap: "nowrap",
         }}>
-          <span style={{ fontSize: 12, fontWeight: 700 }}>{selected.size} items selected</span>
-          <button type="button" disabled={busy} onClick={() => void runBulk("export_csv")} style={batchBtn}>
-            <Download size={12} /> Batch Export CSV
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", width: isMobile ? "100%" : undefined }}>
+            {selected.size} items selected
+          </span>
+          <button type="button" disabled={busy} onClick={() => void runBulk("export_csv")} style={{ ...batchBtn, minHeight: isMobile ? 38 : undefined, flex: isMobile ? "1 1 auto" : undefined }}>
+            <Download size={12} /> {isMobile ? "Export CSV" : "Batch Export CSV"}
           </button>
-          <button type="button" disabled={busy} onClick={() => void runBulk("archive")} style={batchBtn}>
-            <Archive size={12} /> Archive to Library
+          <button type="button" disabled={busy} onClick={() => void runBulk("archive")} style={{ ...batchBtn, minHeight: isMobile ? 38 : undefined, flex: isMobile ? "1 1 auto" : undefined }}>
+            <Archive size={12} /> {isMobile ? "Archive" : "Archive to Library"}
           </button>
-          <button type="button" disabled={busy} onClick={() => void runBulk("share")} style={batchBtn}>
-            <Share2 size={12} /> Share Selected
+          <button type="button" disabled={busy} onClick={() => void runBulk("share")} style={{ ...batchBtn, minHeight: isMobile ? 38 : undefined }}>
+            <Share2 size={12} /> Share
           </button>
-          <button type="button" onClick={() => setSelected(new Set())} style={{ ...batchBtn, opacity: 0.7 }}>Clear</button>
-        </div>
+          <button type="button" onClick={() => setSelected(new Set())} style={{ ...batchBtn, opacity: 0.7, minHeight: isMobile ? 38 : undefined }}>Clear</button>
+        </ResponsiveBulkBar>
       )}
 
       {/* Drawer */}
@@ -467,7 +597,8 @@ export const Screen_ExemplarLibrary: React.FC<{
         <>
           <div onClick={() => setDrawer(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", zIndex: 140 }} />
           <aside style={{
-            position: "fixed", top: 0, right: 0, bottom: 0, width: 440, maxWidth: "100vw",
+            position: "fixed", top: 0, right: 0, bottom: 0,
+            width: isMobile ? "100vw" : 440, maxWidth: "100vw",
             background: ERP.colors.surface, zIndex: 150, boxShadow: ERP.shadow.lg,
             display: "flex", flexDirection: "column",
           }}>

@@ -125,15 +125,44 @@ const THINKING_STEPS = [
   "📊 正在整理數據表格與生成分析建議...",
 ];
 
-/** Client-side last-mile: never render SQL / think blocks in chat bubbles. */
+/** Client-side last-mile: never render SQL / think / tech errors in chat bubbles. */
 export function sanitizeAssistantContent(text: string): string {
   let t = text || "";
   t = t.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
-  t = t.replace(/\[SQL\s*used\][\s\S]*$/i, "");
-  t = t.replace(/\[SQL\][\s\S]*$/i, "");
-  t = t.replace(/```sql\b[\s\S]*?```/gi, "");
+  // Optional colon after [SQL used] / [SQL] (legacy: "[SQL used]: WITH…")
+  t = t.replace(/\[SQL\s*used\]\s*:?[\s\S]*$/i, "");
+  t = t.replace(/\[SQL\]\s*:?[\s\S]*$/i, "");
+  // Any fenced code blocks
+  t = t.replace(/```[\w]*\s*[\s\S]*?```/g, "");
   t = t.replace(/\bWITH\s+\w+\s+AS\s*\([\s\S]*$/i, "");
   t = t.replace(/\bSELECT\s+[\s\S]*?\s+FROM\s+\w+[\s\S]*$/i, "");
+  // Raw backend / MySQL error strings
+  t = t.replace(/SQL\s*執行失敗[：:][\s\S]*$/iu, "");
+  t = t.replace(/\bDatabaseException\b[\s\S]*$/iu, "");
+  t = t.replace(/\bUnknown\s+column\b[\s\S]*$/iu, "");
+  t = t.replace(/\bmysqli_sql_exception\b[\s\S]*$/iu, "");
+  t = t.replace(/\bSQLSTATE\[[^\]]*\][\s\S]*$/iu, "");
+  // Accidental English schema identifiers → teacher Chinese vocabulary
+  const schemaMap: Array<[RegExp, string]> = [
+    [/\bstudent_annual_records\b/gi, "學年紀錄"],
+    [/\bstudent_scores\b/gi, "學生成績"],
+    [/\bai_chat_messages\b/gi, "對話紀錄"],
+    [/\bai_chat_sessions\b/gi, "對話"],
+    [/\bai_prompt_configs\b/gi, "提示詞設定"],
+    [/\bassessments\b/gi, "評估項目"],
+    [/\bstudents\b/gi, "學生"],
+    [/\bclasses\b/gi, "班別"],
+    [/\bsubjects\b/gi, "科目"],
+    [/\braw_score\b/gi, "分數"],
+    [/\bacademic_year\b/gi, "學年"],
+    [/\bstudent_id\b/gi, "學號"],
+    [/\bINFORMATION_SCHEMA\b/gi, ""],
+    [/\bassessment_id\b/gi, "評估"],
+    [/\bmax_score\b/gi, "滿分"],
+  ];
+  for (const [re, rep] of schemaMap) {
+    t = t.replace(re, rep);
+  }
   return t.replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -893,8 +922,19 @@ export const Screen_AIDataAssistant: React.FC<ScreenAIDataAssistantProps> = (pro
           flexShrink: 0,
         }}>
           {isMobile && (
-            <button onClick={() => setShowSidebar(true)} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>
-              <MessageSquare size={14} color={T.text3} />
+            <button
+              type="button"
+              onClick={() => setShowSidebar(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                background: T.bg, border: `1px solid ${T.border}`,
+                borderRadius: 999, padding: "5px 10px", cursor: "pointer",
+                fontSize: 11, fontWeight: 700, color: T.text2, fontFamily: F,
+                whiteSpace: "nowrap", flexShrink: 0,
+              }}
+            >
+              <MessageSquare size={12} color={T.text3} />
+              💬 對話紀錄
             </button>
           )}
 

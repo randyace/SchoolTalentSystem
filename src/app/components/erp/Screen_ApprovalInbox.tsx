@@ -3,15 +3,16 @@
 // Split-pane: left list (40%) · right quick-preview (60%)
 // Scope: Certificates & external achievements only. Leave/attendance removed.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Inbox, ChevronRight, ExternalLink,
   CheckCircle, XCircle, Clock, Star, Sparkles,
   Award, FileText, ArrowUpRight,
   CheckCheck, ChevronLeft, Music, Dumbbell,
-  BookOpen, Cpu, Heart, Medal,
+  BookOpen, Cpu, Heart, Medal, GraduationCap,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
+import { Screen_StudentCertSubmit } from "./Screen_StudentCertSubmit";
 
 const F    = ERP.font.family;
 const MONO = "'JetBrains Mono','Fira Code','SF Mono',monospace";
@@ -39,18 +40,21 @@ const CATS: Record<CertCategory, CatDef> = {
 };
 
 // ── Inbox items ───────────────────────────────────────────────────────────────
-interface InboxItem {
+export interface InboxItem {
   id: string;
   cat: CertCategory;
   time: string;
   studentName: string;
   studentClass: string;
+  studentId?: number;
+  studentProfileId?: string;
   title: string;
   subtitle?: string;
   read: boolean;
   aiScore?: number;
   approved?: boolean;
   rejected?: boolean;
+  rejectReason?: string | null;
   // Detail pane extras
   organizer?: string;
   award?: string;
@@ -59,8 +63,25 @@ interface InboxItem {
   suggestedLevel?: string;
   suggestedType?: string;
   suggestedPts?: number;
+  environmentLevel?: string;
+  tierRole?: string;
   acornTags?: string[];
+  imageUrl?: string | null;
 }
+
+export type ApprovalInboxProps = {
+  items?: InboxItem[];
+  counts?: Record<string, number>;
+  progress?: { approved_count?: number; rejected_count?: number; pending_count?: number; total_count?: number };
+  listUrl?: string;
+  approveUrl?: string;
+  rejectUrl?: string;
+  submitUrl?: string;
+  mySubmissionsUrl?: string;
+  studentsSearchUrl?: string;
+  csrfName?: string;
+  csrfHash?: string;
+};
 
 const INITIAL_ITEMS: InboxItem[] = [
   {
@@ -191,6 +212,18 @@ const FILTER_CATS: Array<{ id: "all" | CertCategory; label: string; emoji: strin
 // ── Certificate thumbnail (detail pane) ───────────────────────────────────────
 const CertThumbnail: React.FC<{ item: InboxItem }> = ({ item }) => {
   const cat = CATS[item.cat];
+  if (item.imageUrl && !/placeholder\.svg$/i.test(item.imageUrl)) {
+    const isPdf = /\.pdf$/i.test(item.imageUrl);
+    return (
+      <div style={{ position: "relative", borderRadius: ERP.radius.lg, overflow: "hidden", border: `1px solid ${ERP.colors.border}`, background: "#fff" }}>
+        {isPdf ? (
+          <iframe src={item.imageUrl} title="Certificate" style={{ width: "100%", height: 280, border: 0 }} />
+        ) : (
+          <img src={item.imageUrl} alt="Certificate" style={{ width: "100%", maxHeight: 320, objectFit: "contain", display: "block" }} />
+        )}
+      </div>
+    );
+  }
   return (
     <div style={{ position: "relative", borderRadius: ERP.radius.lg, overflow: "hidden" }}>
       <div style={{
@@ -315,11 +348,17 @@ const DetailPane: React.FC<{
   item: InboxItem;
   onApprove: () => void;
   onReject: () => void;
+  onOpenUpload?: () => void;
   isMobile?: boolean;
   onBack?: () => void;
-}> = ({ item, onApprove, onReject, isMobile = false, onBack }) => {
+  busy?: boolean;
+}> = ({ item, onApprove, onReject, onOpenUpload, isMobile = false, onBack, busy = false }) => {
   const [hoverApprove, setHoverApprove] = useState(false);
   const [hoverReject,  setHoverReject]  = useState(false);
+
+  const profileHref = item.studentProfileId
+    ? `/students/profile/${encodeURIComponent(item.studentProfileId)}`
+    : (item.studentId ? `/students/profile/${item.studentId}` : "/students");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -329,7 +368,7 @@ const DetailPane: React.FC<{
         padding: isMobile ? "12px 16px" : "14px 22px",
         borderBottom: `1px solid ${ERP.colors.border}`,
         background: ERP.colors.surface,
-        display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
+        display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" as const,
       }}>
         {isMobile && onBack && (
           <button onClick={onBack} style={{
@@ -364,20 +403,38 @@ const DetailPane: React.FC<{
             </span>
           </div>
         </div>
-        {!isMobile && (
-          <button style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
-            border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md,
-            background: "transparent", fontSize: 12, fontWeight: 600,
-            color: ERP.colors.textSecondary, cursor: "pointer", fontFamily: F, transition: "all 0.12s",
-          }}
-            onMouseEnter={e => { e.currentTarget.style.background = ERP.colors.accentPale; e.currentTarget.style.color = ERP.colors.accent; e.currentTarget.style.borderColor = ERP.colors.accentLight; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = ERP.colors.textSecondary; e.currentTarget.style.borderColor = ERP.colors.border; }}
-          >
-            <ArrowUpRight size={13} />
-            完整開啟學生檔案
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+          {onOpenUpload && (
+            <button
+              type="button"
+              onClick={onOpenUpload}
+              style={{
+                display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
+                border: `1px solid ${ERP.colors.accentLight}`, borderRadius: ERP.radius.md,
+                background: ERP.colors.accentPale, fontSize: 12, fontWeight: 700,
+                color: ERP.colors.accent, cursor: "pointer", fontFamily: F,
+              }}
+            >
+              <GraduationCap size={13} />
+              {isMobile ? "模擬上載" : "🎓 + 模擬學生上載新證書"}
+            </button>
+          )}
+          {!isMobile && (
+            <a
+              href={profileHref}
+              style={{
+                display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
+                border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.md,
+                background: "transparent", fontSize: 12, fontWeight: 600,
+                color: ERP.colors.textSecondary, cursor: "pointer", fontFamily: F,
+                textDecoration: "none",
+              }}
+            >
+              <ArrowUpRight size={13} />
+              完整開啟學生檔案
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Scrollable body */}
@@ -501,9 +558,9 @@ const DetailPane: React.FC<{
         {!isMobile && (
           <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center", padding: "8px 0" }}>
             {[
-              { key: "⌘ ↵", label: "快速核准", color: ERP.colors.success },
-              { key: "⌘ ⌫", label: "退回重交", color: ERP.colors.error },
-              { key: "→",   label: "下一項",   color: ERP.colors.textMuted },
+              { key: "A / K", label: "快速核准", color: ERP.colors.success },
+              { key: "R", label: "退回重交", color: ERP.colors.error },
+              { key: "J", label: "下一項",   color: ERP.colors.textMuted },
             ].map(k => (
               <div key={k.key} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>
                 <span style={{ padding: "1px 5px", background: ERP.colors.pageBg, border: `1px solid ${ERP.colors.borderStrong}`, borderRadius: 3, fontFamily: MONO, fontSize: 9, color: k.color }}>
@@ -518,12 +575,14 @@ const DetailPane: React.FC<{
 
       {/* Sticky action bar */}
       <div style={{
-        flexShrink: 0, padding: isMobile ? "12px 16px" : "12px 22px",
+        flexShrink: 0, padding: isMobile ? "12px 16px max(12px, env(safe-area-inset-bottom))" : "12px 22px",
         borderTop: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface,
         boxShadow: "0 -2px 8px rgba(0,0,0,0.05)", display: "flex", gap: 10, alignItems: "center",
+        position: isMobile ? "sticky" : undefined, bottom: isMobile ? 0 : undefined, zIndex: isMobile ? 20 : undefined,
       }}>
         <button
           onClick={onReject}
+          disabled={busy || item.approved || item.rejected}
           onMouseEnter={() => setHoverReject(true)}
           onMouseLeave={() => setHoverReject(false)}
           style={{
@@ -532,9 +591,9 @@ const DetailPane: React.FC<{
             borderRadius: ERP.radius.md, background: hoverReject ? "#FEF2F2" : "#fff",
             fontSize: 13, fontWeight: 700,
             color: hoverReject ? ERP.colors.error : ERP.colors.textSecondary,
-            cursor: "pointer", fontFamily: F,
+            cursor: busy ? "wait" : "pointer", fontFamily: F,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-            transition: "all 0.15s",
+            transition: "all 0.15s", opacity: (busy || item.approved || item.rejected) ? 0.5 : 1,
           }}
         >
           <XCircle size={15} />
@@ -543,16 +602,18 @@ const DetailPane: React.FC<{
         </button>
         <button
           onClick={onApprove}
+          disabled={busy || item.approved || item.rejected}
           onMouseEnter={() => setHoverApprove(true)}
           onMouseLeave={() => setHoverApprove(false)}
           style={{
             flex: 1.6, height: 42, border: "none", borderRadius: ERP.radius.md,
             background: hoverApprove ? "linear-gradient(135deg, #047857, #059669)" : "linear-gradient(135deg, #059669, #10B981)",
             fontSize: 13, fontWeight: 800, color: "#fff",
-            cursor: "pointer", fontFamily: F,
+            cursor: busy ? "wait" : "pointer", fontFamily: F,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             boxShadow: hoverApprove ? "0 4px 16px rgba(5,150,105,0.45)" : "0 2px 10px rgba(5,150,105,0.30)",
             transition: "all 0.15s", letterSpacing: "0.01em",
+            opacity: (busy || item.approved || item.rejected) ? 0.5 : 1,
           }}
         >
           <CheckCircle size={15} />
@@ -665,13 +726,103 @@ const ListItem: React.FC<{ item: InboxItem; selected: boolean; onClick: () => vo
   );
 };
 
+function normalizeInboxItem(raw: any): InboxItem {
+  const cat = (["music", "sports", "academic", "stem", "service"].includes(String(raw?.cat))
+    ? String(raw.cat)
+    : "academic") as CertCategory;
+  return {
+    id: String(raw?.id ?? ""),
+    cat,
+    time: String(raw?.time ?? ""),
+    studentName: String(raw?.studentName ?? raw?.student_name ?? "—"),
+    studentClass: String(raw?.studentClass ?? raw?.student_class ?? "—"),
+    studentId: raw?.studentId != null ? Number(raw.studentId) : undefined,
+    studentProfileId: raw?.studentProfileId ? String(raw.studentProfileId) : undefined,
+    title: String(raw?.title ?? ""),
+    subtitle: raw?.subtitle ? String(raw.subtitle) : undefined,
+    read: !!raw?.read || !!raw?.approved || !!raw?.rejected,
+    aiScore: raw?.aiScore != null ? Number(raw.aiScore) : undefined,
+    approved: !!raw?.approved,
+    rejected: !!raw?.rejected,
+    rejectReason: raw?.rejectReason ?? raw?.reject_reason ?? null,
+    organizer: raw?.organizer ?? undefined,
+    award: raw?.award ?? undefined,
+    eventDate: raw?.eventDate ?? undefined,
+    certCategory: raw?.certCategory ?? undefined,
+    suggestedLevel: raw?.suggestedLevel ?? undefined,
+    suggestedType: raw?.suggestedType ?? undefined,
+    suggestedPts: raw?.suggestedPts != null ? Number(raw.suggestedPts) : undefined,
+    environmentLevel: raw?.environmentLevel ?? undefined,
+    tierRole: raw?.tierRole ?? undefined,
+    acornTags: Array.isArray(raw?.acornTags) ? raw.acornTags.map(String) : undefined,
+    imageUrl: raw?.imageUrl ?? null,
+  };
+}
+
+async function postAction(url: string, body: Record<string, unknown>, csrfName?: string, csrfHash?: string) {
+  const payload = { ...body };
+  if (csrfName && csrfHash) payload[csrfName] = csrfHash;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+    body: JSON.stringify(payload),
+  });
+  try {
+    return await res.json();
+  } catch {
+    return { ok: res.ok, message: res.ok ? "OK" : "Request failed" };
+  }
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
-export const Screen_ApprovalInbox: React.FC = () => {
-  const [items, setItems]           = useState<InboxItem[]>(INITIAL_ITEMS);
-  const [selectedId, setSelectedId] = useState<string>("i01");
+export const Screen_ApprovalInbox: React.FC<ApprovalInboxProps> = ({
+  items: itemsProp,
+  counts: countsProp,
+  progress: progressProp,
+  listUrl = "/api/approval-inbox/list",
+  approveUrl = "/api/approval-inbox/approve",
+  rejectUrl = "/api/approval-inbox/reject",
+  submitUrl = "/api/student-portal/submit-certificate",
+  mySubmissionsUrl = "/api/student-portal/my-submissions",
+  studentsSearchUrl = "/achievements/students/search",
+  csrfName,
+  csrfHash,
+}) => {
+  const seeded = (itemsProp && itemsProp.length ? itemsProp : INITIAL_ITEMS).map(normalizeInboxItem);
+  const [items, setItems]           = useState<InboxItem[]>(seeded);
+  const [selectedId, setSelectedId] = useState<string>(seeded[0]?.id || "");
   const [activeFilter, setFilter]   = useState<"all" | CertCategory>("all");
   const [isMobile, setIsMobile]     = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
+  const [busy, setBusy]             = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [toast, setToast]           = useState<string | null>(null);
+  const [counts, setCounts]         = useState<Record<string, number>>(countsProp || {});
+  const [progress, setProgress]     = useState(progressProp || {});
+
+  const refresh = useCallback(async () => {
+    if (!listUrl) return;
+    try {
+      const res = await fetch(`${listUrl}?category=all`, {
+        headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      });
+      const data = await res.json();
+      if (!data?.ok || !Array.isArray(data.items)) return;
+      const mapped = data.items.map(normalizeInboxItem);
+      if (mapped.length) {
+        setItems(mapped);
+        setSelectedId((prev) => (mapped.some((m: InboxItem) => m.id === prev) ? prev : mapped[0].id));
+      }
+      if (data.counts) setCounts(data.counts);
+      if (data.progress) setProgress(data.progress);
+    } catch {
+      // keep current / mock
+    }
+  }, [listUrl]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -680,6 +831,20 @@ export const Screen_ApprovalInbox: React.FC = () => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  useEffect(() => {
+    if (itemsProp && itemsProp.length) {
+      setItems(itemsProp.map(normalizeInboxItem));
+    } else {
+      void refresh();
+    }
+  }, [itemsProp, refresh]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const selectedItem = items.find(i => i.id === selectedId) ?? items[0];
 
   const visibleItems = activeFilter === "all"
@@ -687,24 +852,99 @@ export const Screen_ApprovalInbox: React.FC = () => {
     : items.filter(i => i.cat === activeFilter);
 
   const unread = items.filter(i => !i.read && !i.approved && !i.rejected).length;
+  const approvedCount = progress.approved_count ?? items.filter(i => i.approved).length;
+  const rejectedCount = progress.rejected_count ?? items.filter(i => i.rejected).length;
+  const pendingCount  = progress.pending_count ?? items.filter(i => !i.approved && !i.rejected).length;
 
-  const handleApprove = () => {
-    setItems(prev => prev.map(it => it.id === selectedId ? { ...it, approved: true, rejected: false, read: true } : it));
-    const next = items.find(it => it.id !== selectedId && !it.approved && !it.rejected);
-    if (next) setTimeout(() => setSelectedId(next.id), 300);
-  };
+  const selectNextOpen = useCallback((fromId: string, list: InboxItem[]) => {
+    const next = list.find(it => it.id !== fromId && !it.approved && !it.rejected);
+    if (next) setTimeout(() => {
+      setSelectedId(next.id);
+      if (window.innerWidth < 768) setMobileView("detail");
+    }, 250);
+  }, []);
 
-  const handleReject = () => {
-    setItems(prev => prev.map(it => it.id === selectedId ? { ...it, rejected: true, approved: false, read: true } : it));
-    const next = items.find(it => it.id !== selectedId && !it.approved && !it.rejected);
-    if (next) setTimeout(() => setSelectedId(next.id), 300);
-  };
+  const handleApprove = useCallback(async () => {
+    if (!selectedId || busy) return;
+    setBusy(true);
+    try {
+      if (approveUrl) {
+        const res = await postAction(approveUrl, { id: Number(selectedId) }, csrfName, csrfHash);
+        if (!res?.ok) {
+          setToast(res?.message || "核准失敗");
+          return;
+        }
+        setToast(res.message || "已核准");
+      }
+      setItems(prev => {
+        const next = prev.map(it => it.id === selectedId ? { ...it, approved: true, rejected: false, read: true } : it);
+        selectNextOpen(selectedId, next);
+        return next;
+      });
+      setProgress(p => ({
+        ...p,
+        approved_count: (p.approved_count ?? approvedCount) + 1,
+        pending_count: Math.max(0, (p.pending_count ?? pendingCount) - 1),
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedId, busy, approveUrl, csrfName, csrfHash, selectNextOpen, approvedCount, pendingCount]);
+
+  const handleReject = useCallback(async () => {
+    if (!selectedId || busy) return;
+    const reason = window.prompt(
+      "退回原因（可留空使用預設）\n快捷：影像模糊 / 資料不符",
+      "資料不全或證書影像不清晰，請重新上載",
+    );
+    if (reason === null) return;
+    setBusy(true);
+    try {
+      if (rejectUrl) {
+        const res = await postAction(rejectUrl, { id: Number(selectedId), reject_reason: reason }, csrfName, csrfHash);
+        if (!res?.ok) {
+          setToast(res?.message || "退回失敗");
+          return;
+        }
+        setToast(res.message || "已退回");
+      }
+      setItems(prev => {
+        const next = prev.map(it => it.id === selectedId ? { ...it, rejected: true, approved: false, read: true, rejectReason: reason } : it);
+        selectNextOpen(selectedId, next);
+        return next;
+      });
+      setProgress(p => ({
+        ...p,
+        rejected_count: (p.rejected_count ?? rejectedCount) + 1,
+        pending_count: Math.max(0, (p.pending_count ?? pendingCount) - 1),
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedId, busy, rejectUrl, csrfName, csrfHash, selectNextOpen, rejectedCount, pendingCount]);
 
   const handleSelect = (id: string) => {
     setSelectedId(id);
     setItems(prev => prev.map(it => it.id === id ? { ...it, read: true } : it));
     if (isMobile) setMobileView("detail");
   };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable) return;
+      const key = e.key.toLowerCase();
+      if (key === "a" || key === "k") { e.preventDefault(); void handleApprove(); }
+      else if (key === "r") { e.preventDefault(); void handleReject(); }
+      else if (key === "j" || key === "arrowright") {
+        e.preventDefault();
+        const next = items.find(it => it.id !== selectedId && !it.approved && !it.rejected);
+        if (next) handleSelect(next.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleApprove, handleReject, items, selectedId]);
 
   return (
     <div style={{
@@ -756,11 +996,28 @@ export const Screen_ApprovalInbox: React.FC = () => {
                 borderRadius: ERP.radius.md, flexShrink: 0,
               }}>
                 <div style={{ fontSize: 13, fontWeight: 900, color: ERP.colors.success }}>
-                  {items.filter(i => i.approved).length}/{items.length}
+                  {approvedCount}/{items.length || progress.total_count || 0}
                 </div>
                 <div style={{ fontSize: 9, color: ERP.colors.success, fontWeight: 600 }}>已完成</div>
               </div>
             </div>
+
+            {isMobile && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <button type="button" onClick={() => setMobileView("list")} style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${ERP.colors.accent}`,
+                  background: ERP.colors.accentPale, color: ERP.colors.accent, fontSize: 11, fontWeight: 700, fontFamily: F,
+                }}>
+                  📋 待審清單 ({pendingCount})
+                </button>
+                <button type="button" onClick={() => { if (selectedItem) setMobileView("detail"); }} style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${ERP.colors.border}`,
+                  background: "#fff", color: ERP.colors.textSecondary, fontSize: 11, fontWeight: 700, fontFamily: F,
+                }}>
+                  🔍 審批詳情
+                </button>
+              </div>
+            )}
 
             {/* Subtitle description */}
             <div style={{
@@ -780,9 +1037,9 @@ export const Screen_ApprovalInbox: React.FC = () => {
             <div style={{ display: "flex", gap: 5, paddingBottom: 10, overflowX: "auto" }}>
               {FILTER_CATS.map(f => {
                 const isActive = activeFilter === f.id;
-                const count = f.id === "all"
-                  ? items.length
-                  : items.filter(i => i.cat === f.id).length;
+                const count = counts[f.id] != null
+                  ? Number(counts[f.id])
+                  : (f.id === "all" ? items.length : items.filter(i => i.cat === f.id).length);
                 return (
                   <button
                     key={f.id}
@@ -835,13 +1092,13 @@ export const Screen_ApprovalInbox: React.FC = () => {
             flexShrink: 0, padding: "8px 16px",
             borderTop: `1px solid ${ERP.colors.border}`,
             background: ERP.colors.pageBg,
-            display: "flex", alignItems: "center", gap: 12,
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" as const,
           }}>
-            <span style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>今日效率：</span>
+            <span style={{ fontSize: 10, color: ERP.colors.textMuted, fontFamily: F }}>今日進度：</span>
             {[
-              { label: "已核准", count: items.filter(i => i.approved).length,               color: ERP.colors.success  },
-              { label: "已退回", count: items.filter(i => i.rejected).length,               color: ERP.colors.error    },
-              { label: "待處理", count: items.filter(i => !i.approved && !i.rejected).length, color: ERP.colors.textMuted },
+              { label: "已批核", count: approvedCount, color: ERP.colors.success  },
+              { label: "已退回", count: rejectedCount, color: ERP.colors.error    },
+              { label: "待處理", count: pendingCount,  color: ERP.colors.textMuted },
             ].map(s => (
               <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.color }} />
@@ -863,10 +1120,12 @@ export const Screen_ApprovalInbox: React.FC = () => {
             <DetailPane
               key={selectedItem.id}
               item={selectedItem}
-              onApprove={handleApprove}
-              onReject={handleReject}
+              onApprove={() => void handleApprove()}
+              onReject={() => void handleReject()}
+              onOpenUpload={() => setShowUpload(true)}
               isMobile={isMobile}
               onBack={() => setMobileView("list")}
+              busy={busy}
             />
           ) : (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: ERP.colors.textMuted, fontSize: 13, fontFamily: F }}>
@@ -874,6 +1133,28 @@ export const Screen_ApprovalInbox: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {showUpload && (
+        <Screen_StudentCertSubmit
+          asModal
+          open
+          onClose={() => setShowUpload(false)}
+          submitUrl={submitUrl}
+          mySubmissionsUrl={mySubmissionsUrl}
+          studentsSearchUrl={studentsSearchUrl}
+          csrfName={csrfName}
+          csrfHash={csrfHash}
+          onSubmitted={() => { void refresh(); setShowUpload(false); setToast("學生上載已進入待辦審批"); }}
+        />
+      )}
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 260,
+          padding: "10px 16px", borderRadius: 999, background: "#0F172A", color: "#fff",
+          fontSize: 12, fontWeight: 700, boxShadow: ERP.shadow.lg, maxWidth: "90vw",
+        }}>{toast}</div>
       )}
     </div>
   );

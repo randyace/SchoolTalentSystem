@@ -571,19 +571,32 @@ const SchoolSnapshotWidget: React.FC<{ items: ClassOverviewItem[]; isMobile?: bo
 }) => (
   <Card style={{ padding: isMobile ? "16px" : "20px" }}>
     <SectionHeader title="全校概況 School Snapshot" subtitle="Real-time" />
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: isMobile ? "8px" : "10px" }}>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: isMobile ? "repeat(3, minmax(0, 1fr))" : "1fr 1fr 1fr",
+      gap: isMobile ? "6px" : "10px",
+    }}>
       {items.map((item) => (
         <div
           key={item.label}
           style={{
             background: DS.colors.background, borderRadius: DS.radius.md,
-            padding: isMobile ? "10px 8px" : "12px", textAlign: "center",
+            padding: isMobile ? "8px 4px" : "12px", textAlign: "center",
+            minWidth: 0, overflow: "hidden",
           }}
         >
-          <div style={{ fontSize: isMobile ? "16px" : "18px", fontWeight: 800, color: DS.colors.textPrimary, fontFamily: DS.font.family }}>
+          <div style={{
+            fontSize: isMobile ? "14px" : "18px", fontWeight: 800,
+            color: DS.colors.textPrimary, fontFamily: DS.font.family,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
             {item.value}
           </div>
-          <div style={{ fontSize: "11px", color: DS.colors.textSecondary, fontFamily: DS.font.family, marginBottom: "6px" }}>
+          <div style={{
+            fontSize: isMobile ? "10px" : "11px", color: DS.colors.textSecondary,
+            fontFamily: DS.font.family, marginBottom: "6px",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
             {item.label}
           </div>
           <StatusBadge variant={item.badgeVariant} label={item.badgeLabel} size="sm" />

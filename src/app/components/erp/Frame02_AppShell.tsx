@@ -61,7 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "workspace", zhTitle: "工作台", enTitle: "Workspace",
     items: [
       { id: "today-overview",  zhLabel: "今日概覽", enLabel: "Today Overview", icon: <LayoutDashboard size={15} />, screenId: "1.A.1", href: "/dashboard" },
-      { id: "approval-inbox",  zhLabel: "待辦審批", enLabel: "Approval Inbox",  icon: <ClipboardList size={15} />,  screenId: "1.A.3", href: "/approval", todo: true },
+      { id: "approval-inbox",  zhLabel: "待辦審批", enLabel: "Approval Inbox",  icon: <ClipboardList size={15} />,  screenId: "1.A.3", href: "/approval" },
     ],
   },
   {
@@ -114,12 +114,12 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "data-import",       zhLabel: "數據匯入",         enLabel: "Data Import",          icon: <Database    size={15} />, screenId: "1.F.1",   href: "/roster" },
       { id: "prompt-portal",      zhLabel: "AI 提示詞",        enLabel: "Prompt Portal",        icon: <Sparkles    size={15} />, screenId: "1.F.3",   href: "/admin/ai-prompts" },
       { id: "sync-permissions",  zhLabel: "同步與權限",       enLabel: "Sync & Permissions",   icon: <Network     size={15} />, screenId: "1.F.0.8", href: "/admin/audit-logs" },
-      { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8", href: "/api/docs", todo: true },
-      { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7",   href: "/api/docs", todo: true },
+      { id: "api-automation",    zhLabel: "API 自動化串接",   enLabel: "API & Automation",     icon: <Network     size={15} />, screenId: "1.F.6/8", href: "/api/automation" },
+      { id: "api-docs",          zhLabel: "接口文檔",         enLabel: "API Docs",             icon: <BookOpen    size={15} />, screenId: "1.F.7",   href: "/api/docs" },
       { id: "acorn-engine",      zhLabel: "ACORN 演算法引擎", enLabel: "Algorithm & Params",   icon: <Cpu         size={15} />, screenId: "1.G.0",   href: "/admin/acorn-engine" },
       { id: "tier-mapping",      zhLabel: "成就級別管理",     enLabel: "Tier Mapping",         icon: <Trophy      size={15} />, screenId: "1.G.1",   href: "/teacher/tiers" },
       { id: "conduct-types",     zhLabel: "行為考勤類別",     enLabel: "Conduct & Att. Types", icon: <Sliders     size={15} />, screenId: "1.G.2",   href: "/teacher/conduct-types" },
-      { id: "dev-routes",        zhLabel: "路由標籤元件",     enLabel: "Dev Route Labels",     icon: <Code2       size={15} />, screenId: "DEV",     href: "/dashboard", todo: true },
+      { id: "dev-routes",        zhLabel: "路由標籤元件",     enLabel: "Dev Route Labels",     icon: <Code2       size={15} />, screenId: "DEV",     href: "/dashboard" },
       { id: "roles-positions",   zhLabel: "角色與崗位",       enLabel: "Roles & Positions",    icon: <Tag         size={15} />, screenId: "1.D.6",   href: "/teacher/roles" },
       { id: "desensitize-audit", zhLabel: "脫敏與審計",       enLabel: "De-sensitize & Audit", icon: <ShieldCheck size={15} />, screenId: "1.F.0.8", href: "/admin/audit-logs" },
     ],
@@ -148,31 +148,46 @@ const SB = {
 };
 
 /* ── Language Switcher ───────────────────────────────────────────────────── */
-const LangSwitcher: React.FC = () => {
+const LangSwitcher: React.FC<{ dropUp?: boolean; fullWidth?: boolean }> = ({
+  dropUp = false,
+  fullWidth = false,
+}) => {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState<"zh-HK" | "en">("zh-HK");
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", width: fullWidth ? "100%" : undefined }}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         style={{
           display: "flex", alignItems: "center", gap: 5,
           padding: "5px 9px",
+          width: fullWidth ? "100%" : undefined,
           background: open ? ERP.colors.accentPale : "transparent",
           border: `1px solid ${open ? ERP.colors.accent + "60" : ERP.colors.border}`,
           borderRadius: ERP.radius.md, cursor: "pointer",
           fontSize: 12, fontWeight: 600,
           color: open ? ERP.colors.accent : ERP.colors.textSecondary,
           fontFamily: ERP.font.family, transition: "all 0.12s",
+          boxSizing: "border-box",
         }}
       >
         <Globe size={13} />
         <span>{lang === "zh-HK" ? "繁體中文" : "English"}</span>
-        <ChevronDown size={11} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+        <ChevronDown size={11} style={{
+          marginLeft: fullWidth ? "auto" : undefined,
+          transform: open ? "rotate(180deg)" : "none",
+          transition: "transform 0.15s",
+        }} />
       </button>
       {open && (
         <div style={{
-          position: "absolute", right: 0, top: 36, minWidth: 148,
+          position: "absolute",
+          left: fullWidth ? 0 : undefined,
+          right: fullWidth ? 0 : 0,
+          top: dropUp ? undefined : 36,
+          bottom: dropUp ? 36 : undefined,
+          minWidth: 148,
           background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
           borderRadius: ERP.radius.md, boxShadow: ERP.shadow.lg, zIndex: 600, overflow: "hidden",
         }}>
@@ -180,7 +195,7 @@ const LangSwitcher: React.FC = () => {
             { v: "zh-HK" as const, label: "繁體中文", sub: "Traditional Chinese" },
             { v: "en"    as const, label: "English",  sub: "英文" },
           ]).map(opt => (
-            <button key={opt.v} onClick={() => { setLang(opt.v); setOpen(false); }} style={{
+            <button key={opt.v} type="button" onClick={() => { setLang(opt.v); setOpen(false); }} style={{
               width: "100%", display: "flex", flexDirection: "column", alignItems: "flex-start",
               padding: "8px 12px",
               background: lang === opt.v ? ERP.colors.accentPale : "transparent",
@@ -410,8 +425,16 @@ const SidebarPanel: React.FC<{
       })}
     </nav>
 
-    {/* Footer */}
-    <div style={{ borderTop: `1px solid ${SB.border}`, padding: "6px 0" }}>
+    {/* Footer — on mobile drawer, expose Language + Logout (hidden from top header) */}
+    <div style={{ borderTop: `1px solid ${SB.border}`, padding: "6px 0", flexShrink: 0 }}>
+      {onClose && (
+        <div style={{ padding: "8px 14px 4px" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: SB.groupLabel, marginBottom: 6, letterSpacing: "0.04em" }}>
+            LANGUAGE · 語言
+          </div>
+          <LangSwitcher dropUp fullWidth />
+        </div>
+      )}
       <a
         href={profileUrl}
         style={{
@@ -430,11 +453,16 @@ const SidebarPanel: React.FC<{
         style={{
           width: "100%", display: "flex", alignItems: "center", gap: 8,
           padding: "8px 14px", textDecoration: "none",
-          background: "transparent", border: "none",
-          cursor: "pointer", fontSize: 12, color: SB.footerText, fontFamily: ERP.font.family,
+          background: onClose ? ERP.colors.accentPale : "transparent",
+          border: "none",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: onClose ? 700 : 400,
+          color: onClose ? ERP.colors.accent : SB.footerText,
+          fontFamily: ERP.font.family,
         }}
         onMouseEnter={e => { e.currentTarget.style.color = ERP.colors.textSecondary; }}
-        onMouseLeave={e => { e.currentTarget.style.color = SB.footerText; }}
+        onMouseLeave={e => { e.currentTarget.style.color = onClose ? ERP.colors.accent : SB.footerText; }}
       >
         <LogOut size={13} /> 登出系統
       </a>
@@ -494,10 +522,14 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
   const [notifOpen,   setNotifOpen]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
   const [isMobile,    setIsMobile]    = useState(false);
+  const [isNarrowPhone, setIsNarrowPhone] = useState(false);
   const [internalActive, setInternalActive] = useState(activeNavId);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => {
+      setIsMobile(window.innerWidth < 768);
+      setIsNarrowPhone(window.innerWidth < 400);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -557,35 +589,38 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
           href="/"
           title={`${schoolNameEn} · ${zhLine}`}
           style={{
-            display: "flex", alignItems: "center", gap: 10, flexShrink: 1, minWidth: 0,
-            textDecoration: "none", maxWidth: isMobile ? 220 : 280,
+            display: "flex", alignItems: "center", gap: isNarrowPhone ? 6 : 10, flexShrink: 1, minWidth: 0,
+            textDecoration: "none", maxWidth: isNarrowPhone ? 112 : isMobile ? 168 : 280,
           }}
         >
           <div style={{
-            width: 40, height: 40, borderRadius: ERP.radius.sm, flexShrink: 0,
+            width: isNarrowPhone ? 32 : 40, height: isNarrowPhone ? 32 : 40,
+            borderRadius: ERP.radius.sm, flexShrink: 0,
             background: `linear-gradient(135deg, ${ERP.colors.accent}, #1D4ED8)`,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <GraduationCap size={18} color="#fff" />
+            <GraduationCap size={isNarrowPhone ? 15 : 18} color="#fff" />
           </div>
           <div style={{ minWidth: 0, overflow: "hidden", lineHeight: 1.2 }}>
             <div style={{
-              fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary,
+              fontSize: isNarrowPhone ? 11 : 13, fontWeight: 700, color: ERP.colors.textPrimary,
               whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             }}>{enLine1}</div>
-            {enLine2 ? (
+            {!isNarrowPhone && enLine2 ? (
               <div style={{
                 fontSize: 12, fontWeight: 700, color: ERP.colors.textPrimary,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
               }}>{enLine2}</div>
             ) : null}
-            <div style={{
-              fontSize: 11, color: ERP.colors.textMuted, marginTop: 1,
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}>
-              {zhLine}
-              <span style={{ marginLeft: 6, fontWeight: 600 }}>· {ayLabel}</span>
-            </div>
+            {!isNarrowPhone && (
+              <div style={{
+                fontSize: 11, color: ERP.colors.textMuted, marginTop: 1,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {zhLine}
+                <span style={{ marginLeft: 6, fontWeight: 600 }}>· {ayLabel}</span>
+              </div>
+            )}
           </div>
         </a>
 
@@ -663,9 +698,14 @@ export const Frame02_AppShell: React.FC<AppShellProps> = ({
           </button>
           {notifOpen && (
             <div style={{
-              position: "absolute", right: 0, top: 42, width: 300,
+              position: "absolute",
+              right: isMobile ? 0 : 0,
+              top: 42,
+              width: isMobile ? "min(320px, calc(100vw - 24px))" : 300,
+              maxWidth: "calc(100vw - 24px)",
               background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`,
               borderRadius: ERP.radius.lg, boxShadow: ERP.shadow.xl, zIndex: 500, overflow: "hidden",
+              boxSizing: "border-box",
             }}>
               <div style={{ padding: "11px 14px", borderBottom: `1px solid ${ERP.colors.border}`, display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: ERP.colors.textPrimary }}>系統通知</span>

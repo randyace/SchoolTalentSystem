@@ -11,6 +11,7 @@ import {
   Sparkles, CheckCircle2, FileSpreadsheet, RotateCcw, Lock, Unlock, X,
 } from "lucide-react";
 import { ScoreSpreadsheetGrid } from "./ScoreSpreadsheetGrid";
+import { ResponsiveTableWrapper } from "./erpResponsive";
 
 type StatusCode = "normal" | "abs" | "exm" | "late";
 
@@ -89,8 +90,9 @@ const FilterSelect: React.FC<{
   onChange: (v: string) => void;
   disabled?: boolean;
   placeholder?: string;
-}> = ({ label, value, options, onChange, disabled, placeholder }) => (
-  <div style={{ position: "relative" }}>
+  fullWidth?: boolean;
+}> = ({ label, value, options, onChange, disabled, placeholder, fullWidth }) => (
+  <div style={{ position: "relative", flex: fullWidth ? "1 1 100%" : undefined, minWidth: fullWidth ? 0 : undefined }}>
     <label style={{
       display: "block", fontSize: 10, fontWeight: 600,
       color: ERP.colors.textMuted, marginBottom: 3, letterSpacing: "0.05em",
@@ -98,11 +100,13 @@ const FilterSelect: React.FC<{
     }}>{label}</label>
     <div style={{ position: "relative" }}>
       <select value={value} disabled={disabled} onChange={e => onChange(e.target.value)} style={{
+        width: fullWidth ? "100%" : undefined,
+        boxSizing: "border-box",
         padding: "6px 26px 6px 10px", borderRadius: ERP.radius.sm,
         border: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface,
         fontSize: 13, fontFamily: ERP.font.family, color: ERP.colors.textPrimary,
         outline: "none", cursor: disabled ? "not-allowed" : "pointer", appearance: "none" as const,
-        fontWeight: 600, opacity: disabled ? 0.6 : 1,
+        fontWeight: 600, opacity: disabled ? 0.6 : 1, minHeight: fullWidth ? 40 : undefined,
       }}>
         {placeholder && <option value="">{placeholder}</option>}
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -179,6 +183,8 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
   const [assessmentId, setAssessmentId] = useState<string>("");
   const [maxScore,   setMaxScore]   = useState(100);
   const [isMobile,   setIsMobile]   = useState(false);
+  /** Mobile dual-mode: cards (default) vs spreadsheet table */
+  const [mobileMode, setMobileMode] = useState<"cards" | "table">("cards");
   const [isDraft,    setIsDraft]    = useState(false);
   const [saving,     setSaving]     = useState(false);
   const [loadError,  setLoadError]  = useState<string | null>(null);
@@ -701,21 +707,35 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
   const selectedAssessName = assessmentItems.find(a => String(a.id) === assessmentId)?.name || "評估項目";
   const F = ERP.font.family;
   void lang;
-  void isMobile;
+  const useCards = isMobile && mobileMode === "cards";
+
+  const updateScore = (rowId: number, raw: string) => {
+    setScores(prev => prev.map(r => {
+      if (r.id !== rowId) return r;
+      if (raw.trim() === "") return { ...r, score: null };
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return r;
+      return { ...r, score: n, status: r.status === "abs" || r.status === "exm" ? r.status : "normal" };
+    }));
+    setIsDraft(false);
+    setLoadError(null);
+  };
 
   return (
     <form id="scoreForm" onSubmit={save} style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", minWidth: 0, overflow: "hidden", fontFamily: F, background: ERP.colors.pageBg, boxSizing: "border-box" }}>
       <input type="hidden" name="assessment_id" value={assessmentId} />
 
-      <div style={{ flexShrink: 0, background: ERP.colors.surface, borderBottom: `1px solid ${ERP.colors.border}`, padding: "14px 24px 12px" }}>
+      <div style={{ flexShrink: 0, background: ERP.colors.surface, borderBottom: `1px solid ${ERP.colors.border}`, padding: isMobile ? "12px 14px 10px" : "14px 24px 12px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <FileSpreadsheet size={18} color={ERP.colors.accent} />
-              <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: ERP.colors.textPrimary }}>成績輸入</h1>
+              <h1 style={{ margin: 0, fontSize: isMobile ? 16 : 18, fontWeight: 700, color: ERP.colors.textPrimary }}>成績輸入</h1>
               <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: ERP.radius.full, background: ERP.colors.accentPale, color: ERP.colors.accent, border: `1px solid ${ERP.colors.accentLight}` }}>Score Entry</span>
             </div>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: ERP.colors.textMuted }}>1.C.3 · AY {academicYear} · Excel / WebSAMS 矩陣貼上 · Ctrl+V</p>
+            {!isMobile && (
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: ERP.colors.textMuted }}>1.C.3 · AY {academicYear} · Excel / WebSAMS 矩陣貼上 · Ctrl+V</p>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
             {unlockOk && assessmentId && (
@@ -724,10 +744,10 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
                 border: `1.5px solid ${colLocked ? "#FECACA" : ERP.colors.border}`,
                 background: colLocked ? "#FEF2F2" : ERP.colors.surface,
                 color: colLocked ? "#B91C1C" : ERP.colors.textSecondary,
-                fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer",
+                fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer", minHeight: isMobile ? 38 : undefined,
               }}>
                 {colLocked ? <Unlock size={14} /> : <Lock size={14} />}
-                {colLocked ? "解鎖 Unlock" : "鎖定 Lock"}
+                {isMobile ? (colLocked ? "解鎖" : "鎖定") : (colLocked ? "解鎖 Unlock" : "鎖定 Lock")}
               </button>
             )}
             <button type="button" onClick={() => setShowImport(true)} style={{
@@ -735,8 +755,9 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
               padding: "8px 16px", borderRadius: ERP.radius.md,
               border: `1.5px solid ${ERP.colors.accentLight}`, background: ERP.colors.accentPale,
               color: ERP.colors.accent, fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer",
+              minHeight: isMobile ? 38 : undefined,
             }}>
-              <Upload size={14} /> 匯入 Excel
+              <Upload size={14} /> {isMobile ? "匯入" : "匯入 Excel"}
             </button>
           </div>
         </div>
@@ -747,27 +768,69 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
           </p>
         )}
 
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" as const, alignItems: "flex-end" }}>
-          <FilterSelect label="學期" value={term} options={termOpts} onChange={setTerm} />
-          <FilterSelect label="班級" value={cls} options={classOpts.length ? classOpts : [{ value: "", label: "—" }]} onChange={setCls} />
-          <FilterSelect label="科目" value={subject} options={subjectOpts.length ? subjectOpts : [{ value: "", label: "—" }]} onChange={setSubject} />
-          <FilterSelect
-            label="評估項目"
-            value={assessmentId}
-            options={assessmentItems.map(a => ({ value: String(a.id), label: `${a.name} /${a.max_score}` }))}
-            onChange={setAssessmentId}
-            placeholder={assessmentItems.length ? undefined : "尚無評估項目"}
-            disabled={!assessmentItems.length}
-          />
+        <div style={{
+          display: "flex", gap: isMobile ? 10 : 16,
+          flexWrap: "wrap" as const, alignItems: "flex-end",
+          flexDirection: isMobile ? "column" : "row",
+        }}>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, auto)",
+            gap: isMobile ? 8 : 16,
+            width: isMobile ? "100%" : undefined,
+            alignItems: "end",
+          }}>
+            <FilterSelect label="學期" value={term} options={termOpts} onChange={setTerm} fullWidth={isMobile} />
+            <FilterSelect label="班級" value={cls} options={classOpts.length ? classOpts : [{ value: "", label: "—" }]} onChange={setCls} fullWidth={isMobile} />
+            <FilterSelect label="科目" value={subject} options={subjectOpts.length ? subjectOpts : [{ value: "", label: "—" }]} onChange={setSubject} fullWidth={isMobile} />
+            <FilterSelect
+              label="評估項目"
+              value={assessmentId}
+              options={assessmentItems.map(a => ({ value: String(a.id), label: `${a.name} /${a.max_score}` }))}
+              onChange={setAssessmentId}
+              placeholder={assessmentItems.length ? undefined : "尚無評估項目"}
+              disabled={!assessmentItems.length}
+              fullWidth={isMobile}
+            />
+          </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
-            {Object.entries(STATUS_CFG).map(([k, v]) => (
-              <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: ERP.radius.full, background: v.bg, color: v.color, border: `1px solid ${v.border}` }}>
-                {v.label}
-              </span>
+          {!isMobile && (
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
+              {Object.entries(STATUS_CFG).map(([k, v]) => (
+                <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: ERP.radius.full, background: v.bg, color: v.color, border: `1px solid ${v.border}` }}>
+                  {v.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {isMobile && (
+          <div style={{
+            display: "flex", gap: 6, marginTop: 12, padding: 4,
+            background: "#F1F5F9", borderRadius: 10, border: `1px solid ${ERP.colors.border}`,
+          }}>
+            {([
+              { id: "cards" as const, label: "📱 卡片快填模式" },
+              { id: "table" as const, label: "📊 表格檢視模式" },
+            ]).map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setMobileMode(tab.id)}
+                style={{
+                  flex: 1, minHeight: 38, border: "none", borderRadius: 8, cursor: "pointer",
+                  fontFamily: F, fontSize: 12, fontWeight: 700,
+                  background: mobileMode === tab.id ? ERP.colors.surface : "transparent",
+                  color: mobileMode === tab.id ? ERP.colors.accent : ERP.colors.textMuted,
+                  boxShadow: mobileMode === tab.id ? "0 1px 4px rgba(15,23,42,0.08)" : "none",
+                }}
+              >
+                {tab.label}
+              </button>
             ))}
           </div>
-        </div>
+        )}
         {loadError && (
           <p style={{ margin: "8px 0 0", fontSize: 12, color: ERP.colors.red, fontWeight: 600 }}>
             {loadError}{" "}
@@ -855,27 +918,86 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
       </div>
 
       <div style={{
-        flex: 1, overflow: "hidden", minHeight: 0, minWidth: 0, width: "100%",
+        flex: 1, overflow: useCards ? "auto" : "hidden", minHeight: 0, minWidth: 0, width: "100%",
         display: "flex", flexDirection: "column" as const, boxSizing: "border-box" as const,
+        WebkitOverflowScrolling: "touch",
       }}>
         {scores.length === 0 ? (
           <div style={{ padding: 32, textAlign: "center" as const, color: ERP.colors.textMuted, fontSize: 13 }}>
             請先選擇班級與評估項目以載入名冊
           </div>
+        ) : useCards ? (
+          <div style={{ padding: "12px 14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {scores.map(row => {
+              const lockedRow = inputsLocked || row.status === "abs" || row.status === "exm";
+              const badge = STATUS_CFG[row.status];
+              return (
+                <div
+                  key={row.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "12px 14px",
+                    background: scoreColor(row.score, row.status),
+                    border: `1px solid ${ERP.colors.border}`,
+                    borderRadius: 12,
+                    boxShadow: "0 1px 3px rgba(15,23,42,0.04)",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: ERP.colors.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {row.chName || row.enName || "—"}
+                    </div>
+                    <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 2, fontFamily: ERP.font.mono }}>
+                      {row.studentCode} · #{row.classNum}
+                      {row.enName && row.chName ? ` · ${row.enName}` : ""}
+                    </div>
+                    <span style={{
+                      display: "inline-flex", marginTop: 6, fontSize: 10, fontWeight: 700,
+                      padding: "2px 7px", borderRadius: 999, background: badge.bg, color: badge.color,
+                      border: `1px solid ${badge.border}`,
+                    }}>{badge.label}</span>
+                  </div>
+                  <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={lockedRow}
+                      value={row.score ?? ""}
+                      onChange={e => updateScore(row.id, e.target.value)}
+                      placeholder="—"
+                      style={{
+                        width: 88, height: 40, fontSize: 16, fontWeight: 800, textAlign: "center",
+                        borderRadius: 10, border: `1.5px solid ${ERP.colors.borderStrong}`,
+                        background: lockedRow ? "#F1F5F9" : "#fff",
+                        color: scoreTextColor(row.score),
+                        fontFamily: F, outline: "none",
+                        WebkitAppearance: "none",
+                      }}
+                    />
+                    <span style={{ fontSize: 10, color: ERP.colors.textMuted }}>/ {maxScore}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <ScoreSpreadsheetGrid
-            students={scores}
-            papers={papers}
-            maxScore={maxScore}
-            assessmentName={selectedAssessName}
-            readOnly={inputsLocked}
-            height="100%"
-            onChange={(next) => {
-              setScores(next as typeof scores);
-              setIsDraft(false);
-              setLoadError(null);
-            }}
-          />
+          <ResponsiveTableWrapper style={{ flex: 1, height: "100%" }}>
+            <div style={{ minWidth: isMobile ? 640 : undefined, height: "100%" }}>
+              <ScoreSpreadsheetGrid
+                students={scores}
+                papers={papers}
+                maxScore={maxScore}
+                assessmentName={selectedAssessName}
+                readOnly={inputsLocked}
+                height="100%"
+                onChange={(next) => {
+                  setScores(next as typeof scores);
+                  setIsDraft(false);
+                  setLoadError(null);
+                }}
+              />
+            </div>
+          </ResponsiveTableWrapper>
         )}
       </div>
       <style>{`@keyframes scoreSpin { to { transform: rotate(360deg); } }`}</style>

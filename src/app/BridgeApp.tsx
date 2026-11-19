@@ -12,6 +12,7 @@ import { Screen_DynamicGroupList } from "./components/erp/Screen_DynamicGroupLis
 import { Screen_Subjects } from "./components/erp/Screen_Subjects";
 import { Screen_DataImport } from "./components/erp/Screen_DataImport";
 import { Screen_ApprovalInbox } from "./components/erp/Screen_ApprovalInbox";
+import { Screen_StudentCertSubmit } from "./components/erp/Screen_StudentCertSubmit";
 import { Screen_TalentFilter } from "./components/erp/Screen_TalentFilter";
 import { Screen_ExemplarLibrary } from "./components/erp/Screen_ExemplarLibrary";
 import { Screen_BatchOCR } from "./components/erp/Screen_BatchOCR";
@@ -28,6 +29,7 @@ import { Screen_AIWritingWorkspace } from "./components/erp/Screen_AIWritingWork
 import { Screen_PromptPortal, type PromptProfile } from "./components/erp/Screen_PromptPortal";
 import { Screen_SystemAdminHome } from "./components/erp/Screen_SystemAdminHome";
 import { Screen_APIDocs } from "./components/erp/Screen_APIDocs";
+import { Screen_APIAutomation } from "./components/erp/Screen_APIAutomation";
 import { Frame03_ActivityTable } from "./components/erp/Frame03_ActivityTable";
 import { Screen_ActivityForm } from "./components/erp/Screen_ActivityForm";
 import { Screen_ActivityRoster } from "./components/erp/Screen_ActivityRoster";
@@ -65,6 +67,7 @@ export type StsBridgePage =
   | "activity-walkins"
   | "activity-attendance"
   | "approvals"
+  | "student-cert-submit"
   | "achievements"
   | "achievement-review"
   | "certificates"
@@ -82,6 +85,7 @@ export type StsBridgePage =
   | "conduct-types"
   | "roles-positions"
   | "api-docs"
+  | "api-automation"
   | "scores"
   | "assessments"
   | "term-weightings"
@@ -948,7 +952,34 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
       ));
 
     case "approvals":
-      return wrap(nav || "approval-inbox", <Screen_ApprovalInbox />);
+      return wrap(
+        nav || "approval-inbox",
+        <Screen_ApprovalInbox
+          items={(config as any).items || []}
+          counts={(config as any).counts}
+          progress={(config as any).progress}
+          listUrl={(config as any).listUrl || "/api/approval-inbox/list"}
+          approveUrl={(config as any).approveUrl || "/api/approval-inbox/approve"}
+          rejectUrl={(config as any).rejectUrl || "/api/approval-inbox/reject"}
+          submitUrl={(config as any).submitUrl || "/api/student-portal/submit-certificate"}
+          mySubmissionsUrl={(config as any).mySubmissionsUrl || "/api/student-portal/my-submissions"}
+          studentsSearchUrl={(config as any).studentsSearchUrl || "/achievements/students/search"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />,
+      );
+
+    case "student-cert-submit":
+      return wrap(
+        nav || "approval-inbox",
+        <Screen_StudentCertSubmit
+          submitUrl={(config as any).submitUrl || "/api/student-portal/submit-certificate"}
+          mySubmissionsUrl={(config as any).mySubmissionsUrl || "/api/student-portal/my-submissions"}
+          studentsSearchUrl={(config as any).studentsSearchUrl || "/achievements/students/search"}
+          csrfName={config.csrfName}
+          csrfHash={config.csrfHash}
+        />,
+      );
 
     case "achievements":
       return wrap(
@@ -1204,6 +1235,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
             "roles-positions": "/teacher/roles",
             "data-import": "/roster",
             "api-docs": "/api/docs",
+            "api-automation": "/api/automation",
             "prompt-portal": "/admin/ai-prompts",
             "ai-workspace": "/ai-workspace",
             "sync-permissions": "/admin/audit-logs",
@@ -1213,8 +1245,33 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
         }} />
       ));
 
+    case "api-automation":
+      return wrap(nav || "api-automation", (
+        <Screen_APIAutomation
+          initialState={(config as any).initialState ?? null}
+          stateUrl={(config as any).stateUrl || "/api/admin/automation/state"}
+          tokenRegenUrl={(config as any).tokenRegenUrl || "/api/admin/automation/token/regenerate"}
+          tokenRevokeUrl={(config as any).tokenRevokeUrl || "/api/admin/automation/token/revoke"}
+          webhookSaveUrl={(config as any).webhookSaveUrl || "/api/admin/automation/webhook/save"}
+          webhookTestUrl={(config as any).webhookTestUrl || "/api/admin/automation/webhook/test"}
+          externalBase={(config as any).externalBase || `${typeof window !== "undefined" ? window.location.origin : ""}/api/v1/external`}
+          docsUrl={(config as any).docsUrl || "/api/docs"}
+          auditLogsUrl={(config as any).auditLogsUrl || "/admin/audit-logs"}
+          csrfName={(config as any).csrfName}
+          csrfHash={(config as any).csrfHash}
+        />
+      ));
+
     case "api-docs":
-      return wrap(nav || "api-docs", <Screen_APIDocs />);
+      return wrap(nav || "api-docs", (
+        <Screen_APIDocs
+          externalBase={(config as any).externalBase || `${typeof window !== "undefined" ? window.location.origin : ""}/api/v1/external`}
+          automationUrl={(config as any).automationUrl || "/api/automation"}
+          stateUrl={(config as any).stateUrl || "/api/admin/automation/state"}
+          csrfName={(config as any).csrfName}
+          csrfHash={(config as any).csrfHash}
+        />
+      ));
 
     case "dashboard":
     default:
