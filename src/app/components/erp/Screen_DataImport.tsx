@@ -9,6 +9,7 @@ import {
   User, BarChart2, Users, Award, Database, Shield, UploadCloud, Zap, Download,
   RefreshCw, Layers, FolderKanban, ChevronDown, ChevronUp, Sparkles, ExternalLink,
 } from "lucide-react";
+import { BroadsheetWizard } from "./BroadsheetWizard";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -50,6 +51,10 @@ type Props = {
   sampleUrl?: string;
   acornRecalcUrl?: string;
   academicYear?: string;
+  broadsheetAnalyzeUrl?: string;
+  broadsheetExecuteUrl?: string;
+  broadsheetBatchesUrl?: string;
+  initialModule?: ModuleId;
 };
 
 const STEP_LABELS = [
@@ -157,9 +162,13 @@ export const Screen_DataImport: React.FC<Props> = ({
   templateUrl = "/admin/data-import/template",
   sampleUrl = "/admin/data-import/sample",
   acornRecalcUrl = "/admin/acorn-engine",
+  broadsheetAnalyzeUrl = "/api/data-import/broadsheet/analyze",
+  broadsheetExecuteUrl = "/api/data-import/broadsheet/execute",
+  broadsheetBatchesUrl = "/api/data-import/broadsheet/batches",
+  initialModule,
 }) => {
   const [modules, setModules] = useState<ModuleCard[]>(modulesProp?.length ? modulesProp : FALLBACK_MODULES);
-  const [activeModule, setActiveModule] = useState<ModuleId>("students");
+  const [activeModule, setActiveModule] = useState<ModuleId>(initialModule || "students");
   const [step, setStep] = useState(1);
   const [guideOpen, setGuideOpen] = useState(true);
   const [file, setFile] = useState<File | null>(null);
@@ -375,7 +384,8 @@ export const Screen_DataImport: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Stepper */}
+        {/* Stepper — hidden for scores broadsheet wizard */}
+        {activeModule !== "scores" && (
         <div style={{
           display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" as const,
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: "10px 14px",
@@ -403,6 +413,7 @@ export const Screen_DataImport: React.FC<Props> = ({
             );
           })}
         </div>
+        )}
 
         {error && (
           <div role="alert" style={{
@@ -414,48 +425,54 @@ export const Screen_DataImport: React.FC<Props> = ({
               </div>
             )}
 
-        {/* ── STEP 1 ── */}
-        {step === 1 && (
-          <>
-            <SectionCard step="01" zh="選擇匯入模組" en="Select Data Module" icon={<Layers size={14} />}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-                {modules.map(m => {
-                  const on = m.id === activeModule;
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => onSelectModule(m.id as ModuleId)}
-                      style={{
-                        textAlign: "left", cursor: "pointer", fontFamily: F,
-                        padding: 12, borderRadius: R.lg,
-                        border: `1.5px solid ${on ? C.accent : C.border}`,
-                        background: on ? C.accentPale : C.surface,
-                        boxShadow: on ? `0 0 0 1px ${C.accent}33` : "none",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span style={{
-                          fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: R.full,
-                          background: on ? C.accent : "#E2E8F0", color: on ? "#fff" : C.textMuted,
-                        }}>Step {m.step}</span>
-                        <span style={{ color: on ? C.accent : C.textMuted }}>{MODULE_ICONS[m.id as ModuleId]}</span>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>{m.zh}</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>{m.en}</div>
-                      <div style={{
-                        fontSize: 10, fontWeight: 700, color: C.accent, display: "inline-block",
-                        background: "#fff", border: `1px solid ${C.accentLight}`, borderRadius: R.full, padding: "2px 8px",
-                      }}>{m.badge}</div>
-                      <div style={{ marginTop: 8, fontSize: 11, color: C.textSecondary, fontWeight: 600 }}>
-                        現有紀錄 · <span style={{ fontFamily: ERP.font.mono }}>{m.count.toLocaleString()}</span>
-                      </div>
-                    </button>
-                  );
-                })}
+        {/* Module picker always visible */}
+        <SectionCard step="00" zh="選擇匯入模組" en="Select Data Module" icon={<Layers size={14} />}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
+            {modules.map(m => {
+              const on = m.id === activeModule;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onSelectModule(m.id as ModuleId)}
+                  style={{
+                    textAlign: "left", cursor: "pointer", fontFamily: F,
+                    padding: 12, borderRadius: R.lg,
+                    border: `1.5px solid ${on ? C.accent : C.border}`,
+                    background: on ? C.accentPale : C.surface,
+                    boxShadow: on ? `0 0 0 1px ${C.accent}33` : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: R.full,
+                      background: on ? C.accent : "#E2E8F0", color: on ? "#fff" : C.textMuted,
+                    }}>Step {m.step}</span>
+                    <span style={{ color: on ? C.accent : C.textMuted }}>{MODULE_ICONS[m.id as ModuleId]}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>{m.zh}</span>
                   </div>
-            </SectionCard>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>{m.en}</div>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: C.accent, display: "inline-block",
+                    background: "#fff", border: `1px solid ${C.accentLight}`, borderRadius: R.full, padding: "2px 8px",
+                  }}>{m.badge}</div>
+                </button>
+              );
+            })}
+          </div>
+        </SectionCard>
 
+        {activeModule === "scores" && (
+          <BroadsheetWizard
+            analyzeUrl={broadsheetAnalyzeUrl}
+            executeUrl={broadsheetExecuteUrl}
+            batchesUrl={broadsheetBatchesUrl}
+          />
+        )}
+
+        {/* ── STEP 1 (legacy modules, not scores broadsheet) ── */}
+        {activeModule !== "scores" && step === 1 && (
+          <>
             {/* Excel guide */}
             <div style={{
               marginBottom: 14, borderRadius: R.xl, border: `1px solid ${C.accentLight}`,
@@ -685,7 +702,7 @@ export const Screen_DataImport: React.FC<Props> = ({
         )}
 
         {/* ── STEP 2 ── */}
-        {step === 2 && summary && (
+        {activeModule !== "scores" && step === 2 && summary && (
           <>
             <SectionCard step="02" zh="數據校驗與脫敏預覽" en="Validation Preview" icon={<Shield size={14} />}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -763,7 +780,7 @@ export const Screen_DataImport: React.FC<Props> = ({
         )}
 
         {/* ── STEP 3 ── */}
-        {step === 3 && execResult && (
+        {activeModule !== "scores" && step === 3 && execResult && (
           <SectionCard step="03" zh="寫入資料庫完成報告" en="Import Complete" icon={<CheckCircle2 size={14} />}>
             <div style={{
               padding: 20, borderRadius: R.lg, background: "#ECFDF5", border: "1px solid #A7F3D0", marginBottom: 16,

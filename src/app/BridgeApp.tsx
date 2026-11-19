@@ -596,6 +596,10 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           sampleUrl={config.sampleUrl || "/admin/data-import/sample"}
           acornRecalcUrl={config.acornRecalcUrl || "/admin/acorn-engine"}
           academicYear={config.academicYear || "2025/26"}
+          broadsheetAnalyzeUrl={(config as any).broadsheetAnalyzeUrl || "/api/data-import/broadsheet/analyze"}
+          broadsheetExecuteUrl={(config as any).broadsheetExecuteUrl || "/api/data-import/broadsheet/execute"}
+          broadsheetBatchesUrl={(config as any).broadsheetBatchesUrl || "/api/data-import/broadsheet/batches"}
+          initialModule={(config as any).initialModule || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("module") === "scores" ? "scores" : undefined)}
         />
       ));
 

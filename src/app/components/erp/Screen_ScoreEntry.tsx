@@ -703,7 +703,17 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
     ? Math.round((enteredRows.reduce((s, n) => s + n, 0) / enteredRows.length) * 10) / 10
     : "—";
   const highest  = enteredRows.length ? Math.max(...enteredRows) : "—";
-  const passFail = enteredRows.filter(n => n < 50).length;
+  const passMark = maxScore * 0.5;
+  const passFail = enteredRows.filter(n => n < passMark).length;
+  const passRate = enteredRows.length
+    ? Math.round(((enteredRows.length - passFail) / enteredRows.length) * 1000) / 10
+    : null;
+  const sdVal = (() => {
+    if (enteredRows.length < 2 || typeof avg !== "number") return null;
+    const mean = avg;
+    const acc = enteredRows.reduce((s, n) => s + (n - mean) ** 2, 0);
+    return Math.round(Math.sqrt(acc / (enteredRows.length - 1)) * 100) / 100;
+  })();
   const selectedAssessName = assessmentItems.find(a => String(a.id) === assessmentId)?.name || "評估項目";
   const F = ERP.font.family;
   void lang;
@@ -848,6 +858,8 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
           { label: "已輸入",  value: `${enteredRows.length} / ${scores.length}` },
           { label: "班級平均", value: avg, color: ERP.colors.accent },
           { label: "最高分",  value: highest, color: ERP.colors.success },
+          { label: "標準偏差", value: sdVal ?? "—", color: ERP.colors.textSecondary },
+          { label: "及格率", value: passRate !== null ? `${passRate}%` : "—", color: ERP.colors.success },
           { label: "不及格",  value: passFail, color: passFail > 0 ? ERP.colors.red : ERP.colors.textMuted },
           { label: "ABS 缺席", value: scores.filter(r => r.status === "abs").length, color: "#92400E" },
           { label: "EXM 免修", value: scores.filter(r => r.status === "exm").length, color: "#1D4ED8" },
@@ -1030,6 +1042,16 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
             <p style={{ margin: "0 0 12px", fontSize: 12, color: ERP.colors.textMuted, lineHeight: 1.5 }}>
               表頭需包含 <code>student_id</code>（或學號）與 <code>score</code>（或 raw_score）。將覆寫目前評估項目成績。
             </p>
+            <a
+              href="/admin/data-import?module=scores"
+              style={{
+                display: "block", marginBottom: 12, padding: "10px 12px", borderRadius: 8,
+                background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8",
+                textDecoration: "none", fontSize: 12, fontWeight: 700, lineHeight: 1.45,
+              }}
+            >
+              📊 需要匯入多科目 eClass 整級大分紙（含自動誤差對帳）？ → 前往 4 步大分紙匯入精靈
+            </a>
             <input
               type="file"
               name="excel_file"
