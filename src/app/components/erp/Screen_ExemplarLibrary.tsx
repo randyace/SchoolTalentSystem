@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { ResponsiveBulkBar, rwdKpiGrid4, useIsMobile } from "./erpResponsive";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 type RoleStatus = "confirmed" | "pending" | "rejected";
 
@@ -433,8 +434,11 @@ export const Screen_ExemplarLibrary: React.FC<{
                     </span>
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: ERP.colors.textSecondary }}>
-                  <strong style={{ color: ERP.colors.textPrimary }}>{ev.student_name_zh || "—"}</strong>
+                <div style={{ fontSize: 12, color: ERP.colors.textSecondary, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                  <strong style={{ color: ERP.colors.textPrimary }}>
+                    {isPendingProfile(ev.student_name_zh, ev.student_name_en) ? (ev.student_code || "待補資料") : (ev.student_name_zh || "—")}
+                  </strong>
+                  {isPendingProfile(ev.student_name_zh, ev.student_name_en) && <PendingProfileBadge />}
                   {ev.class_name ? ` · ${ev.class_name}` : ""} · #{ev.student_code || "—"}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 800 }}>{ev.event_title}</div>
@@ -515,9 +519,12 @@ export const Screen_ExemplarLibrary: React.FC<{
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: ERP.colors.textSecondary, marginBottom: 4 }}>
-                  <strong style={{ color: ERP.colors.textPrimary }}>{ev.student_name_zh || "—"}</strong>
-                  {ev.student_name_en ? ` ${ev.student_name_en}` : ""}
+                <div style={{ fontSize: 12, color: ERP.colors.textSecondary, marginBottom: 4, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                  <strong style={{ color: ERP.colors.textPrimary }}>
+                    {isPendingProfile(ev.student_name_zh, ev.student_name_en) ? (ev.student_code || "待補資料") : (ev.student_name_zh || "—")}
+                  </strong>
+                  {isPendingProfile(ev.student_name_zh, ev.student_name_en) && <PendingProfileBadge />}
+                  {!isPendingProfile(ev.student_name_zh, ev.student_name_en) && ev.student_name_en ? ` ${ev.student_name_en}` : ""}
                   {" · "}Student #{ev.student_code || "—"}
                   {ev.class_name ? ` · ${ev.class_name}` : ""}
                   {ev.group_or_level_tag ? ` · ${ev.group_or_level_tag}` : ""}
@@ -611,8 +618,12 @@ export const Screen_ExemplarLibrary: React.FC<{
                 <div>
                   <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>ACORN Impact Inspection</div>
                   <div style={{ fontSize: 17, fontWeight: 800 }}>{drawer.event_title}</div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-                    {drawer.student_name_zh} {drawer.student_name_en} · #{drawer.student_code} · {drawer.class_name}
+                  <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                    {isPendingProfile(drawer.student_name_zh, drawer.student_name_en)
+                      ? (drawer.student_code || "待補資料")
+                      : `${drawer.student_name_zh || ""} ${drawer.student_name_en || ""}`.trim()}
+                    {isPendingProfile(drawer.student_name_zh, drawer.student_name_en) && <PendingProfileBadge />}
+                    {" · "}#{drawer.student_code} · {drawer.class_name}
                   </div>
                 </div>
                 <button type="button" onClick={() => setDrawer(null)} style={{

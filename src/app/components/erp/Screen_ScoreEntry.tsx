@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ScoreSpreadsheetGrid } from "./ScoreSpreadsheetGrid";
 import { ResponsiveTableWrapper } from "./erpResponsive";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 type StatusCode = "normal" | "abs" | "exm" | "late";
 
@@ -956,8 +957,9 @@ export const Screen_ScoreEntry: React.FC<ScoreEntryProps> = ({
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: ERP.colors.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {row.chName || row.enName || "—"}
+                    <div style={{ fontSize: 14, fontWeight: 800, color: ERP.colors.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 6 }}>
+                      {isPendingProfile(row.chName, row.enName) ? (row.studentCode || "—") : (row.chName || row.enName || "—")}
+                      {isPendingProfile(row.chName, row.enName) && <PendingProfileBadge />}
                     </div>
                     <div style={{ fontSize: 11, color: ERP.colors.textMuted, marginTop: 2, fontFamily: ERP.font.mono }}>
                       {row.studentCode} · #{row.classNum}

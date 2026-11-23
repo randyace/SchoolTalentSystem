@@ -4,6 +4,7 @@
 import React, { useMemo, useState } from "react";
 import { ArrowLeft, Check, ClipboardPaste, Layers, Link2, Save, Trash2, Upload, Users, Zap } from "lucide-react";
 import { ERP } from "./erpTokens";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 const F = ERP.font.family;
 
@@ -420,7 +421,10 @@ export const Screen_ActivityRoster: React.FC<{
                                   style={{ width: 15, height: 15, accentColor: ERP.colors.accent }}
                                 />
                                 <span style={{ fontFamily: ERP.font.mono, fontSize: 11, color: ERP.colors.textMuted }}>{s.student_id}</span>
-                                <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name || s.name_zh_hk || s.name_en}</span>
+                                <span style={{ fontSize: 13, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                  {isPendingProfile(s.name_zh_hk || s.name, s.name_en) ? (s.student_id || "待補資料") : (s.name || s.name_zh_hk || s.name_en || "—")}
+                                  {isPendingProfile(s.name_zh_hk || s.name, s.name_en) && <PendingProfileBadge />}
+                                </span>
                               </label>
                             );
                           })}
@@ -497,8 +501,14 @@ export const Screen_ActivityRoster: React.FC<{
                       <div style={{ fontSize: 11, color: ERP.colors.textMuted, fontFamily: ERP.font.mono }}>{s.student_id}</div>
                     </td>
                     <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top" }}>
-                      <div style={{ fontWeight: 700 }}>{s.name_zh_hk || s.name || "—"}</div>
-                      <div style={{ fontSize: 11, color: ERP.colors.textMuted }}>{s.name_en || ""}{s.class_number ? ` · #${s.class_number}` : ""}</div>
+                      <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                        {isPendingProfile(s.name_zh_hk || s.name, s.name_en) ? (s.student_id || "待補資料") : (s.name_zh_hk || s.name || "—")}
+                        {isPendingProfile(s.name_zh_hk || s.name, s.name_en) && <PendingProfileBadge />}
+                      </div>
+                      <div style={{ fontSize: 11, color: ERP.colors.textMuted }}>
+                        {isPendingProfile(s.name_zh_hk || s.name, s.name_en) ? "" : (s.name_en || "")}
+                        {s.class_number ? ` · #${s.class_number}` : ""}
+                      </div>
                     </td>
                     <td style={{ padding: "8px 10px", borderBottom: `1px solid ${ERP.colors.border}`, verticalAlign: "top", minWidth: 140 }}>
                       <input

@@ -13,6 +13,7 @@ import {
   Trophy, BookOpen, Palette, Heart, Cpu, Star,
   Filter, ArrowUpDown, Loader2,
 } from "lucide-react";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 // ── Tokens ─────────────────────────────────────────────────────────────────────
 const T = {
@@ -735,7 +736,10 @@ export const Screen_TalentFilter: React.FC<ScreenTalentFilterProps> = ({
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>{s.nameZh}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>
+                            {isPendingProfile(s.nameZh, s.nameEn) ? (s.id || "—") : s.nameZh}
+                          </span>
+                          {isPendingProfile(s.nameZh, s.nameEn) && <PendingProfileBadge />}
                           {isAllRounder && (
                             <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 6px", borderRadius: 999, background: "linear-gradient(90deg, #EFF6FF, #F5F3FF)", border: `1px solid ${T.purpleBd}`, fontSize: 9, fontWeight: 800, color: T.purple }}>
                               <Sparkles size={8} /> 全才

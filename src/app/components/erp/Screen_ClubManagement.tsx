@@ -14,6 +14,7 @@ import {
   Sliders, Trophy, Cloud, QrCode,
 } from "lucide-react";
 import { AttendanceScanner } from "./AttendanceScanner";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ClubCategory = "arts" | "tech" | "sports" | "service" | "academic" | "culture";
@@ -1158,7 +1159,10 @@ export const ClubRosterView: React.FC<{
                                     style={{ width: 15, height: 15, accentColor: ERP.colors.accent }}
                                   />
                                   <span style={{ fontFamily: ERP.font.mono, fontSize: 11, color: ERP.colors.textMuted }}>{s.student_id}</span>
-                                  <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name || s.name_zh_hk || s.name_en}</span>
+                                  <span style={{ fontSize: 13, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                    {isPendingProfile(s.name_zh_hk || s.name, s.name_en) ? (s.student_id || "—") : (s.name || s.name_zh_hk || s.name_en || "—")}
+                                    {isPendingProfile(s.name_zh_hk || s.name, s.name_en) && <PendingProfileBadge />}
+                                  </span>
                                 </label>
                               );
                             })}
@@ -1286,7 +1290,10 @@ export const ClubRosterView: React.FC<{
                       <span style={{ fontSize:11, fontWeight:800, color:rc.color }}>{m.chName.charAt(0)}</span>
                     </div>
                     <div>
-                      <div style={{ fontSize:14, fontWeight:600, color:ERP.colors.textPrimary, fontFamily:F }}>{m.chName}</div>
+                      <div style={{ fontSize:14, fontWeight:600, color:ERP.colors.textPrimary, fontFamily:F, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" as const }}>
+                        {isPendingProfile(m.chName, m.enName) ? (m.studentId || "—") : m.chName}
+                        {isPendingProfile(m.chName, m.enName) && <PendingProfileBadge />}
+                      </div>
                       <div style={{ fontSize:11, color:ERP.colors.textMuted, fontFamily:F }}>{m.enName}
                         <span style={{ marginLeft:6, padding:"0px 5px", background:sc.bg, border:`1px solid ${sc.bd}`, borderRadius:ERP.radius.full, fontSize:9.5, color:sc.color, fontWeight:700 }}>{sc.zhLabel}</span>
                       </div>

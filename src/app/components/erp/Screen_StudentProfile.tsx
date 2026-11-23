@@ -22,6 +22,7 @@ import {
   Activity, Gauge, ClipboardList, AlertTriangle, CalendarCheck, CalendarX,
   ThumbsUp, Brain, Flame, Frown, Meh, EyeOff,
 } from "lucide-react";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // §1  ACORN 六育 CONFIGURATION (德智體群美靈) — fallback only; live axes from bridge
@@ -1045,7 +1046,9 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
   const pdpoToken = effectiveHolistic?.pdpo_token || profile?.pdpo_token || "Student #S00000";
   const nameZh = (profile?.name_zh_hk || effectiveHolistic?.display_name_zh || "").trim();
   const nameEn = (profile?.name_en || effectiveHolistic?.display_name_en || "").trim();
-  const realName = nameZh || nameEn || "（未命名學生）";
+  const pendingProfile = isPendingProfile(nameZh, nameEn);
+  const regIdEarly = (profile?.student_id || studentId || "").trim();
+  const realName = nameZh || nameEn || (regIdEarly || "（未命名學生）");
   const realNameEn = nameEn;
   const displayName = pdpo ? `${pdpoToken} 🛡️` : realName;
   // Avatar: first char of Chinese name, else first letter of English name
@@ -1249,8 +1252,9 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
                   }
                 </div>
                 <div>
-                  <div style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, color: "#F8FAFC", lineHeight: 1.15, letterSpacing: "-0.3px" }}>
+                  <div style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, color: "#F8FAFC", lineHeight: 1.15, letterSpacing: "-0.3px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     {displayName}
+                    {!pdpo && pendingProfile && <PendingProfileBadge />}
                   </div>
                   <BlurWrap on={pdpo} hint>
                     <div style={{ fontSize: 13, color: "#94A3B8", marginTop: 3 }}>

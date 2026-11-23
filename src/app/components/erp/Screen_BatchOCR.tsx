@@ -658,7 +658,7 @@ const Thumbnail: React.FC<{
         {showImg ? (
           <img src={thumbSrc} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.35 }} />
         ) : (
-          <div style={{ fontSize: 16, opacity: 0.4 }}>📄</div>
+        <div style={{ fontSize: 16, opacity: 0.4 }}>📄</div>
         )}
         <div style={{
           position: "absolute", left: 0, right: 0, height: 2,
@@ -695,18 +695,18 @@ const Thumbnail: React.FC<{
             fontSize: 9,
             color: showImg ? "#fff" : (failed ? C.error : C.textSecondary),
             fontFamily: F, fontWeight: failed || queued || pending ? 700 : 400,
-            lineHeight: 1.2, textAlign: "center", padding: "0 4px",
+          lineHeight: 1.2, textAlign: "center", padding: "0 4px",
             maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
+        }}>
             {failed ? "失敗" : queued ? "⏳ 排隊中" : pending ? "待 OCR" : (confBadge || cert.studentZh)}
-          </div>
-          <div style={{
-            fontSize: 8, fontFamily: F, fontWeight: 700,
+        </div>
+        <div style={{
+          fontSize: 8, fontFamily: F, fontWeight: 700,
             color: showImg ? "#E0E7FF" : (active ? C.accent : C.textMuted),
             background: showImg ? "rgba(255,255,255,0.15)" : (active ? C.accentLight : C.divider),
-            padding: "1px 5px", borderRadius: R.xs,
-          }}>
-            #{index + 1}
+          padding: "1px 5px", borderRadius: R.xs,
+        }}>
+          #{index + 1}
           </div>
         </div>
       </>
@@ -747,7 +747,7 @@ const Thumbnail: React.FC<{
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: failed ? C.error : C.accent, zIndex: 2 }} />
     )}
   </button>
-  );
+);
 };
 
 // ── Certificate Preview (real image when live; decorative mock otherwise) ─────
@@ -1043,7 +1043,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
     }
     if (sig !== seedSigRef.current || dynCertsRef.current.length === 0) {
       seedSigRef.current = sig;
-      setDynCerts(hydratedSeed);
+    setDynCerts(hydratedSeed);
       if (
         hydratedSeed.some(c => committedDbId(c) > 0)
         && uploadPhaseRef.current !== "uploading"
@@ -1247,13 +1247,13 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
             ? { ...c.extractedData }
             : {};
           return {
-            dbId: Number(c.dbId || c.id) || undefined,
-            studentId: c.studentId ?? null,
-            studentZh: c.studentZh,
-            studentEn: c.studentEn,
-            classCode: c.classCode,
-            studentLabel: c.studentLabel,
-            matchConf: c.matchConf,
+          dbId: Number(c.dbId || c.id) || undefined,
+          studentId: c.studentId ?? null,
+          studentZh: c.studentZh,
+          studentEn: c.studentEn,
+          classCode: c.classCode,
+          studentLabel: c.studentLabel,
+          matchConf: c.matchConf,
             confidence: c.confidence,
             level,
             tier,
@@ -1543,7 +1543,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
               hits: pendingHits,
               searchError: unmatchedOcr
                 ? `⚠️ OCR 識別姓名：${name}（未找到完全匹配學生，請手動搜尋或選擇）`
-                : null,
+          : null,
               searching: false,
             },
           };
@@ -1553,7 +1553,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
         if (targetIdx === prevActiveIdxRef.current) {
           window.setTimeout(() => studentSearchInputRefs.current[targetId]?.focus(), 80);
         }
-      } else if (!openDisambiguation && studentId) {
+    } else if (!openDisambiguation && studentId) {
         setStudentUiById(prev => {
           const next = {
             ...prev,
@@ -1584,7 +1584,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
     if (ocrInflightRef.current.has(dbId)) return;
     ocrInflightRef.current.add(dbId);
 
-    const gatewayTimeoutMsg =
+      const gatewayTimeoutMsg =
       "AI 伺服器運算逾時 (504)。已略過此頁，佇列繼續下一份。";
     setScanningIds(prev => new Set([...prev, dbId]));
     // Clear ONLY this item's form slot (other panes untouched).
@@ -1597,7 +1597,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
     }
     setDynCerts(prev => prev.map(c => (c.id === dbId || c.dbId === dbId)
       ? {
-          ...c,
+            ...c,
           ocrStatus: "scanning",
           ocrError: null,
           studentZh: (c.studentZh === "失敗" || c.studentZh === "排隊中" || c.studentZh === "待 OCR")
@@ -1746,11 +1746,11 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
             return next;
           });
           ocrInflightRef.current.delete(dbId);
-          setScanningIds(prev => {
-            const n = new Set(prev);
+      setScanningIds(prev => {
+        const n = new Set(prev);
             n.delete(dbId);
-            return n;
-          });
+        return n;
+      });
         }
       }
     } finally {
@@ -2273,7 +2273,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
           setScanningIds(prev => { const n = new Set(prev); n.delete(newId); return n; });
           setFormsById(prev => {
             const next = {
-              ...prev,
+            ...prev,
               [newId]: {
                 level: fill.level, tier: fill.tier, title: fill.event,
                 award: fill.award, hours: fill.hours, date: fill.date,
@@ -2498,15 +2498,15 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
       const next = prev.map((c) => {
         if (certFormKey(c) !== itemId) return c;
         patched = {
-          ...c,
-          studentId: hit.id,
-          studentLabel: label,
-          studentZh: zh || label.replace(/\s*\(.*\)\s*$/, "").trim() || hit.text,
-          studentEn: en && en.toLowerCase() !== zh.toLowerCase() ? en : "",
-          classCode: cls || c.classCode || "—",
-          matchConf: Math.max(c.matchConf || 0, 98),
-          conflictCount: 0,
-          potentialMatches: [],
+      ...c,
+      studentId: hit.id,
+      studentLabel: label,
+      studentZh: zh || label.replace(/\s*\(.*\)\s*$/, "").trim() || hit.text,
+      studentEn: en && en.toLowerCase() !== zh.toLowerCase() ? en : "",
+      classCode: cls || c.classCode || "—",
+      matchConf: Math.max(c.matchConf || 0, 98),
+      conflictCount: 0,
+      potentialMatches: [],
         };
         return patched;
       });
@@ -3202,46 +3202,46 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
                   }}
                 >
                   <CertPreview cert={paneCert} />
-                  <div>
-                    <span style={{
-                      display: "inline-flex", alignItems: "center", gap: 6,
-                      padding: "5px 12px",
+              <div>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "5px 12px",
                       background: paneCert.confidence >= 90 ? "#D1FAE5" : "#FEF3C7",
                       border: `1px solid ${paneCert.confidence >= 90 ? "#A7F3D0" : "#FCD34D"}`,
-                      borderRadius: R.full,
-                      fontSize: 12, fontWeight: 700,
+                  borderRadius: R.full,
+                  fontSize: 12, fontWeight: 700,
                       color: paneCert.confidence >= 90 ? "#065F46" : "#92400E",
-                    }}>
+                }}>
                       <CheckCircle2 size={12} color={paneCert.confidence >= 90 ? C.success : C.amber} />
                       🟢 AI Confidence Score: {paneCert.confidence || 0}%
-                    </span>
-                  </div>
-                  <div style={{
-                    padding: 14, background: C.pageBg,
-                    borderRadius: R.md, border: `1px solid ${C.border}`,
-                  }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textSecondary, marginBottom: 10 }}>
-                      欄位置信度 · Field Confidence
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <ConfidenceBar
-                        label="Student Name 學生姓名"
+                </span>
+              </div>
+              <div style={{
+                padding: 14, background: C.pageBg,
+                borderRadius: R.md, border: `1px solid ${C.border}`,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.textSecondary, marginBottom: 10 }}>
+                  欄位置信度 · Field Confidence
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <ConfidenceBar
+                    label="Student Name 學生姓名"
                         value={Number(paneCert.fieldConf?.student_name ?? paneCert.matchConf ?? 0)}
-                      />
-                      <ConfidenceBar
-                        label="Award Level 獎項級別"
+                  />
+                  <ConfidenceBar
+                    label="Award Level 獎項級別"
                         value={Number(paneCert.fieldConf?.award_level ?? Math.min(99, Math.round((paneCert.confidence || 0) + 3)))}
-                      />
-                      <ConfidenceBar
-                        label="Event Title 活動名稱"
+                  />
+                  <ConfidenceBar
+                    label="Event Title 活動名稱"
                         value={Number(paneCert.fieldConf?.event_title ?? Math.max(0, Math.round((paneCert.confidence || 0) - 1)))}
-                      />
-                      <ConfidenceBar
-                        label="Event Date 日期"
+                  />
+                  <ConfidenceBar
+                    label="Event Date 日期"
                         value={Number(paneCert.fieldConf?.event_date ?? Math.max(0, Math.round((paneCert.confidence || 0) - 4)))}
-                      />
-                    </div>
-                  </div>
+                  />
+                </div>
+              </div>
                 </div>
               );
             })}
@@ -3997,7 +3997,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
 
             </>)} {/* end !isScanning */}
 
-              <div style={{ height: 8 }} />
+            <div style={{ height: 8 }} />
               </div>
               );
             })}

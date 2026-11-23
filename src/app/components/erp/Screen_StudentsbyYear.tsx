@@ -13,6 +13,7 @@ import {
   Sparkles, SlidersHorizontal, Upload, CloudUpload,
   FileSpreadsheet, FileWarning, ExternalLink, Info, UserPlus,
 } from "lucide-react";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 // ── Design tokens (8-pt grid, Linear-style neutrals) ─────────────────────────
 const DS = {
@@ -1167,8 +1168,11 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
                             </>
                           }
                         >
-                          <div style={{ fontSize: 14, fontWeight: 700, color: DS.g900 }}>{s.chName}</div>
-                          <div style={{ fontSize: 11, color: DS.g500, marginTop: 1 }}>{s.enName}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: DS.g900, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            {isPendingProfile(s.chName, s.enName) ? (s.id || "—") : s.chName}
+                            {isPendingProfile(s.chName, s.enName) && <PendingProfileBadge />}
+                          </div>
+                          <div style={{ fontSize: 11, color: DS.g500, marginTop: 1 }}>{isPendingProfile(s.chName, s.enName) ? "" : s.enName}</div>
                         </PrivacyCell>
                       </div>
                       <button

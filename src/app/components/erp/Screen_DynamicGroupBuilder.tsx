@@ -10,6 +10,7 @@ import {
   Layers, School, ArrowRight,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 // ── Responsive hook ──────────────────────────────────────────────────────────
 function useIsMobile(bp = 768) {
@@ -1031,11 +1032,12 @@ export const Screen_DynamicGroupBuilder: React.FC<BuilderProps> = ({
                           fontSize: 12, fontWeight: 800,
                           color: pal.color, fontFamily: F,
                         }}>
-                          {s.name.charAt(0)}
+                          {(s.name || "?").charAt(0)}
                         </span>
                       </div>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: ERP.colors.textPrimary, fontFamily: F }}>
-                        {s.name}
+                      <span style={{ fontSize: 13, fontWeight: 600, color: ERP.colors.textPrimary, fontFamily: F, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        {s.name || "待補資料"}
+                        {isPendingProfile(s.name, null) && <PendingProfileBadge />}
                       </span>
                     </div>
 

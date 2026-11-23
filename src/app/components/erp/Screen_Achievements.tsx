@@ -7,6 +7,8 @@ import { ERP } from "./erpTokens";
 import {
   EmptyRow, GhostAction, ListingPageShell, ListingTH, listingTD, StatusPill,
 } from "./ListingPageShell";
+// Note: this screen lists certificate batches (no per-student rows).
+// Blank-name stub UX is covered on Activity Roster + Exemplar Library (1.D.7).
 
 export type AchievementBatchRow = {
   id: number;

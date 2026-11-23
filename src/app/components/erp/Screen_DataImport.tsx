@@ -10,6 +10,10 @@ import {
   RefreshCw, Layers, FolderKanban, ChevronDown, ChevronUp, Sparkles, ExternalLink,
 } from "lucide-react";
 import { BroadsheetWizard } from "./BroadsheetWizard";
+import { ClubImportWizard } from "./ClubImportWizard";
+import { StudentNamelistWizard } from "./StudentNamelistWizard";
+import { GroupImportWizard } from "./GroupImportWizard";
+import { ActivityImportWizard } from "./ActivityImportWizard";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -54,6 +58,19 @@ type Props = {
   broadsheetAnalyzeUrl?: string;
   broadsheetExecuteUrl?: string;
   broadsheetBatchesUrl?: string;
+  clubAnalyzeUrl?: string;
+  clubExecuteUrl?: string;
+  clubBatchesUrl?: string;
+  namelistAnalyzeUrl?: string;
+  namelistExecuteUrl?: string;
+  namelistBatchesUrl?: string;
+  namelistSearchUrl?: string;
+  groupAnalyzeUrl?: string;
+  groupExecuteUrl?: string;
+  groupBatchesUrl?: string;
+  activityAnalyzeUrl?: string;
+  activityExecuteUrl?: string;
+  activityBatchesUrl?: string;
   initialModule?: ModuleId;
 };
 
@@ -91,16 +108,15 @@ const FALLBACK_MODULES: ModuleCard[] = [
     { key: "class_name", label: "班別" }, { key: "name_en", label: "英文姓名" }, { key: "name_zh", label: "中文姓名" },
     { key: "score_matrix", label: "科目/分卷分數欄（大分紙）" },
   ], broadsheet: true, notes: ["支援單科清單與 WebSAMS 大分紙矩陣", "底部統計列自動略過"], view_url: "/scores" },
-  { id: "activities", step: 4, zh: "活動、比賽與證書", en: "Activities & Awards", badge: "課外活動與獎項紀錄", count: 0, required: [
-    { key: "student_code", label: "學號" }, { key: "activity_name", label: "活動/比賽名稱" },
-    { key: "activity_date", label: "日期" }, { key: "role", label: "參與角色" }, { key: "status", label: "出席或獲獎狀態" },
+  { id: "activities", step: 4, zh: "活動、比賽與證書", en: "Activities & Awards", badge: "eClass 活動參與 · 批次隔離回滾", count: 0, required: [
+    { key: "student_code", label: "學號 / UserLogin" }, { key: "activity_name", label: "活動/比賽名稱" },
   ], optional: [
-    { key: "acorn_moral", label: "德育比重" }, { key: "acorn_intellectual", label: "智育比重" },
-  ], view_url: "/activities" },
-  { id: "clubs", step: 5, zh: "學會與崗位名冊", en: "Clubs & Roles", badge: "連動 1.D.6 角色與 T1-T3", count: 0, required: [
-    { key: "student_code", label: "學號" }, { key: "club_name", label: "學會名稱" },
-    { key: "academic_year", label: "學年" }, { key: "role", label: "擔任崗位" },
-  ], optional: [{ key: "attendance_count", label: "出席次數" }], view_url: "/clubs" },
+    { key: "activity_date", label: "日期（選填）" }, { key: "role", label: "參與角色" },
+    { key: "achievement", label: "成就" }, { key: "belong_tag", label: "歸屬標籤" },
+  ], notes: ["支援 eClass activity_participant_list CSV", "與 2025/26 示範資料以 Batch ID 區隔，可一鍵回滾"], view_url: "/activities" },
+  { id: "clubs", step: 5, zh: "學會與崗位名冊", en: "Clubs & Roles", badge: "eClass 學會名冊 · 留空占位後補", count: 0, required: [
+    { key: "student_code", label: "學號 / UserLogin" },
+  ], optional: [{ key: "club_name", label: "學會名稱" }, { key: "role", label: "擔任崗位" }], notes: ["支援 eClass club_member_list.csv", "缺漏學生以空白姓名占位"], view_url: "/clubs" },
   { id: "projects", step: 6, zh: "跨學科分組專題", en: "PBL Projects", badge: "專題組別與組長錨定", count: 0, required: [
     { key: "student_code", label: "學號" }, { key: "project_name", label: "專題名稱" },
     { key: "subject_area", label: "科目/領域" }, { key: "group_name", label: "組別" },
@@ -165,6 +181,19 @@ export const Screen_DataImport: React.FC<Props> = ({
   broadsheetAnalyzeUrl = "/api/data-import/broadsheet/analyze",
   broadsheetExecuteUrl = "/api/data-import/broadsheet/execute",
   broadsheetBatchesUrl = "/api/data-import/broadsheet/batches",
+  clubAnalyzeUrl = "/api/data-import/clubs/analyze",
+  clubExecuteUrl = "/api/data-import/clubs/execute",
+  clubBatchesUrl = "/api/data-import/clubs/batches",
+  namelistAnalyzeUrl = "/api/data-import/students/analyze-marksheet",
+  namelistExecuteUrl = "/api/data-import/students/execute-marksheet",
+  namelistBatchesUrl = "/api/data-import/students/batches",
+  namelistSearchUrl = "/api/data-import/students/search",
+  groupAnalyzeUrl = "/api/data-import/groups/analyze",
+  groupExecuteUrl = "/api/data-import/groups/execute",
+  groupBatchesUrl = "/api/data-import/groups/batches",
+  activityAnalyzeUrl = "/api/data-import/activities/analyze",
+  activityExecuteUrl = "/api/data-import/activities/execute",
+  activityBatchesUrl = "/api/data-import/activities/batches",
   initialModule,
 }) => {
   const [modules, setModules] = useState<ModuleCard[]>(modulesProp?.length ? modulesProp : FALLBACK_MODULES);
@@ -384,8 +413,8 @@ export const Screen_DataImport: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Stepper — hidden for scores broadsheet wizard */}
-        {activeModule !== "scores" && (
+        {/* Stepper — hidden for scores/clubs/students/classes/activities dedicated wizards */}
+        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && (
         <div style={{
           display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" as const,
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: "10px 14px",
@@ -399,8 +428,8 @@ export const Screen_DataImport: React.FC<Props> = ({
                 borderRadius: R.md,
                 background: active ? C.accentPale : done ? "#F0FDF4" : "transparent",
                 border: `1px solid ${active ? C.accentLight : done ? "#BBF7D0" : C.border}`,
-              }}>
-                <span style={{
+          }}>
+            <span style={{
                   width: 22, height: 22, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 800, color: "#fff",
                   background: active ? C.accent : done ? C.success : "#94A3B8",
@@ -408,8 +437,8 @@ export const Screen_DataImport: React.FC<Props> = ({
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.textPrimary }}>{s.zh}</div>
                   <div style={{ fontSize: 10, color: C.textMuted }}>{s.en}</div>
-                </div>
               </div>
+          </div>
             );
           })}
         </div>
@@ -422,7 +451,7 @@ export const Screen_DataImport: React.FC<Props> = ({
             fontSize: 13, fontWeight: 600, display: "flex", gap: 8, alignItems: "center",
           }}>
             <XCircle size={16} /> {error}
-              </div>
+                </div>
             )}
 
         {/* Module picker always visible */}
@@ -459,7 +488,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                 </button>
               );
             })}
-          </div>
+                </div>
         </SectionCard>
 
         {activeModule === "scores" && (
@@ -470,18 +499,60 @@ export const Screen_DataImport: React.FC<Props> = ({
           />
         )}
 
-        {/* ── STEP 1 (legacy modules, not scores broadsheet) ── */}
-        {activeModule !== "scores" && step === 1 && (
+        {activeModule === "clubs" && (
+          <ClubImportWizard
+            analyzeUrl={clubAnalyzeUrl}
+            executeUrl={clubExecuteUrl}
+            batchesUrl={clubBatchesUrl}
+          />
+        )}
+
+        {activeModule === "students" && (
+          <StudentNamelistWizard
+            analyzeUrl={namelistAnalyzeUrl}
+            executeUrl={namelistExecuteUrl}
+            batchesUrl={namelistBatchesUrl}
+            searchUrl={namelistSearchUrl}
+            parseUrl={parseUrl}
+            validateUrl={validateUrl}
+            flatExecuteUrl={executeUrl}
+          />
+        )}
+
+        {activeModule === "classes" && (
+          <GroupImportWizard
+            analyzeUrl={groupAnalyzeUrl}
+            executeUrl={groupExecuteUrl}
+            batchesUrl={groupBatchesUrl}
+            parseUrl={parseUrl}
+            validateUrl={validateUrl}
+            flatExecuteUrl={executeUrl}
+          />
+        )}
+
+        {activeModule === "activities" && (
+          <ActivityImportWizard
+            analyzeUrl={activityAnalyzeUrl}
+            executeUrl={activityExecuteUrl}
+            batchesUrl={activityBatchesUrl}
+            parseUrl={parseUrl}
+            validateUrl={validateUrl}
+            flatExecuteUrl={executeUrl}
+          />
+        )}
+
+        {/* ── STEP 1 (legacy modules, not dedicated wizards) ── */}
+        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && step === 1 && (
           <>
             {/* Excel guide */}
             <div style={{
               marginBottom: 14, borderRadius: R.xl, border: `1px solid ${C.accentLight}`,
               background: "#F8FBFF", overflow: "hidden",
             }}>
-              <button
+                    <button
                 type="button"
                 onClick={() => setGuideOpen(o => !o)}
-                style={{
+                      style={{
                   width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                   padding: "12px 16px", border: "none", background: "transparent", cursor: "pointer", fontFamily: F,
                 }}
@@ -491,7 +562,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                   <span style={{ fontSize: 11, fontWeight: 600, color: C.textMuted }}>({mod.zh})</span>
                 </span>
                 {guideOpen ? <ChevronUp size={16} color="#1E40AF" /> : <ChevronDown size={16} color="#1E40AF" />}
-              </button>
+                    </button>
               {guideOpen && (
                 <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14, padding: "0 16px 16px" }}>
                   <div>
@@ -504,7 +575,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                           background: "#ECFDF5", color: "#065F46", border: "1px solid #A7F3D0",
                         }}>{f.label}</span>
                       ))}
-                    </div>
+                  </div>
                     {mod.optional.length > 0 && (
                       <>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4 }}>選填欄位 Optional</div>
@@ -514,8 +585,8 @@ export const Screen_DataImport: React.FC<Props> = ({
                               fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: R.full,
                               background: "#F1F5F9", color: "#475569", border: "1px solid #E2E8F0",
                             }}>{f.label}</span>
-                          ))}
-                        </div>
+                      ))}
+                    </div>
                       </>
                     )}
                     {(mod.notes || []).map(n => (
@@ -525,10 +596,10 @@ export const Screen_DataImport: React.FC<Props> = ({
                     {GOLDEN_RULES.map((r, i) => (
                       <div key={i} style={{ fontSize: 11, color: C.textSecondary, marginBottom: 4, lineHeight: 1.45 }}>
                         <strong style={{ color: C.accent }}>{i + 1}.</strong> {r}
-                      </div>
+                </div>
                     ))}
                       </div>
-                  <div style={{
+                <div style={{
                     background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 14,
                     display: "flex", flexDirection: "column", gap: 10,
                   }}>
@@ -543,10 +614,10 @@ export const Screen_DataImport: React.FC<Props> = ({
                     >
                       <Download size={15} /> 下載此模組標準 Excel 範本 (.csv)
                     </a>
-                    <button
+                  <button
                       type="button"
                       onClick={() => void loadSample()}
-                      style={{
+                    style={{
                         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                         padding: "10px 12px", borderRadius: R.md, border: `1px solid ${C.accentLight}`,
                         background: C.accentPale, color: C.accent, fontSize: 13, fontWeight: 700,
@@ -554,13 +625,13 @@ export const Screen_DataImport: React.FC<Props> = ({
                       }}
                     >
                       <Zap size={15} /> 載入校方真實測試數據
-                    </button>
+                  </button>
                     <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.4 }}>
                       範本含 UTF-8 BOM 與 3 列真實樣例；測考模組示範 WebSAMS 大分紙欄位結構。
                     </div>
-                  </div>
                 </div>
-              )}
+              </div>
+            )}
                   </div>
 
             <SectionCard step="02" zh="檔案上傳區" en="Upload Zone" icon={<UploadCloud size={14} />}>
@@ -618,7 +689,7 @@ export const Screen_DataImport: React.FC<Props> = ({
           badge={
                 <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: canNext ? "#15803D" : C.textMuted }}>
                   {processed} / {mapping.length || 0} 個欄位已處理
-                </span>
+              </span>
               }
             >
               {mapping.length === 0 ? (
@@ -673,14 +744,14 @@ export const Screen_DataImport: React.FC<Props> = ({
                       })}
                     </tbody>
                   </table>
-                </div>
+            </div>
               )}
               {!requiredOk && mapping.length > 0 && (
                 <div style={{ marginTop: 10, fontSize: 12, color: "#B45309", fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
                   <AlertTriangle size={14} /> 請完成所有必填欄位映射（或將多餘欄位設為「忽略」）
-                </div>
-              )}
-            </SectionCard>
+            </div>
+          )}
+        </SectionCard>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
               <button
@@ -697,12 +768,12 @@ export const Screen_DataImport: React.FC<Props> = ({
               >
                 {validating ? "校驗中…" : "下一步：執行數據校驗"} <ArrowRight size={15} />
               </button>
-            </div>
+      </div>
           </>
         )}
 
         {/* ── STEP 2 ── */}
-        {activeModule !== "scores" && step === 2 && summary && (
+        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && step === 2 && summary && (
           <>
             <SectionCard step="02" zh="數據校驗與脫敏預覽" en="Validation Preview" icon={<Shield size={14} />}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -717,9 +788,9 @@ export const Screen_DataImport: React.FC<Props> = ({
                   }}>
                     <div style={{ fontSize: 22, fontWeight: 800, color: card.color, fontFamily: ERP.font.mono }}>{card.value}</div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.textSecondary, marginTop: 4 }}>{card.label}</div>
-                  </div>
+            </div>
                 ))}
-              </div>
+            </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                 <span style={{ fontSize: 12, fontWeight: 700 }}>預覽前 {previewRows.length} 列</span>
                 <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
@@ -727,7 +798,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                   預覽 PDPO 脫敏
                 </label>
                 {isBroadsheet && <span style={{ fontSize: 11, color: C.accent, fontWeight: 700 }}>大分紙已展開為分數矩陣</span>}
-              </div>
+          </div>
               <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: R.md }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                   <thead>
@@ -753,7 +824,7 @@ export const Screen_DataImport: React.FC<Props> = ({
                     ))}
                   </tbody>
                 </table>
-              </div>
+          </div>
             </SectionCard>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" as const }}>
               <button type="button" onClick={() => setStep(1)} style={{
@@ -762,8 +833,8 @@ export const Screen_DataImport: React.FC<Props> = ({
                 fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: F,
               }}>
                 <ArrowLeft size={14} /> 返回修改映射
-              </button>
-              <button
+          </button>
+          <button
                 type="button"
                 disabled={executing}
                 onClick={() => void runExecute()}
@@ -774,13 +845,13 @@ export const Screen_DataImport: React.FC<Props> = ({
                 }}
               >
                 {executing ? "寫入中…" : "確認無誤：寫入資料庫 (Execute Import)"} <ArrowRight size={15} />
-              </button>
-            </div>
+          </button>
+        </div>
           </>
         )}
 
         {/* ── STEP 3 ── */}
-        {activeModule !== "scores" && step === 3 && execResult && (
+        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && step === 3 && execResult && (
           <SectionCard step="03" zh="寫入資料庫完成報告" en="Import Complete" icon={<CheckCircle2 size={14} />}>
             <div style={{
               padding: 20, borderRadius: R.lg, background: "#ECFDF5", border: "1px solid #A7F3D0", marginBottom: 16,

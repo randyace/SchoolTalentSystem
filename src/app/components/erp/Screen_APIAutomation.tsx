@@ -286,7 +286,7 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
       {toast && (
         <div style={{ position: "fixed", top: 16, right: 16, zIndex: 50, background: "#0F172A", color: "#fff", padding: "10px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600, boxShadow: D.shadow }}>
           {toast}
-        </div>
+          </div>
       )}
 
       {/* Header */}
@@ -302,7 +302,7 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
             {!isMobile && (
               <div style={{ fontSize: 11, color: D.text4, marginTop: 1 }}>
                 Module 1.F.6/8 · Base: <span style={{ fontFamily: D.mono, color: D.accent }}>{base}</span>
-              </div>
+          </div>
             )}
           </div>
           <a href={docsUrl} style={{ ...btnBase, textDecoration: "none" }}>
@@ -314,11 +314,11 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
         </div>
         <div style={{ display: "flex", gap: 0, padding: isMobile ? "0 4px" : "0 24px", overflowX: "auto", borderTop: `1px solid ${D.border}` }}>
           {tabs.map((t) => (
-            <button
+              <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              style={{
+                style={{
                 display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "10px 14px" : "10px 20px",
                 border: "none", borderBottom: tab === t.id ? `2px solid ${D.accent}` : "2px solid transparent",
                 background: "transparent", cursor: "pointer", fontFamily: D.font,
@@ -326,7 +326,7 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
               }}
             >
               {t.icon} {t.zh} {!isMobile && <span style={{ fontSize: 10, color: D.text4 }}>{t.en}</span>}
-            </button>
+              </button>
           ))}
         </div>
       </div>
@@ -342,12 +342,12 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
               {c.icon}
               <span style={{ fontSize: 11, color: D.text4, fontWeight: 600 }}>{c.label}</span>
-            </div>
+          </div>
             <div style={{ fontSize: 16, fontWeight: 800, color: D.text1 }}>{loading ? "…" : c.value}</div>
             <div style={{ fontSize: 11, color: D.text4, marginTop: 2 }}>{c.sub}</div>
-          </div>
+            </div>
         ))}
-      </div>
+            </div>
 
       {/* Body */}
       <div style={{ flex: isMobile ? "none" : 1, overflow: isMobile ? "visible" : "auto", padding: isMobile ? "12px 16px 24px" : "14px 24px 24px", minHeight: 0 }}>
@@ -358,23 +358,23 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 800 }}>{viewer?.name || "目前登入教師"}</div>
                   <div style={{ fontSize: 11, color: D.text4 }}>{viewer?.role || "—"} · {viewer?.email || ""}</div>
-                </div>
-                <span style={{
+          </div>
+          <span style={{
                   fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
                   background: viewer?.active ? D.greenBg : D.surfaceAlt,
                   color: viewer?.active ? D.green : D.text4,
                 }}>
                   {viewer?.active ? "🟢 已啟用 Active" : "⚪ 尚未生成"}
                 </span>
-              </div>
+            </div>
               <div style={{ fontFamily: D.mono, fontSize: 13, background: D.surfaceAlt, padding: "10px 12px", borderRadius: 8, border: `1px solid ${D.border}`, marginBottom: 10 }}>
                 {viewer?.prefix || "sts_live_••••••••••••"}
-              </div>
+          </div>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: D.text3, marginBottom: 14 }}>
                 <span><Clock size={11} /> 建立：{viewer?.created_at || "—"}</span>
                 <span>最後使用：{viewer?.last_used_at || "—"}</span>
                 <span>調用：{viewer?.use_count ?? 0}</span>
-              </div>
+          </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button type="button" disabled={busy} onClick={onRegenerate} style={{ ...btnBase, background: D.accent, color: "#fff", border: "none" }}>
                   <RefreshCw size={13} /> 生成 / 重新生成 Token
@@ -382,7 +382,7 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                 <button type="button" disabled={busy || !viewer?.active} onClick={() => onRevoke()} style={{ ...btnBase, color: D.red, borderColor: "#FECACA", background: D.redBg }}>
                   <Lock size={13} /> 撤銷 Token
                 </button>
-              </div>
+          </div>
               {rawToken && (
                 <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: "#FEF9C3", border: "1px solid #FDE68A" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>⚠️ 一次性顯示 — 請立即複製；重新生成會作廢舊 Token</div>
@@ -390,12 +390,12 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                   <button type="button" onClick={() => copyText(rawToken)} style={btnBase}>
                     {copied ? <Check size={13} color={D.green} /> : <Copy size={13} />} 複製 Token
                   </button>
-                </div>
+          </div>
               )}
               <div style={{ marginTop: 16, padding: 12, background: D.surfaceDark, borderRadius: 8, color: "#E6EDF3", fontFamily: D.mono, fontSize: 11, overflowX: "auto" }}>
                 <div style={{ color: "#8B949E", marginBottom: 4 }}># cURL / n8n Header</div>
                 Authorization: Bearer {rawToken || "&lt;your_token&gt;"}
-              </div>
+        </div>
               <button type="button" onClick={onTestMe} style={{ ...btnBase, marginTop: 10, background: D.greenBg, borderColor: "#6EE7B7", color: D.green }}>
                 <Zap size={13} /> 用此 Token 立即發送測試請求 (/me)
               </button>
@@ -437,8 +437,8 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                   </tbody>
                 </table>
               </ResponsiveTableWrapper>
-            </div>
           </div>
+        </div>
         )}
 
         {tab === "webhooks" && (
@@ -447,26 +447,26 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
               <div style={{ padding: 12, borderBottom: `1px solid ${D.border}` }}>
                 <div style={{ position: "relative" }}>
                   <Search size={13} style={{ position: "absolute", left: 10, top: 9, color: D.text4 }} />
-                  <input
+              <input
                     value={eventFilter}
                     onChange={(e) => setEventFilter(e.target.value)}
                     placeholder="搜尋事件…"
                     style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px 8px 30px", borderRadius: 8, border: `1px solid ${D.border}`, fontSize: 12, fontFamily: D.font }}
-                  />
-                </div>
-              </div>
+              />
+            </div>
+          </div>
               <div style={{ maxHeight: isMobile ? 280 : 520, overflowY: "auto" }}>
                 {events.map((code) => {
                   const meta = EVENT_META[code] || { zh: code, module: "Event", color: D.accent, bg: D.accentLight };
                   const sub = subs.find((s) => s.event_code === code);
                   const active = !!sub?.is_active;
                   const sel = selectedEvent === code;
-                  return (
+              return (
                     <button
                       key={code}
                       type="button"
                       onClick={() => setSelectedEvent(code)}
-                      style={{
+                  style={{
                         width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 10,
                         padding: "12px 14px", border: "none", borderBottom: `1px solid ${D.border}`,
                         background: sel ? D.accentLight : D.surface, cursor: "pointer", fontFamily: D.font,
@@ -476,13 +476,13 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: D.text1 }}>{meta.zh}</div>
                         <div style={{ fontSize: 10, fontFamily: D.mono, color: D.text4 }}>{code}</div>
-                      </div>
+                    </div>
                       <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: meta.bg, color: meta.color }}>{meta.module}</span>
                     </button>
-                  );
-                })}
-              </div>
-            </div>
+              );
+            })}
+          </div>
+        </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
               <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: D.radius, padding: 16, boxShadow: D.shadow }}>
@@ -495,21 +495,21 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                     <select value={formMethod} onChange={(e) => setFormMethod(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: `1px solid ${D.border}`, fontSize: 12 }}>
                       {["POST", "PUT", "PATCH"].map((m) => <option key={m}>{m}</option>)}
                     </select>
-                  </div>
-                  <div>
+              </div>
+              <div>
                     <label style={{ fontSize: 11, color: D.text4 }}>Timeout (sec)</label>
                     <input type="number" min={1} max={30} value={formTimeout} onChange={(e) => setFormTimeout(Number(e.target.value) || 10)} style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 8, border: `1px solid ${D.border}`, fontSize: 12 }} />
-                  </div>
+                </div>
                   <div>
                     <label style={{ fontSize: 11, color: D.text4 }}>Active</label>
                     <button type="button" onClick={() => setFormActive((v) => !v)} style={{ ...btnBase, width: "100%", justifyContent: "center", background: formActive ? D.greenBg : D.surfaceAlt, color: formActive ? D.green : D.text4 }}>
                       {formActive ? "啟用中" : "已停用"}
-                    </button>
-                  </div>
-                </div>
+              </button>
+              </div>
+            </div>
                 <div style={{ marginTop: 10, fontSize: 11, color: D.text4 }}>
                   Signing Secret (HMAC-SHA256): <span style={{ fontFamily: D.mono, color: D.text2 }}>{selectedSub?.signing_secret_masked || "—"}</span>
-                </div>
+          </div>
               </div>
 
               <div style={{ background: D.surfaceDark, borderRadius: D.radius, padding: 14 }}>
@@ -518,13 +518,13 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                   <button type="button" onClick={() => copyText(payloadPreview)} style={{ ...btnBase, padding: "4px 8px" }}>
                     <Copy size={12} /> Copy JSON
                   </button>
-                </div>
+            </div>
                 <pre style={{ margin: 0, color: "#A5D6FF", fontFamily: D.mono, fontSize: 11, overflowX: "auto" }}>{payloadPreview}</pre>
-              </div>
+          </div>
 
               <div style={{ background: D.n8nBg, border: `1px solid #FFC9C2`, borderRadius: D.radius, padding: 12, fontSize: 12, color: "#9A3412" }}>
                 <strong>N8N 串接提示：</strong> 將 Target URL 設為 n8n Webhook node，並以 Header <code>X-STS-Signature</code> 驗證 HMAC。
-              </div>
+                </div>
 
               <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: D.radius, padding: 14, boxShadow: D.shadow }}>
                 <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>最近投遞記錄</div>
@@ -558,7 +558,7 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                     </tbody>
                   </table>
                 </ResponsiveTableWrapper>
-              </div>
+            </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", position: isMobile ? "static" : "sticky", bottom: 0, background: D.pageBg, paddingTop: 4 }}>
                 <button type="button" disabled={busy} onClick={onTestWebhook} style={{ ...btnBase, background: D.accent, color: "#fff", border: "none" }}>
@@ -567,9 +567,9 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                 <button type="button" disabled={busy} onClick={onSaveWebhook} style={{ ...btnBase, background: "#0F172A", color: "#fff", border: "none" }}>
                   💾 儲存 Webhook 設定
                 </button>
-              </div>
             </div>
           </div>
+                </div>
         )}
 
         {tab === "n8n" && (
@@ -581,7 +581,7 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
               <button type="button" onClick={() => copyText(n8nWorkflow)} style={{ ...btnBase, marginTop: 8 }}>
                 <Copy size={13} /> 複製 Workflow JSON
               </button>
-            </div>
+              </div>
             <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: D.radius, padding: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>Quick Endpoint Tester</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -592,9 +592,9 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                   <div key={ep} style={{ fontFamily: D.mono, fontSize: 12, padding: "8px 10px", background: D.surfaceAlt, borderRadius: 6, border: `1px solid ${D.border}` }}>
                     {base}{ep.replace(/^GET |^POST /, "").replace("/me", "/me").replace(/^\//, "/").replace(/^/, "")}
                     <span style={{ float: "right", color: D.text4 }}>{ep.split(" ")[0]}</span>
-                  </div>
+                    </div>
                 ))}
-              </div>
+                    </div>
               <div style={{ marginTop: 10, fontSize: 11, color: D.text4 }}>
                 完整互動測試請至 <a href={docsUrl} style={{ color: D.accent }}>接口文檔</a>，或於「存取權杖」分頁用 Token 打 /me。
               </div>
@@ -636,9 +636,9 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
                 </tbody>
               </table>
             </ResponsiveTableWrapper>
-          </div>
+            </div>
         )}
-      </div>
+          </div>
 
       {detailDelivery && (
         <div
@@ -656,7 +656,7 @@ export const Screen_APIAutomation: React.FC<ScreenAPIAutomationProps> = ({
             </div>
             <div style={{ fontSize: 12, color: D.text3, marginBottom: 8 }}>
               {detailDelivery.event_code} · HTTP {detailDelivery.http_status} · {detailDelivery.latency_ms}ms
-            </div>
+          </div>
             <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Request</div>
             <pre style={{ background: D.surfaceDark, color: "#E6EDF3", padding: 10, borderRadius: 8, fontSize: 11, overflowX: "auto" }}>
               {typeof detailDelivery.request_payload === "string"

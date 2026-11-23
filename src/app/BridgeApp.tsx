@@ -599,7 +599,17 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           broadsheetAnalyzeUrl={(config as any).broadsheetAnalyzeUrl || "/api/data-import/broadsheet/analyze"}
           broadsheetExecuteUrl={(config as any).broadsheetExecuteUrl || "/api/data-import/broadsheet/execute"}
           broadsheetBatchesUrl={(config as any).broadsheetBatchesUrl || "/api/data-import/broadsheet/batches"}
-          initialModule={(config as any).initialModule || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("module") === "scores" ? "scores" : undefined)}
+          clubAnalyzeUrl={(config as any).clubAnalyzeUrl || "/api/data-import/clubs/analyze"}
+          clubExecuteUrl={(config as any).clubExecuteUrl || "/api/data-import/clubs/execute"}
+          clubBatchesUrl={(config as any).clubBatchesUrl || "/api/data-import/clubs/batches"}
+          namelistAnalyzeUrl={(config as any).namelistAnalyzeUrl || "/api/data-import/students/analyze-marksheet"}
+          namelistExecuteUrl={(config as any).namelistExecuteUrl || "/api/data-import/students/execute-marksheet"}
+          namelistBatchesUrl={(config as any).namelistBatchesUrl || "/api/data-import/students/batches"}
+          namelistSearchUrl={(config as any).namelistSearchUrl || "/api/data-import/students/search"}
+          groupAnalyzeUrl={(config as any).groupAnalyzeUrl || "/api/data-import/groups/analyze"}
+          groupExecuteUrl={(config as any).groupExecuteUrl || "/api/data-import/groups/execute"}
+          groupBatchesUrl={(config as any).groupBatchesUrl || "/api/data-import/groups/batches"}
+          initialModule={(config as any).initialModule || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("module") === "scores" ? "scores" : new URLSearchParams(window.location.search).get("module") === "clubs" ? "clubs" : new URLSearchParams(window.location.search).get("module") === "students" ? "students" : new URLSearchParams(window.location.search).get("module") === "classes" ? "classes" : undefined))}
         />
       ));
 

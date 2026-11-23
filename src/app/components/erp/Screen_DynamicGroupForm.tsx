@@ -7,6 +7,7 @@ import {
   Plus, Save, Search, Trash2, UserCog, Users, X, Zap, AlertTriangle,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
+import { PendingProfileBadge, isPendingProfile } from "./PendingProfileBadge";
 
 const F = ERP.font.family;
 
@@ -793,8 +794,9 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                                   <span style={{ fontFamily: ERP.font.mono, fontSize: 11, color: ERP.colors.textMuted }}>
                                     {s.student_id}
                                   </span>
-                                  <span style={{ fontSize: 13, fontWeight: 600, color: ERP.colors.textPrimary }}>
-                                    {s.name}
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: ERP.colors.textPrimary, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                    {s.name || s.name_zh_hk || s.name_en || "待補資料"}
+                                    {isPendingProfile(s.name_zh_hk, s.name_en) && <PendingProfileBadge />}
                                   </span>
                                 </label>
                               );
@@ -864,7 +866,10 @@ export const Screen_DynamicGroupForm: React.FC<Props> = ({
                       >
                         <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: p.bg, color: p.color, border: `1px solid ${p.border}` }}>{s.class_name || "—"}</span>
                         <span style={{ fontFamily: ERP.font.mono, fontSize: 12 }}>{s.student_id}</span>
-                        <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{s.name}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, flex: 1, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          {s.name || s.name_zh_hk || s.name_en || "待補資料"}
+                          {isPendingProfile(s.name_zh_hk, s.name_en) && <PendingProfileBadge />}
+                        </span>
                         {taken ? <span style={{ fontSize: 11, color: ERP.colors.success, fontWeight: 700 }}>已加入</span> : (
                           <span style={{ fontSize: 11, color: ERP.colors.accent, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}>
                             <Plus size={12} /> 加入
@@ -1009,7 +1014,10 @@ const SelectedRosterTable: React.FC<{
           background: i % 2 ? ERP.colors.pageBg : "#fff", fontSize: 13,
         }}>
           <span style={{ fontFamily: ERP.font.mono, fontSize: 12 }}>{r.student_id}</span>
-          <span style={{ fontWeight: 600 }}>{r.name}</span>
+          <span style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {r.name || r.name_zh_hk || r.name_en || "待補資料"}
+            {isPendingProfile(r.name_zh_hk, r.name_en) && <PendingProfileBadge />}
+          </span>
           <span>
             <span style={{
               padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700,
