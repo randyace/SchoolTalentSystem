@@ -559,10 +559,11 @@ export const Screen_Subjects: React.FC<Props> = ({
   storeUrl = "/subjects/store",
   updateUrl = "/subjects/update",
 }) => {
-  const klas = (klasProp && klasProp.length > 0) ? klasProp : FALLBACK_KLAS;
-  const acorns = (acornsProp && acornsProp.length > 0) ? acornsProp : FALLBACK_ACORNS;
+  // Dictionaries may use static KLA/ACORN labels; subject entity list never seeds SUBJECTS_DATA.
+  const klas = Array.isArray(klasProp) ? klasProp : FALLBACK_KLAS;
+  const acorns = Array.isArray(acornsProp) ? acornsProp : FALLBACK_ACORNS;
   const [catalog, setCatalog] = useState<Subject[]>(
-    () => (subjects && subjects.length > 0) ? subjects : SUBJECTS_DATA
+    () => Array.isArray(subjects) ? subjects : []
   );
 
   // No Figma-mock preselection — table loads with inspector closed (full width).
@@ -811,7 +812,16 @@ export const Screen_Subjects: React.FC<Props> = ({
               <div>
                 {filtered.length === 0 ? (
                   <div style={{ padding: "40px 16px", textAlign: "center" as const, color: ERP.colors.textMuted, fontSize: 13 }}>
-                    沒有符合條件的科目
+                    <div style={{ fontWeight: 700, color: ERP.colors.textPrimary, marginBottom: 6 }}>
+                      {catalog.length === 0 ? "目前暫無科目資料" : "沒有符合條件的科目"}
+                    </div>
+                    {catalog.length === 0 && (
+                      <a href="/admin/data-import" style={{
+                        display: "inline-flex", marginTop: 12, padding: "8px 14px",
+                        borderRadius: ERP.radius.md, background: ERP.colors.accent, color: "#fff",
+                        fontWeight: 700, fontSize: 12, textDecoration: "none",
+                      }}>前往數據匯入</a>
+                    )}
                   </div>
                 ) : filtered.map((s, idx) => {
                   const isSelected = selectedId === s.id;
@@ -889,7 +899,20 @@ export const Screen_Subjects: React.FC<Props> = ({
                     <div key={i} style={{ padding: "11px 8px 11px 0", fontSize: 11, fontWeight: 700, color: ERP.colors.textMuted, letterSpacing: "0.5px", textTransform: "uppercase" as const }}>{h}</div>
                   ))}
                 </div>
-                {filtered.map((s, idx) => {
+                {filtered.length === 0 ? (
+                  <div style={{ padding: "48px 16px", textAlign: "center" as const, color: ERP.colors.textMuted, fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, color: ERP.colors.textPrimary, marginBottom: 6 }}>
+                      {catalog.length === 0 ? "目前暫無科目資料" : "沒有符合條件的科目"}
+                    </div>
+                    {catalog.length === 0 && (
+                      <a href="/admin/data-import" style={{
+                        display: "inline-flex", marginTop: 12, padding: "8px 14px",
+                        borderRadius: ERP.radius.md, background: ERP.colors.accent, color: "#fff",
+                        fontWeight: 700, fontSize: 12, textDecoration: "none",
+                      }}>前往數據匯入</a>
+                    )}
+                  </div>
+                ) : filtered.map((s, idx) => {
                   const isSelected = selectedId === s.id;
                   const klaStyle = klaStyleFor(s, klas);
                   const dynOn = !!s.allow_dynamic_grouping;

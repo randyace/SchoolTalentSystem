@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile } from "./erpResponsive";
+import { FileDropZone } from "./FileDropZone";
+import { WizardActionBar, WizardStepper } from "./ImportWizardChrome";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -203,30 +205,32 @@ export const GroupImportWizard: React.FC<GroupImportWizardProps> = ({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: F }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        {mode === "teaching" && [1, 2, 3, 4].map((n) => (
-          <div key={n} style={{
-            display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px",
-            borderRadius: 999, fontSize: 11, fontWeight: 700,
-            background: step === n ? C.primary : step > n ? "#DCFCE7" : "#F1F5F9",
-            color: step === n ? "#fff" : step > n ? "#15803D" : C.textMuted,
-          }}>
-            {step > n ? <CheckCircle2 size={12} /> : n}
-            {n === 1 ? "上傳與學年" : n === 2 ? "分組總覽" : n === 3 ? "座位解析" : "完成報告"}
-          </div>
-        ))}
+        {mode === "teaching" && (
+          <WizardStepper
+            step={step}
+            maxReachable={step}
+            onJump={(n) => setStep(n)}
+            steps={[
+              { n: 1, label: "1 上傳與學年" },
+              { n: 2, label: "2 分組總覽" },
+              { n: 3, label: "3 座位解析" },
+              { n: 4, label: "4 完成報告" },
+            ]}
+          />
+        )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           <button type="button" onClick={() => setMode("teaching")}
             style={{
               fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 8, cursor: "pointer",
-              border: `1px solid ${mode === "teaching" ? C.primary : C.border}`,
-              background: mode === "teaching" ? C.primary : "#fff",
+              border: `1px solid ${mode === "teaching" ? C.accent : C.border}`,
+              background: mode === "teaching" ? C.accent : "#fff",
               color: mode === "teaching" ? "#fff" : C.textSecondary,
             }}>教學分組 XLSX</button>
           <button type="button" onClick={() => setMode("flat")}
             style={{
               fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 8, cursor: "pointer",
-              border: `1px solid ${mode === "flat" ? C.primary : C.border}`,
-              background: mode === "flat" ? C.primary : "#fff",
+              border: `1px solid ${mode === "flat" ? C.accent : C.border}`,
+              background: mode === "flat" ? C.accent : "#fff",
               color: mode === "flat" ? "#fff" : C.textSecondary,
             }}>標準平鋪 CSV</button>
           <button type="button" onClick={() => setShowHistory((v) => !v)}
@@ -274,18 +278,15 @@ export const GroupImportWizard: React.FC<GroupImportWizardProps> = ({
                 <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
                   可一次拖放多個計分紙（中文 / 數學 / 英文 / 選修科）。系統會自動略過《修讀科目總表》矩陣檔。
                 </div>
-                <label style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  gap: 8, padding: 28, border: `2px dashed ${C.border}`, borderRadius: ERP.radius.lg,
-                  background: "#F8FAFC", cursor: "pointer",
-                }}>
-                  <UploadCloud size={28} color={C.primary} />
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>
-                    {files.length ? `已選 ${files.length} 個檔案` : "拖放或點擊上傳一個或多個 .xlsx"}
-                  </span>
-                  <input type="file" accept=".xlsx,.xls" multiple hidden
-                    onChange={(e) => void analyzeFiles(Array.from(e.target.files || []))} />
-                </label>
+                <FileDropZone
+                  accept=".xlsx,.xls"
+                  multiple
+                  busy={busy}
+                  label={files.length ? `已選 ${files.length} 個檔案` : "拖放或點擊上傳一個或多個 .xlsx"}
+                  hint="可一次拖放多個計分紙 · .xlsx / .xls"
+                  icon={<UploadCloud size={28} color={C.accent} />}
+                  onFiles={(picked) => void analyzeFiles(picked)}
+                />
                 {files.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
                     {files.map((f) => (
@@ -330,16 +331,14 @@ export const GroupImportWizard: React.FC<GroupImportWizardProps> = ({
               )}
 
               {groups.length > 0 && (
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <button type="button" onClick={() => setStep(2)}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
-                      borderRadius: 8, border: "none", background: C.primary, color: "#fff",
-                      fontWeight: 700, fontSize: 13, cursor: "pointer",
-                    }}>
-                    下一步 · 分組總覽 ({totals.groups}) <ArrowRight size={14} />
-                  </button>
-                </div>
+                <WizardActionBar
+                  onNext={() => setStep(2)}
+                  nextLabel={`下一步：分組總覽 (${totals.groups})`}
+                  onConfirm={() => void onExecute()}
+                  confirmLabel="🚀 立即確認匯入"
+                  confirmBusy={busy}
+                  confirmDisabled={busy || totals.groups === 0}
+                />
               )}
             </div>
           )}
@@ -382,16 +381,15 @@ export const GroupImportWizard: React.FC<GroupImportWizardProps> = ({
                   </tbody>
                 </table>
               </div>
-              <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between" }}>
-                <button type="button" onClick={() => setStep(1)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "#fff", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
-                  <ArrowLeft size={14} /> 上一步
-                </button>
-                <button type="button" onClick={() => setStep(3)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "none", background: C.primary, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                  下一步 · 座位解析 <ArrowRight size={14} />
-                </button>
-              </div>
+              <WizardActionBar
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+                nextLabel="下一步：座位解析"
+                onConfirm={() => void onExecute()}
+                confirmLabel="🚀 立即確認匯入"
+                confirmBusy={busy}
+                confirmDisabled={busy || totals.groups === 0}
+              />
             </div>
           )}
 
@@ -419,20 +417,13 @@ export const GroupImportWizard: React.FC<GroupImportWizardProps> = ({
                   ) : null}
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <button type="button" onClick={() => setStep(2)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "#fff", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
-                  <ArrowLeft size={14} /> 上一步
-                </button>
-                <button type="button" disabled={busy || totals.groups === 0} onClick={() => void onExecute()}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
-                    borderRadius: 8, border: "none", background: C.primary, color: "#fff",
-                    fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1,
-                  }}>
-                  <Users size={14} /> {busy ? "匯入中…" : "確認匯入教學分組"}
-                </button>
-              </div>
+              <WizardActionBar
+                onBack={() => setStep(2)}
+                onConfirm={() => void onExecute()}
+                confirmLabel="🚀 確認寫入資料庫"
+                confirmBusy={busy}
+                confirmDisabled={busy || totals.groups === 0}
+              />
             </div>
           )}
 
@@ -475,14 +466,15 @@ export const GroupImportWizard: React.FC<GroupImportWizardProps> = ({
           <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
             需含學號欄。目標學年：<strong>{year}</strong>
           </div>
-          <label style={{
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 20,
-            border: `2px dashed ${C.border}`, borderRadius: 12, background: "#F8FAFC", cursor: "pointer",
-          }}>
-            <UploadCloud size={22} />
-            <span style={{ fontSize: 12, fontWeight: 700 }}>上傳平鋪名冊</span>
-            <input type="file" accept=".csv,.xlsx,.xls" hidden onChange={(e) => void onFlatFile(e.target.files?.[0] || null)} />
-          </label>
+          <FileDropZone
+            accept=".csv,.xlsx,.xls"
+            busy={busy}
+            label="上傳平鋪名冊"
+            hint="支援 .csv · .xls · .xlsx"
+            icon={<UploadCloud size={22} color={C.accent} />}
+            style={{ padding: 20 }}
+            onFiles={(picked) => void onFlatFile(picked[0] || null)}
+          />
           {flatMappings.length > 0 && (
             <>
               <div style={{ maxHeight: 220, overflow: "auto", marginTop: 10 }}>

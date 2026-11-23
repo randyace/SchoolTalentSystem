@@ -194,7 +194,9 @@ const AddStudentModal: React.FC<{
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const F = ERP.font.family;
-  const filtered = ADD_CANDIDATE_POOL.filter(s =>
+  // Never seed Figma fake candidates — empty until live search API is wired.
+  const candidatePool: typeof ADD_CANDIDATE_POOL = [];
+  const filtered = candidatePool.filter(s =>
     !q || s.chName.includes(q) || s.enName.toLowerCase().includes(q.toLowerCase()) || s.id.includes(q)
   );
   return (
@@ -236,7 +238,7 @@ const AddStudentModal: React.FC<{
         {/* Footer */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "14px 22px", borderTop: `1px solid ${ERP.colors.border}` }}>
           <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: ERP.radius.md, border: `1px solid ${ERP.colors.border}`, background: ERP.colors.surface, color: ERP.colors.textSecondary, fontSize: 13, fontFamily: F, cursor: "pointer" }}>取消 Cancel</button>
-          <button disabled={!selected} onClick={() => { const s = ADD_CANDIDATE_POOL.find(x => x.id === selected); if (s) onAdd(s); }}
+          <button disabled={!selected} onClick={() => { const s = candidatePool.find(x => x.id === selected); if (s) onAdd(s); }}
             style={{ padding: "8px 18px", borderRadius: ERP.radius.md, border: "none", background: selected ? ERP.colors.accent : ERP.colors.border, color: selected ? "#fff" : ERP.colors.textMuted, fontSize: 13, fontFamily: F, cursor: selected ? "pointer" : "default", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
             <UserPlus size={14} /> 加入此班 Add
           </button>
@@ -256,7 +258,7 @@ const TransferModal: React.FC<{
 }> = ({ student, currentClassId, onClose, onTransfer }) => {
   const [targetId, setTargetId] = useState<string | null>(null);
   const F = ERP.font.family;
-  const options = CLASSES.filter(c => c.id !== currentClassId);
+  const options: ClassInfo[] = []; // transfer targets supplied by live roster page when available
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 }} onClick={onClose}>
       <div style={{ background: ERP.colors.surface, borderRadius: ERP.radius.xl, width: "100%", maxWidth: 420, boxShadow: ERP.shadow.xl, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
@@ -307,7 +309,8 @@ const RosterView: React.FC<{
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [showTransferId,  setShowTransferId]  = useState<string | null>(null);
   const [toastMsg,        setToastMsg]        = useState<string | null>(null);
-  const [localRows, setLocalRows] = useState<RosterStudent[]>(() => ROSTERS[cls.id] || []);
+  // Live class ids never match Figma ROSTERS keys — start empty; roster comes from class-details page.
+  const [localRows, setLocalRows] = useState<RosterStudent[]>([]);
   const F = ERP.font.family;
   const rows = localRows;
 
@@ -321,9 +324,8 @@ const RosterView: React.FC<{
 
   const handleTransfer = (studentId: string, targetClassId: string) => {
     setLocalRows(prev => prev.filter(r => r.id !== studentId));
-    const targetClass = CLASSES.find(c => c.id === targetClassId);
     setShowTransferId(null);
-    showToast(`↔ 已調往 ${targetClass?.classCode ?? targetClassId}`);
+    showToast(`↔ 已調往 ${targetClassId}`);
   };
 
   const handleAdd = (student: typeof ADD_CANDIDATE_POOL[0]) => {
@@ -718,7 +720,8 @@ export const Screen_ClassList: React.FC<Props> = ({
   academicYear: yearProp = "2025/26",
   filterForm: formProp = "全部",
 }) => {
-  const classList = classesProp && classesProp.length > 0 ? classesProp : CLASSES;
+  // DB is SSOT — empty [] must stay empty (never fall back to Figma CLASSES mock).
+  const classList = Array.isArray(classesProp) ? classesProp : [];
   const [openClassId, setOpenClassId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const F = ERP.font.family;
@@ -852,8 +855,19 @@ export const Screen_ClassList: React.FC<Props> = ({
       </div>
 
       {classList.length === 0 && (
-        <div style={{ padding: 40, textAlign: "center", color: ERP.colors.textMuted, fontSize: 13 }}>
-          此篩選條件下沒有班別
+        <div style={{
+          padding: 40, textAlign: "center", color: ERP.colors.textMuted, fontSize: 13,
+          background: ERP.colors.surface, border: `1px solid ${ERP.colors.border}`, borderRadius: ERP.radius.lg,
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: ERP.colors.textPrimary, marginBottom: 8 }}>
+            目前 {yearProp} 學年暫無班別資料
+          </div>
+          <div style={{ fontSize: 12, marginBottom: 16 }}>資料庫為唯一真實來源 · 請先匯入學生名冊以建立班別</div>
+          <a href="/admin/data-import?module=students" style={{
+            display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px",
+            borderRadius: ERP.radius.md, background: ERP.colors.accent, color: "#fff",
+            fontWeight: 700, fontSize: 12, textDecoration: "none",
+          }}>前往數據匯入</a>
         </div>
       )}
     </div>

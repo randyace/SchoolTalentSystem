@@ -558,7 +558,8 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
   academicYear: yearProp,
   initialClassFilter,
 }) => {
-  const roster = studentsProp && studentsProp.length > 0 ? studentsProp : MOCK;
+  // DB is SSOT — empty [] must stay empty (never fall back to Figma MOCK rows).
+  const roster = Array.isArray(studentsProp) ? studentsProp : [];
 
   // Prefer CI4-injected catalog; fall back to deriving from roster rows
   const classCatalog: ClassCatalogItem[] = React.useMemo(() => {
@@ -608,7 +609,7 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
       ? classCatalog
       : classCatalog.filter(c => c.form === filterForm);
     const codes = filtered.map(c => c.classCode).filter(Boolean);
-    return codes.length > 0 ? ["全部", ...codes] : CLASS_OPTS_FALLBACK;
+    return codes.length > 0 ? ["全部", ...codes] : ["全部"];
   }, [classCatalog, filterForm]);
 
   // If Form shrinks Class options, clear an invalid Class selection
@@ -634,12 +635,7 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
   // Epic 2: Paste List state
   const [pasteOpen,  setPasteOpen]  = useState(false);
   const [pasteText,  setPasteText]  = useState("");
-  const [pasteChips, setPasteChips] = useState<{ id: string; label: string }[]>([
-    { id: "c1", label: "2025-F1A-001" },
-    { id: "c2", label: "2025-F1A-005" },
-    { id: "c3", label: "林詩雅" },
-    { id: "c4", label: "+2 更多" },
-  ]);
+  const [pasteChips, setPasteChips] = useState<{ id: string; label: string }[]>([]);
   const pasteRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -1133,7 +1129,30 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
               </div>
               {rows.length === 0 ? (
                 <div style={{ padding: "52px 20px", textAlign: "center" as const, color: DS.g400, fontSize: 14, fontFamily: DS.font }}>
-                  沒有符合條件的學生記錄 · No students match the current filters
+                  <div style={{ fontSize: 15, fontWeight: 700, color: DS.g700, marginBottom: 8 }}>
+                    {roster.length === 0
+                      ? `目前 ${filterAY} 學年暫無學生紀錄`
+                      : "沒有符合條件的學生記錄"}
+                  </div>
+                  <div style={{ fontSize: 12, color: DS.g400, marginBottom: 16 }}>
+                    {roster.length === 0
+                      ? "資料庫為唯一真實來源 · 請先匯入學生名冊"
+                      : "No students match the current filters"}
+                  </div>
+                  {roster.length === 0 && (
+                    <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" as const, justifyContent: "center" }}>
+                      <a href="/admin/data-import?module=students" style={{
+                        display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px",
+                        borderRadius: 8, background: DS.blue, color: "#fff", fontWeight: 700, fontSize: 12,
+                        textDecoration: "none",
+                      }}>前往數據匯入</a>
+                      <a href="/students/create" style={{
+                        display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px",
+                        borderRadius: 8, border: `1px solid ${DS.g200}`, background: "#fff",
+                        color: DS.g700, fontWeight: 700, fontSize: 12, textDecoration: "none",
+                      }}>+ 加入學生</a>
+                    </div>
+                  )}
                 </div>
               ) : rows.map((s, idx) => {
                 const isSelected = selectedIds.has(s.id);
@@ -1265,7 +1284,17 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
                   padding: "52px 20px", textAlign: "center" as const,
                   color: DS.g400, fontSize: 14, fontFamily: DS.font,
                 }}>
-                  沒有符合條件的學生記錄 · No students match the current filters
+                  {roster.length === 0
+                    ? `目前 ${filterAY} 學年暫無學生紀錄 · 請先匯入學生名冊`
+                    : "沒有符合條件的學生記錄 · No students match the current filters"}
+                  {roster.length === 0 && (
+                    <div style={{ marginTop: 14 }}>
+                      <a href="/admin/data-import?module=students" style={{
+                        display: "inline-flex", padding: "9px 14px", borderRadius: 8,
+                        background: DS.blue, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none",
+                      }}>前往數據匯入</a>
+                    </div>
+                  )}
                 </div>
               ) : rows.map((s, idx) => {
                 const isSelected = selectedIds.has(s.id);

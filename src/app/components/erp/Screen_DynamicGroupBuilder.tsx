@@ -305,17 +305,12 @@ export const Screen_DynamicGroupBuilder: React.FC<BuilderProps> = ({
   validateMembersUrl = "/dynamic-group/validate-members",
 }) => {
   const initialForm = (lockedForm || "F3").toUpperCase();
-  const demo = DEMO_BY_FORM[initialForm] ?? DEMO_BY_FORM.F3;
 
   const [groupForm,  setGroupForm]  = useState(initialForm);
-  const [groupName,  setGroupName]  = useState(
-    initialForm === "F3"
-      ? "25/26 中三視覺藝術選修組 (F3 Visual Arts Elective)"
-      : `25/26 ${initialForm} 選修組`
-  );
+  const [groupName,  setGroupName]  = useState(`25/26 ${initialForm} 選修組`);
   const [parsed,     setParsed]     = useState(false);
-  const [pasteText,  setPasteText]  = useState(demo.paste);
-  const [parsedRows, setParsedRows] = useState<ParsedStudent[]>(() => applyFormLock(demo.rows, initialForm));
+  const [pasteText,  setPasteText]  = useState("");
+  const [parsedRows, setParsedRows] = useState<ParsedStudent[]>([]);
   const [hoverSave,  setHoverSave]  = useState(false);
   const [hoverParse, setHoverParse] = useState(false);
   const [hoverPaste, setHoverPaste] = useState(false);
@@ -330,18 +325,23 @@ export const Screen_DynamicGroupBuilder: React.FC<BuilderProps> = ({
     setGroupForm(f);
     setParsed(false);
     setSaved(false);
-    const d = DEMO_BY_FORM[f] ?? DEMO_BY_FORM.F3;
-    setPasteText(d.paste);
-    setParsedRows(applyFormLock(d.rows, f));
-    if (f === "F3") setGroupName("25/26 中三視覺藝術選修組 (F3 Visual Arts Elective)");
-    else setGroupName(`25/26 ${f} 選修組`);
+    // Keep paste/parsed empty — never seed DEMO_BY_FORM fake students.
+    setPasteText("");
+    setParsedRows([]);
+    setGroupName(`25/26 ${f} 選修組`);
   };
 
   const handleParse = async () => {
-    const locked = applyFormLock(
-      (DEMO_BY_FORM[groupForm] ?? DEMO_BY_FORM.F3).rows,
-      groupForm
-    );
+    // Parse from the textarea the teacher actually pasted — never DEMO_BY_FORM.
+    const lines = pasteText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const rows: ParsedStudent[] = lines.map((line, i) => {
+      const parts = line.split(/[\s,，\t]+/).filter(Boolean);
+      const rawId = parts[0] || `row-${i + 1}`;
+      const name = parts.slice(1).join(" ") || rawId;
+      const cls = formFromClassCode(rawId) ? rawId.replace(/^20\d{2}-?/i, "").split(/[-_\s]/)[0] || "" : "";
+      return { id: `r${i + 1}`, rawId, name, cls, ok: true };
+    });
+    const locked = applyFormLock(rows, groupForm);
     setParsedRows(locked);
     setParsed(true);
     // Server-side form boundary check (dry-run)

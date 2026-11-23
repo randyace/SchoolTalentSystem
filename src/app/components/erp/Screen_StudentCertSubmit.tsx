@@ -92,7 +92,7 @@ export const Screen_StudentCertSubmit: React.FC<{
   onSubmitted,
 }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [students, setStudents] = useState<PortalStudent[]>(initialStudents?.length ? initialStudents : DEMO_STUDENTS);
+  const [students, setStudents] = useState<PortalStudent[]>(Array.isArray(initialStudents) ? initialStudents : []);
   const [studentId, setStudentId] = useState<number>(0);
   const [studentQuery, setStudentQuery] = useState("");
   const [file, setFile] = useState<File | null>(null);

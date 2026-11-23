@@ -1244,8 +1244,8 @@ export const Screen_AIWritingWorkspace: React.FC<ScreenAIWritingWorkspaceProps> 
     setTimeout(() => {
       const aiReply: ChatMessage = {
         id: `a${Date.now()}`, role: "ai", timestamp: new Date().toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }),
-        content: `根據你的查詢「${q}」，以下是系統檢索結果。共找到 ${MOCK_TABLE.length} 名符合條件的學生：`,
-        tableData: MOCK_TABLE,
+        content: `根據你的查詢「${q}」，目前資料庫沒有符合條件的學生（空庫／尚未接入即時檢索）。`,
+        tableData: [],
       };
       setMessages(prev => [...prev, aiReply]);
       setIsThinking(false);

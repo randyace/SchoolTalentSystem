@@ -262,7 +262,7 @@ const BatchPasteModal: React.FC<{ clubName: string; onClose: () => void }> = ({ 
 const AddMemberModal: React.FC<{ clubName: string; onClose: () => void; onAdd: (m: { id: string; chName: string; enName: string; classCode: string; pk?: number }) => void; pool?: Array<{ id: string; chName: string; enName: string; classCode: string; pk?: number }> }> = ({ clubName, onClose, onAdd, pool }) => {
   const [search, setSearch] = useState("");
   const F = ERP.font.family;
-  const source = pool && pool.length ? pool : ADD_POOL;
+  const source = Array.isArray(pool) ? pool : [];
   const filtered = source.filter(s => !search || s.chName.includes(search) || s.id.includes(search) || (s.enName || "").toLowerCase().includes(search.toLowerCase()));
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.60)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:24 }} onClick={onClose}>
@@ -304,8 +304,8 @@ const AddMemberModal: React.FC<{ clubName: string; onClose: () => void; onAdd: (
 const ClubCard: React.FC<{ club: ClubInfo; onOpen: () => void }> = ({ club, onOpen }) => {
   const F = ERP.font.family;
   const cs = CATEGORY_STYLE[(club.categories?.[0] || club.category) as ClubCategory] ?? CATEGORY_STYLE.arts;
-  const roster = CLUB_ROSTERS[String(club.id)] ?? [];
-  const presidentName = club.presidentName || roster.find(m => m.role === "主席")?.chName || "";
+  // Never seed CLUB_ROSTERS Figma mock members — use live club fields only.
+  const presidentName = club.presidentName || "";
 
   return (
     <div
@@ -428,7 +428,7 @@ export const ClubRosterView: React.FC<{
   const [openRoleId,       setOpenRoleId]        = useState<string | null>(null);
   const [openStatusId,     setOpenStatusId]      = useState<string | null>(null);
   const [syncTs,           setSyncTs]            = useState("剛剛");
-  const [members, setMembers] = useState<ClubMember[]>(() => membersProp && membersProp.length ? membersProp : [...(CLUB_ROSTERS[String(club.id)] ?? [])]);
+  const [members, setMembers] = useState<ClubMember[]>(() => Array.isArray(membersProp) ? membersProp : []);
   const [teacherId, setTeacherId] = useState<string>(club.teacherId != null ? String(club.teacherId) : "");
   const [nameZh, setNameZh] = useState(club.zhName || "");
   const [nameEn, setNameEn] = useState(club.enName || "");
@@ -1419,8 +1419,8 @@ export const Screen_ClubManagement: React.FC<{
   flashError,
 }) => {
   const F = ERP.font.family;
-  const live = Array.isArray(clubsProp);
-  const clubs = live ? clubsProp : CLUBS;
+  // DB is SSOT — empty [] stays empty (never fall back to Figma CLUBS mock).
+  const clubs = Array.isArray(clubsProp) ? clubsProp : [];
   const [search,     setSearch]     = useState("");
   const [catFilter,  setCatFilter]  = useState<string>("全部");
   const [isMobile,   setIsMobile]   = useState(false);
@@ -1543,7 +1543,16 @@ export const Screen_ClubManagement: React.FC<{
 
       {filtered.length === 0 && (
         <div style={{ padding:"48px 0", textAlign:"center" as const, color:ERP.colors.textMuted, fontSize:14, fontFamily:F }}>
-          找不到符合條件的學會
+          <div style={{ fontWeight:700, color:ERP.colors.textPrimary, marginBottom:8 }}>
+            {clubs.length === 0 ? "目前暫無學會資料" : "找不到符合條件的學會"}
+          </div>
+          {clubs.length === 0 && (
+            <a href="/admin/data-import?module=clubs" style={{
+              display:"inline-flex", alignItems:"center", gap:6, padding:"9px 14px",
+              borderRadius:ERP.radius.md, background:ERP.colors.accent, color:"#fff",
+              fontWeight:700, fontSize:12, textDecoration:"none",
+            }}>前往數據匯入</a>
+          )}
         </div>
       )}
 

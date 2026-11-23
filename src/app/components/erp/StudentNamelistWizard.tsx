@@ -3,9 +3,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   UploadCloud, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft,
   RefreshCw, History, Shield, Users, Search, ClipboardPaste, X, Save,
+  Zap, Dices,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile } from "./erpResponsive";
+import { FileDropZone } from "./FileDropZone";
+import { WizardActionBar, WizardStepper } from "./ImportWizardChrome";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -108,6 +111,9 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
   const [searchHits, setSearchHits] = useState<Record<number, SearchHit[]>>({});
   const [activeSearchSeat, setActiveSearchSeat] = useState<number | null>(null);
   const searchTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const [autoGenBusy, setAutoGenBusy] = useState(false);
+  const [autoGenConfirm, setAutoGenConfirm] = useState(false);
+  const [autoGenProgress, setAutoGenProgress] = useState<string | null>(null);
 
   const loadBatches = useCallback(async () => {
     try {
@@ -252,6 +258,64 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
     e.preventDefault();
     const codes = parsePasteBlock(text);
     if (codes.length > 1) applyCodesFrom(startIdx, codes);
+  };
+
+  const unpairedTotal = useMemo(
+    () => classStats.reduce((s, c) => s + Math.max(0, c.total - c.paired), 0),
+    [classStats],
+  );
+  const unpairedActive = useMemo(() => {
+    const c = classStats.find((x) => x.class_name === activeClass);
+    return c ? Math.max(0, c.total - c.paired) : 0;
+  }, [classStats, activeClass]);
+
+  const cohortRuleLine = useMemo(() => {
+    const ay = batchMeta?.academic_year || year;
+    const m = ay.match(/(\d{4})/);
+    const start = m ? Number(m[1]) : 2026;
+    const parts = [1, 2, 3, 4, 5, 6].map((f) => {
+      const entry = start - (f - 1);
+      const pref = `s${String(entry).slice(-2)}`;
+      const zh = ["", "中一", "中二", "中三", "中四", "中五", "中六"][f];
+      return `${zh} ${pref}1001+`;
+    });
+    return parts.join(" · ");
+  }, [batchMeta?.academic_year, year]);
+
+  const runAutoGenerate = async (scope: "all" | "class") => {
+    if (!batchId) return;
+    setAutoGenBusy(true);
+    setAutoGenConfirm(false);
+    setError(null);
+    const targetCount = scope === "class" ? unpairedActive : unpairedTotal;
+    setAutoGenProgress(`正在為 ${targetCount} 位學生生成永久學號…`);
+    try {
+      const body: Record<string, unknown> = {
+        scope,
+        randomize_order: true,
+      };
+      if (scope === "class") body.class_name = activeClass;
+      const res = await fetch(`${batchesUrl}/${batchId}/auto-generate-ids`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!json?.ok && !(json.generated_count > 0)) {
+        setError(json?.message || "自動生成學號失敗");
+        return;
+      }
+      const n = Number(json.generated_count || 0);
+      setToast(json.message || `成功為 ${n} 位學生生成永久學號！`);
+      await loadSeats(batchId, activeClass || undefined);
+      void loadBatches();
+    } catch (e: any) {
+      setError(String(e?.message || e));
+    } finally {
+      setAutoGenBusy(false);
+      setAutoGenProgress(null);
+    }
   };
 
   const saveClassPairing = async () => {
@@ -465,17 +529,19 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: F }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        {mode === "mark_sheet" && [1, 2, 3, 4].map((n) => (
-          <div key={n} style={{
-            display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px",
-            borderRadius: 999, fontSize: 11, fontWeight: 700,
-            background: step === n ? C.primary : step > n ? "#DCFCE7" : "#F1F5F9",
-            color: step === n ? "#fff" : step > n ? "#15803D" : C.textMuted,
-          }}>
-            {step > n ? <CheckCircle2 size={12} /> : n}
-            {n === 1 ? "上傳與學年" : n === 2 ? "24 班概覽" : n === 3 ? "匯入預覽" : "完成 & 配對"}
-          </div>
-        ))}
+        {mode === "mark_sheet" && (
+          <WizardStepper
+            step={step}
+            maxReachable={Math.max(step, stats ? 1 : 0)}
+            onJump={(n) => setStep(n)}
+            steps={[
+              { n: 1, label: "1 上傳與學年" },
+              { n: 2, label: "2 班別概覽" },
+              { n: 3, label: "3 匯入預覽" },
+              { n: 4, label: "4 完成 & 配對" },
+            ]}
+          />
+        )}
         {mode === "flat" && (
           <div style={{ fontSize: 12, fontWeight: 700, color: C.textSecondary }}>標準名冊匯入（Flat Roster）</div>
         )}
@@ -540,18 +606,14 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
               支援 24 頁 School Mark Sheet（.xlsx）或標準 WebSAMS / eClass 名冊（CSV / XLSX）
             </div>
-            <label style={{
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 8, padding: 28, border: `2px dashed ${C.border}`, borderRadius: ERP.radius.lg,
-              background: "#F8FAFC", cursor: "pointer",
-            }}>
-              <UploadCloud size={28} color={C.primary} />
-              <span style={{ fontSize: 13, fontWeight: 700 }}>
-                {file ? file.name : "拖放或點擊上傳學生名冊"}
-              </span>
-              <input type="file" accept=".csv,.xlsx,.xls" hidden
-                onChange={(e) => void onFile(e.target.files?.[0] || null)} />
-            </label>
+            <FileDropZone
+              accept=".csv,.xlsx,.xls"
+              busy={busy}
+              label={file ? file.name : "拖放或點擊上傳學生名冊"}
+              hint="支援 .csv · .xls · .xlsx"
+              icon={<UploadCloud size={28} color={C.accent} />}
+              onFiles={(files) => void onFile(files[0] || null)}
+            />
             {busy && (
               <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}>
                 <RefreshCw size={12} style={{ display: "inline" }} /> 分析中…
@@ -595,16 +657,14 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button type="button" onClick={() => setStep(2)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
-                    borderRadius: 8, border: "none", background: C.primary, color: "#fff",
-                    fontWeight: 700, fontSize: 13, cursor: "pointer",
-                  }}>
-                  下一步 · 班別概覽 <ArrowRight size={14} />
-                </button>
-              </div>
+              <WizardActionBar
+                onNext={() => setStep(2)}
+                nextLabel="下一步：檢視預覽"
+                onConfirm={() => void onExecuteMarksheet()}
+                confirmLabel="🚀 立即確認匯入"
+                confirmBusy={busy}
+                confirmDisabled={busy}
+              />
             </div>
           )}
 
@@ -632,24 +692,15 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
                   </tbody>
                 </table>
               </div>
-              <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "space-between" }}>
-                <button type="button" onClick={() => setStep(1)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px",
-                    borderRadius: 8, border: `1px solid ${C.border}`, background: "#fff",
-                    fontWeight: 600, fontSize: 12, cursor: "pointer",
-                  }}>
-                  <ArrowLeft size={14} /> 上一步
-                </button>
-                <button type="button" onClick={() => setStep(3)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
-                    borderRadius: 8, border: "none", background: C.primary, color: "#fff",
-                    fontWeight: 700, fontSize: 13, cursor: "pointer",
-                  }}>
-                  下一步 · 匯入預覽 <ArrowRight size={14} />
-                </button>
-              </div>
+              <WizardActionBar
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+                nextLabel="下一步：匯入預覽"
+                onConfirm={() => void onExecuteMarksheet()}
+                confirmLabel="🚀 立即確認匯入"
+                confirmBusy={busy}
+                confirmDisabled={busy}
+              />
             </div>
           )}
 
@@ -660,24 +711,13 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
                 將建立 <strong>{stats.total_seats}</strong> 個暫存座位（tmp-…），學年{" "}
                 <strong>{year}</strong>，並寫入課室／班主任文字。匯入後可立即配對真實學號。
               </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
-                <button type="button" onClick={() => setStep(2)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px",
-                    borderRadius: 8, border: `1px solid ${C.border}`, background: "#fff",
-                    fontWeight: 600, fontSize: 12, cursor: "pointer",
-                  }}>
-                  <ArrowLeft size={14} /> 上一步
-                </button>
-                <button type="button" disabled={busy} onClick={() => void onExecuteMarksheet()}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
-                    borderRadius: 8, border: "none", background: C.primary, color: "#fff",
-                    fontWeight: 700, fontSize: 13, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1,
-                  }}>
-                  <Users size={14} /> {busy ? "匯入中…" : "確認匯入座位"}
-                </button>
-              </div>
+              <WizardActionBar
+                onBack={() => setStep(2)}
+                onConfirm={() => void onExecuteMarksheet()}
+                confirmLabel="🚀 確認寫入資料庫"
+                confirmBusy={busy}
+                confirmDisabled={busy}
+              />
             </div>
           )}
 
@@ -838,7 +878,7 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
               </div>
             )}
 
-            <div style={{ padding: "8px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ padding: "8px 16px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <button type="button" onClick={() => setPasteOpen((v) => !v)}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px",
@@ -847,7 +887,92 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
                 }}>
                 <ClipboardPaste size={14} /> 批次貼上整班學號 (Excel)
               </button>
+              <button
+                type="button"
+                disabled={autoGenBusy || unpairedActive <= 0 || !activeClass}
+                onClick={() => void runAutoGenerate("class")}
+                title="僅為本班未配對座位生成學號（不覆蓋已配對）"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px",
+                  borderRadius: 8, border: "1px solid #A5B4FC",
+                  background: unpairedActive > 0 ? "#EEF2FF" : "#F1F5F9",
+                  color: unpairedActive > 0 ? "#3730A3" : C.textMuted,
+                  fontSize: 12, fontWeight: 800, cursor: unpairedActive > 0 ? "pointer" : "not-allowed",
+                  opacity: autoGenBusy ? 0.7 : 1,
+                }}
+              >
+                <Zap size={14} /> 生成本班學號 ({activeClass || "—"})
+                {unpairedActive > 0 ? ` · ${unpairedActive}` : ""}
+              </button>
+              <button
+                type="button"
+                disabled={autoGenBusy || unpairedTotal <= 0}
+                onClick={() => setAutoGenConfirm(true)}
+                title="一鍵為全部未配對座位隨機生成永久學號"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px",
+                  borderRadius: 8, border: "none",
+                  background: unpairedTotal > 0
+                    ? "linear-gradient(135deg, #059669, #2563EB)"
+                    : "#94A3B8",
+                  color: "#fff",
+                  fontSize: 12, fontWeight: 800,
+                  cursor: unpairedTotal > 0 ? "pointer" : "not-allowed",
+                  boxShadow: unpairedTotal > 0 ? "0 2px 8px rgba(37,99,235,0.28)" : "none",
+                  opacity: autoGenBusy ? 0.75 : 1,
+                }}
+              >
+                {autoGenBusy
+                  ? <><RefreshCw size={14} /> 生成中…</>
+                  : <><Dices size={14} /> 一鍵隨機生成全部學號 · 剩餘 {unpairedTotal} 人</>}
+              </button>
             </div>
+
+            {autoGenProgress && (
+              <div style={{
+                margin: "0 16px 8px", padding: "10px 12px", borderRadius: 8,
+                background: "#EFF6FF", border: "1px solid #BFDBFE",
+                fontSize: 12, fontWeight: 700, color: "#1D4ED8",
+                display: "flex", alignItems: "center", gap: 8,
+              }}>
+                <RefreshCw size={14} /> {autoGenProgress}
+              </div>
+            )}
+
+            {autoGenConfirm && (
+              <div style={{
+                margin: "0 16px 10px", padding: 14, borderRadius: 10,
+                background: "#FFFBEB", border: "1px solid #FDE68A",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#92400E", marginBottom: 6 }}>
+                  確認一鍵生成全部永久學號？
+                </div>
+                <div style={{ fontSize: 11.5, color: "#78350F", lineHeight: 1.55, marginBottom: 10 }}>
+                  規則：{cohortRuleLine}
+                  <br />
+                  僅補全未配對座位（剩餘 <strong>{unpairedTotal}</strong> 人），不覆蓋已配對學生；各級內隨機打散至 A/B/C/D。
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" disabled={autoGenBusy}
+                    onClick={() => void runAutoGenerate("all")}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px",
+                      borderRadius: 8, border: "none", background: "#059669", color: "#fff",
+                      fontWeight: 800, fontSize: 12, cursor: "pointer",
+                    }}>
+                    <Dices size={14} /> 確認生成 {unpairedTotal} 人
+                  </button>
+                  <button type="button" disabled={autoGenBusy}
+                    onClick={() => setAutoGenConfirm(false)}
+                    style={{
+                      padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                      background: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer",
+                    }}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
 
             {pasteOpen && (
               <div style={{ padding: "0 16px 10px" }}>

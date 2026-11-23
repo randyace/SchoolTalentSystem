@@ -8,6 +8,7 @@ export const ERP = {
   colors: {
     // ── Brand Blue ─────────────────────────────────────────────────────────
     accent:      "#2563EB",   // Blue-600  — primary interactive
+    primary:     "#2563EB",   // alias of accent (wizard CTAs / pills)
     accentDark:  "#1D4ED8",   // Blue-700  — hover state
     accentDeep:  "#1E3A8A",   // Blue-900  — sidebar active bg
     accentLight: "#DBEAFE",   // Blue-100  — light tint

@@ -2,18 +2,19 @@
 // Screen: 數據遷移與匯入引擎 — Data Migration & Import Engine (1.F.1)
 // Full 6-module interactive wizard: Upload → Validate → Commit
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ERP } from "./erpTokens";
 import {
   Upload, FileText, CheckCircle2, AlertTriangle, XCircle, ArrowRight, ArrowLeft,
   User, BarChart2, Users, Award, Database, Shield, UploadCloud, Zap, Download,
-  RefreshCw, Layers, FolderKanban, ChevronDown, ChevronUp, Sparkles, ExternalLink,
+  RefreshCw, Layers, FolderKanban, ChevronDown, ChevronUp, Sparkles, ExternalLink, X,
 } from "lucide-react";
 import { BroadsheetWizard } from "./BroadsheetWizard";
 import { ClubImportWizard } from "./ClubImportWizard";
 import { StudentNamelistWizard } from "./StudentNamelistWizard";
 import { GroupImportWizard } from "./GroupImportWizard";
 import { ActivityImportWizard } from "./ActivityImportWizard";
+import { FileDropZone } from "./FileDropZone";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -71,7 +72,20 @@ type Props = {
   activityAnalyzeUrl?: string;
   activityExecuteUrl?: string;
   activityBatchesUrl?: string;
+  systemResetPreviewUrl?: string;
+  systemResetExecuteUrl?: string;
+  currentUserRole?: string;
   initialModule?: ModuleId;
+};
+
+type ResetPreview = {
+  ok?: boolean;
+  allowed?: boolean;
+  kpis?: Record<string, number>;
+  cleared_rows_total?: number;
+  users_to_keep?: Array<{ id: number; email: string; username: string; role: string }>;
+  policy?: { keep_count?: number; selective_count?: number; clear_count?: number };
+  message?: string;
 };
 
 const STEP_LABELS = [
@@ -194,11 +208,21 @@ export const Screen_DataImport: React.FC<Props> = ({
   activityAnalyzeUrl = "/api/data-import/activities/analyze",
   activityExecuteUrl = "/api/data-import/activities/execute",
   activityBatchesUrl = "/api/data-import/activities/batches",
+  systemResetPreviewUrl = "/api/admin/system-reset/preview",
+  systemResetExecuteUrl = "/api/admin/system-reset/execute",
+  currentUserRole = "",
   initialModule,
 }) => {
   const [modules, setModules] = useState<ModuleCard[]>(modulesProp?.length ? modulesProp : FALLBACK_MODULES);
   const [activeModule, setActiveModule] = useState<ModuleId>(initialModule || "students");
   const [step, setStep] = useState(1);
+  const [resetPreview, setResetPreview] = useState<ResetPreview | null>(null);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [keepOnlyAdmins, setKeepOnlyAdmins] = useState(true);
+  const [clearCertTemplates, setClearCertTemplates] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetToast, setResetToast] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
@@ -215,8 +239,6 @@ export const Screen_DataImport: React.FC<Props> = ({
   const [maskedPreview, setMaskedPreview] = useState<Array<Record<string, unknown>>>([]);
   const [showMasked, setShowMasked] = useState(false);
   const [execResult, setExecResult] = useState<{ inserted: number; updated: number; skipped: number; message: string; view_url?: string } | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (modulesProp?.length) setModules(modulesProp);
@@ -227,6 +249,70 @@ export const Screen_DataImport: React.FC<Props> = ({
         .catch(() => { /* keep fallback */ });
     }
   }, [modulesProp]);
+
+  useEffect(() => {
+    if (String(currentUserRole || "").toLowerCase() !== "super_admin") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(systemResetPreviewUrl, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        if (res.status === 403) return;
+        const json = await res.json();
+        if (!cancelled && json) setResetPreview(json);
+      } catch {
+        /* ignore — hide button when preview unavailable */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUserRole, systemResetPreviewUrl]);
+
+  const showFactoryReset = !!resetPreview?.allowed;
+
+  const onFactoryReset = async () => {
+    if (resetConfirmText !== "RESET" || resetBusy) return;
+    setResetBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(systemResetExecuteUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          confirm_text: "RESET",
+          keep_only_admins: keepOnlyAdmins,
+          clear_cert_templates: clearCertTemplates,
+        }),
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        setError(json?.message || "重置失敗");
+        return;
+      }
+      const backupName = json?.backup?.filename || "backup.sql";
+      const cleared = json?.cleared_rows_total ?? 0;
+      setResetToast(`已重置至啟始狀態 · 備份 ${backupName} · 清空 ${cleared} 列`);
+      setResetModalOpen(false);
+      setResetConfirmText("");
+      // Refresh module counts + preview KPIs
+      try {
+        const mres = await fetch("/admin/data-import/modules", { credentials: "same-origin" });
+        const mj = await mres.json();
+        if (mj?.ok && Array.isArray(mj.modules)) setModules(mj.modules);
+      } catch { /* ignore */ }
+      try {
+        const pres = await fetch(systemResetPreviewUrl, { credentials: "include", headers: { Accept: "application/json" } });
+        const pj = await pres.json();
+        if (pj) setResetPreview(pj);
+      } catch { /* ignore */ }
+    } catch {
+      setError("重置請求失敗");
+    } finally {
+      setResetBusy(false);
+    }
+  };
 
   const mod = useMemo(
     () => modules.find(m => m.id === activeModule) || FALLBACK_MODULES[0],
@@ -264,8 +350,8 @@ export const Screen_DataImport: React.FC<Props> = ({
   };
 
   const onSelectModule = (id: ModuleId) => {
+    // Keep each module's upload/analysis state — never wipe on tab switch.
     setActiveModule(id);
-    resetFlow();
   };
 
   const parseFile = useCallback(async (f: File) => {
@@ -411,10 +497,153 @@ export const Screen_DataImport: React.FC<Props> = ({
               WebSAMS / eClass / Excel → 六大模組三步驟匯入 · 建議依 Step 1→6 順序
             </p>
           </div>
+          {showFactoryReset && (
+            <button
+              type="button"
+              onClick={() => { setResetModalOpen(true); setResetConfirmText(""); setResetToast(null); }}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 12px", borderRadius: R.md, cursor: "pointer",
+                border: "1px solid #FECACA", background: "#FFF", color: "#B91C1C",
+                fontSize: 12, fontWeight: 700, fontFamily: F,
+              }}
+            >
+              🧹 重置至啟始狀態
+            </button>
+          )}
         </div>
 
-        {/* Stepper — hidden for scores/clubs/students/classes/activities dedicated wizards */}
-        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && (
+        {resetToast && (
+          <div style={{
+            marginBottom: 12, padding: "10px 14px", borderRadius: R.md,
+            background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534",
+            fontSize: 13, fontWeight: 600, display: "flex", gap: 8, alignItems: "center",
+          }}>
+            <CheckCircle2 size={16} /> {resetToast}
+          </div>
+        )}
+
+        {resetModalOpen && resetPreview && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed", inset: 0, zIndex: 80,
+              background: "rgba(15,23,42,0.45)", display: "flex",
+              alignItems: "center", justifyContent: "center", padding: 16,
+            }}
+            onClick={() => !resetBusy && setResetModalOpen(false)}
+          >
+            <div
+              style={{
+                width: "min(720px, 100%)", maxHeight: "90vh", overflow: "auto",
+                background: "#fff", borderRadius: R.xl, border: `1px solid ${C.border}`,
+                boxShadow: "0 20px 50px rgba(15,23,42,0.25)", padding: 20, fontFamily: F,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#991B1B" }}>確認工廠重置至啟始狀態</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>僅 Super Admin · 執行前自動 SQL 備份</div>
+                </div>
+                <button type="button" disabled={resetBusy} onClick={() => setResetModalOpen(false)}
+                  style={{ border: "none", background: "transparent", cursor: "pointer", color: C.textMuted }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10, marginBottom: 14 }}>
+                <div style={{ padding: 12, borderRadius: R.lg, background: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#166534", marginBottom: 8 }}>🟢 將完整保留（核心系統與字典）</div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#14532D", lineHeight: 1.7 }}>
+                    <li>{resetPreview.kpis?.subjects ?? "—"} 個科目</li>
+                    <li>{resetPreview.kpis?.acorn_dimensions ?? "—"} 大 ACORN 維度</li>
+                    <li>AI 提示詞（{resetPreview.kpis?.ai_prompt_configs ?? "—"}）</li>
+                    <li>學校設定（{resetPreview.kpis?.system_settings ?? "—"}）</li>
+                    <li>系統管理員帳號（{(resetPreview.users_to_keep || []).length}）</li>
+                  </ul>
+                </div>
+                <div style={{ padding: 12, borderRadius: R.lg, background: "#FEF2F2", border: "1px solid #FECACA" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#991B1B", marginBottom: 8 }}>🔴 將徹底清空（測試與業務資料）</div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#7F1D1D", lineHeight: 1.7 }}>
+                    <li>學生 {resetPreview.kpis?.students ?? 0}</li>
+                    <li>成績 {resetPreview.kpis?.student_scores ?? 0}</li>
+                    <li>活動 {resetPreview.kpis?.activities ?? 0}（報名 {resetPreview.kpis?.activity_enrollments ?? 0}）</li>
+                    <li>學會 {resetPreview.kpis?.clubs ?? 0}（成員 {resetPreview.kpis?.club_memberships ?? 0}）</li>
+                    <li>分組 {resetPreview.kpis?.dynamic_groups ?? 0}</li>
+                    <li>專題 {resetPreview.kpis?.projects ?? 0}</li>
+                    <li>品行 {resetPreview.kpis?.student_conduct_records ?? 0}</li>
+                    <li>匯入批次 {resetPreview.kpis?.import_batches ?? 0}</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, cursor: "pointer" }}>
+                  <input type="checkbox" checked={keepOnlyAdmins} onChange={(e) => setKeepOnlyAdmins(e.target.checked)} />
+                  <span>僅保留系統管理員帳號（清除測試教職員／學生帳號）</span>
+                </label>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, cursor: "pointer" }}>
+                  <input type="checkbox" checked={clearCertTemplates} onChange={(e) => setClearCertTemplates(e.target.checked)} />
+                  <span>同時清除證書範本（預設保留範本版面並解除活動關聯）</span>
+                </label>
+              </div>
+
+              <div style={{
+                padding: 10, borderRadius: R.md, background: "#EFF6FF", border: "1px solid #BFDBFE",
+                fontSize: 12, color: "#1E40AF", marginBottom: 14, lineHeight: 1.5,
+              }}>
+                🛡️ 執行前系統會自動於伺服器備份完整 SQL 快照至 writable/backups/，供日後隨時還原。
+                <div style={{ marginTop: 4, color: C.textMuted }}>
+                  預計清空約 {resetPreview.cleared_rows_total ?? 0} 列 · 政策 {resetPreview.policy?.keep_count ?? 17}/{resetPreview.policy?.selective_count ?? 3}/{resetPreview.policy?.clear_count ?? 52}
+                </div>
+              </div>
+
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                請輸入 RESET 以確認執行清空
+              </label>
+              <input
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="RESET"
+                disabled={resetBusy}
+                style={{
+                  width: "100%", boxSizing: "border-box", padding: "10px 12px",
+                  borderRadius: R.md, border: `1px solid ${C.border}`, fontSize: 14, fontFamily: ERP.font.mono,
+                  marginBottom: 14,
+                }}
+              />
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" disabled={resetBusy} onClick={() => setResetModalOpen(false)}
+                  style={{
+                    padding: "10px 14px", borderRadius: R.md, border: `1px solid ${C.border}`,
+                    background: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: F,
+                  }}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={resetBusy || resetConfirmText !== "RESET"}
+                  onClick={() => void onFactoryReset()}
+                  style={{
+                    padding: "10px 14px", borderRadius: R.md, border: "none",
+                    background: resetConfirmText === "RESET" ? "#DC2626" : "#FCA5A5",
+                    color: "#fff", fontWeight: 800, fontSize: 12,
+                    cursor: resetConfirmText === "RESET" && !resetBusy ? "pointer" : "not-allowed",
+                    fontFamily: F, opacity: resetBusy ? 0.7 : 1,
+                  }}
+                >
+                  {resetBusy ? "執行中…" : "確認清空並重置至啟始狀態"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stepper — projects (Step 6) flat flow only; dedicated wizards have their own */}
+        {activeModule === "projects" && (
         <div style={{
           display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" as const,
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: "10px 14px",
@@ -422,23 +651,32 @@ export const Screen_DataImport: React.FC<Props> = ({
           {STEP_LABELS.map(s => {
             const active = step === s.num;
             const done = step > s.num;
+            const clickable = s.num < step;
             return (
-              <div key={s.num} style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "6px 12px",
-                borderRadius: R.md,
-                background: active ? C.accentPale : done ? "#F0FDF4" : "transparent",
-                border: `1px solid ${active ? C.accentLight : done ? "#BBF7D0" : C.border}`,
-          }}>
-            <span style={{
+              <button
+                key={s.num}
+                type="button"
+                disabled={!clickable}
+                onClick={() => { if (clickable) setStep(s.num); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "6px 12px",
+                  borderRadius: R.md, fontFamily: F, cursor: clickable ? "pointer" : "default",
+                  background: active ? C.accent : done ? "#DCFCE7" : "#F1F5F9",
+                  border: `1.5px solid ${active ? C.accent : done ? "#86EFAC" : C.border}`,
+                  color: active ? "#FFFFFF" : done ? "#15803D" : C.textMuted,
+                  boxShadow: active ? "0 1px 3px rgba(37,99,235,0.35)" : "none",
+                }}
+              >
+                <span style={{
                   width: 22, height: 22, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 800, color: "#fff",
-                  background: active ? C.accent : done ? C.success : "#94A3B8",
+                  background: active ? "rgba(255,255,255,0.28)" : done ? C.success : "#94A3B8",
                 }}>{done ? "✓" : s.num}</span>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textPrimary }}>{s.zh}</div>
-                  <div style={{ fontSize: 10, color: C.textMuted }}>{s.en}</div>
-              </div>
-          </div>
+                <div style={{ textAlign: "left" as const }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: active ? "#FFFFFF" : done ? "#15803D" : C.textPrimary }}>{s.zh}</div>
+                  <div style={{ fontSize: 10, color: active ? "rgba(255,255,255,0.85)" : C.textMuted }}>{s.en}</div>
+                </div>
+              </button>
             );
           })}
         </div>
@@ -491,23 +729,8 @@ export const Screen_DataImport: React.FC<Props> = ({
                 </div>
         </SectionCard>
 
-        {activeModule === "scores" && (
-          <BroadsheetWizard
-            analyzeUrl={broadsheetAnalyzeUrl}
-            executeUrl={broadsheetExecuteUrl}
-            batchesUrl={broadsheetBatchesUrl}
-          />
-        )}
-
-        {activeModule === "clubs" && (
-          <ClubImportWizard
-            analyzeUrl={clubAnalyzeUrl}
-            executeUrl={clubExecuteUrl}
-            batchesUrl={clubBatchesUrl}
-          />
-        )}
-
-        {activeModule === "students" && (
+        {/* Keep ALL 6 module panels mounted — CSS hide only — so tab switch never wipes upload/analysis state. */}
+        <div style={{ display: activeModule === "students" ? "block" : "none" }}>
           <StudentNamelistWizard
             analyzeUrl={namelistAnalyzeUrl}
             executeUrl={namelistExecuteUrl}
@@ -517,9 +740,9 @@ export const Screen_DataImport: React.FC<Props> = ({
             validateUrl={validateUrl}
             flatExecuteUrl={executeUrl}
           />
-        )}
+        </div>
 
-        {activeModule === "classes" && (
+        <div style={{ display: activeModule === "classes" ? "block" : "none" }}>
           <GroupImportWizard
             analyzeUrl={groupAnalyzeUrl}
             executeUrl={groupExecuteUrl}
@@ -528,9 +751,17 @@ export const Screen_DataImport: React.FC<Props> = ({
             validateUrl={validateUrl}
             flatExecuteUrl={executeUrl}
           />
-        )}
+        </div>
 
-        {activeModule === "activities" && (
+        <div style={{ display: activeModule === "scores" ? "block" : "none" }}>
+          <BroadsheetWizard
+            analyzeUrl={broadsheetAnalyzeUrl}
+            executeUrl={broadsheetExecuteUrl}
+            batchesUrl={broadsheetBatchesUrl}
+          />
+        </div>
+
+        <div style={{ display: activeModule === "activities" ? "block" : "none" }}>
           <ActivityImportWizard
             analyzeUrl={activityAnalyzeUrl}
             executeUrl={activityExecuteUrl}
@@ -539,10 +770,18 @@ export const Screen_DataImport: React.FC<Props> = ({
             validateUrl={validateUrl}
             flatExecuteUrl={executeUrl}
           />
-        )}
+        </div>
 
-        {/* ── STEP 1 (legacy modules, not dedicated wizards) ── */}
-        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && step === 1 && (
+        <div style={{ display: activeModule === "clubs" ? "block" : "none" }}>
+          <ClubImportWizard
+            analyzeUrl={clubAnalyzeUrl}
+            executeUrl={clubExecuteUrl}
+            batchesUrl={clubBatchesUrl}
+          />
+        </div>
+
+        {/* ── STEP 6 / flat fallback (projects) — keep mounted; CSS visibility only ── */}
+        <div style={{ display: activeModule === "projects" && step === 1 ? "block" : "none" }}>
           <>
             {/* Excel guide */}
             <div style={{
@@ -635,38 +874,15 @@ export const Screen_DataImport: React.FC<Props> = ({
                   </div>
 
             <SectionCard step="02" zh="檔案上傳區" en="Upload Zone" icon={<UploadCloud size={14} />}>
-              <div
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={e => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const f = e.dataTransfer.files?.[0];
-                  if (f) void parseFile(f);
-                }}
-                onClick={() => inputRef.current?.click()}
-                    style={{
-                  border: `2px dashed ${dragOver ? C.accent : C.border}`,
-                  borderRadius: R.lg, padding: "28px 16px", textAlign: "center" as const,
-                  background: dragOver ? C.accentPale : "#FAFBFC", cursor: "pointer",
-                }}
-              >
-                <Upload size={28} color={C.accent} style={{ marginBottom: 8 }} />
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.textPrimary }}>
-                  {parsing ? "解析中…" : "拖放 CSV / XLSX 至此，或點擊選取檔案"}
-                </div>
-                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>支援 .csv · .xls · .xlsx · WebSAMS 大分紙</div>
-            <input
-                  ref={inputRef}
-              type="file"
-              accept=".csv,.xls,.xlsx"
-              style={{ display: "none" }}
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) void parseFile(f);
-                  }}
-            />
-          </div>
+              <FileDropZone
+                accept=".csv,.xls,.xlsx"
+                busy={parsing}
+                label={parsing ? "解析中…" : (fileName || "拖放 CSV / XLSX 至此，或點擊選取檔案")}
+                hint="支援 .csv · .xls · .xlsx · WebSAMS 大分紙"
+                icon={<Upload size={28} color={C.accent} />}
+                style={{ padding: "28px 16px", background: "#FAFBFC" }}
+                onFiles={(picked) => { const f = picked[0]; if (f) void parseFile(f); }}
+              />
               {fileName && (
                 <div style={{
                   marginTop: 10, display: "flex", alignItems: "center", gap: 8,
@@ -770,10 +986,11 @@ export const Screen_DataImport: React.FC<Props> = ({
               </button>
       </div>
           </>
-        )}
+        </div>
 
-        {/* ── STEP 2 ── */}
-        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && step === 2 && summary && (
+        {/* ── STEP 2 (projects flat) — keep mounted; guard children when summary missing ── */}
+        <div style={{ display: activeModule === "projects" && step === 2 ? "block" : "none" }}>
+          {summary && (
           <>
             <SectionCard step="02" zh="數據校驗與脫敏預覽" en="Validation Preview" icon={<Shield size={14} />}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -844,14 +1061,16 @@ export const Screen_DataImport: React.FC<Props> = ({
                   fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: F, opacity: executing ? 0.75 : 1,
                 }}
               >
-                {executing ? "寫入中…" : "確認無誤：寫入資料庫 (Execute Import)"} <ArrowRight size={15} />
+                {executing ? "寫入中…" : "🚀 確認寫入資料庫 (Execute Import)"} <ArrowRight size={15} />
           </button>
         </div>
           </>
-        )}
+          )}
+        </div>
 
-        {/* ── STEP 3 ── */}
-        {activeModule !== "scores" && activeModule !== "clubs" && activeModule !== "students" && activeModule !== "classes" && activeModule !== "activities" && step === 3 && execResult && (
+        {/* ── STEP 3 (projects flat) — keep mounted; guard children when execResult missing ── */}
+        <div style={{ display: activeModule === "projects" && step === 3 ? "block" : "none" }}>
+          {execResult && (
           <SectionCard step="03" zh="寫入資料庫完成報告" en="Import Complete" icon={<CheckCircle2 size={14} />}>
             <div style={{
               padding: 20, borderRadius: R.lg, background: "#ECFDF5", border: "1px solid #A7F3D0", marginBottom: 16,
@@ -888,7 +1107,8 @@ export const Screen_DataImport: React.FC<Props> = ({
               </button>
             </div>
           </SectionCard>
-        )}
+          )}
+        </div>
       </div>
       <style>{`
         @media (max-width: 800px) {

@@ -123,30 +123,10 @@ const LEVEL_OPTIONS: { code: LevelCode; label: string; sub: string }[] = [
 ];
 const PAGE_SIZE = 8;
 
-/* ── Mock Students ───────────────────────────────────────────────────────── */
-const MOCK_STUDENTS = [
-  { id: "2024001", nameZh: "陳大文", nameEn: "Chan Tai Man",    class: "F3A", no: 1,  yearHash: "24A-01" },
-  { id: "2024002", nameZh: "李美玲", nameEn: "Lee Mei Ling",    class: "F3A", no: 2,  yearHash: "24A-02" },
-  { id: "2024003", nameZh: "黃志豪", nameEn: "Wong Chi Ho",     class: "F3A", no: 3,  yearHash: "24A-03" },
-  { id: "2024004", nameZh: "張詩敏", nameEn: "Cheung Sze Man",  class: "F3A", no: 4,  yearHash: "24A-04" },
-  { id: "2024005", nameZh: "林俊傑", nameEn: "Lam Chun Kit",    class: "F3A", no: 5,  yearHash: "24A-05" },
-  { id: "2024006", nameZh: "吳嘉欣", nameEn: "Ng Ka Yan",       class: "F3A", no: 6,  yearHash: "24A-06" },
-  { id: "2024007", nameZh: "鄭宇翔", nameEn: "Cheng Yu Cheung", class: "F3B", no: 1,  yearHash: "24B-01" },
-  { id: "2024008", nameZh: "梁慧雯", nameEn: "Leung Wai Man",   class: "F3B", no: 2,  yearHash: "24B-02" },
-  { id: "2024009", nameZh: "何建明", nameEn: "Ho Kin Ming",     class: "F3B", no: 3,  yearHash: "24B-03" },
-  { id: "2024010", nameZh: "劉佩珊", nameEn: "Lau Pui Shan",    class: "F3B", no: 4,  yearHash: "24B-04" },
-  { id: "2024011", nameZh: "楊浩然", nameEn: "Yeung Ho Yin",    class: "F3B", no: 5,  yearHash: "24B-05" },
-  { id: "2024012", nameZh: "蔡曉彤", nameEn: "Choi Hiu Tung",   class: "F3B", no: 6,  yearHash: "24B-06" },
-  { id: "2024013", nameZh: "許志遠", nameEn: "Hui Chi Yuen",    class: "F1A", no: 1,  yearHash: "26A-01" },
-  { id: "2024014", nameZh: "羅雅雯", nameEn: "Lo Nga Man",      class: "F1A", no: 2,  yearHash: "26A-02" },
-  { id: "2024015", nameZh: "謝家豪", nameEn: "Tse Ka Ho",       class: "F2A", no: 1,  yearHash: "25A-01" },
-  { id: "2024016", nameZh: "馮紫晴", nameEn: "Fung Zi Ching",   class: "F2A", no: 2,  yearHash: "25A-02" },
-  // Name-collision entries — used to demo the disambiguation flow
-  { id: "2024017", nameZh: "陳志明", nameEn: "Chan Chi Ming",   class: "F4A", no: 3,  yearHash: "23A-03" },
-  { id: "2024018", nameZh: "陳美兒", nameEn: "Chan Mei Yi",     class: "F4B", no: 7,  yearHash: "23B-07" },
-  { id: "2024019", nameZh: "李明峰", nameEn: "Lee Ming Fung",   class: "F5A", no: 4,  yearHash: "22A-04" },
-  { id: "2024020", nameZh: "李明達", nameEn: "Lee Ming Tat",    class: "F5B", no: 11, yearHash: "22B-11" },
-];
+/* Student pool for paste/search — empty until live roster is wired. Never seed Figma mocks. */
+const MOCK_STUDENTS: Array<{
+  id: string; nameZh: string; nameEn: string; class: string; no: number; yearHash: string;
+}> = [];
 
 const TIER_OPTIONS = [
   { value: "",   label: "— 未設定 Unset —" },
@@ -521,7 +501,8 @@ export const Frame03_ActivityTable: React.FC<{
   scanUrl = "/api/attendance/scan",
   schedulesUrlBase = "/api/attendance/schedules",
 }) => {
-  const catalog = activities !== undefined ? activities : ACTIVITIES;
+  // DB/bridge is SSOT — never seed Figma ACTIVITIES mock catalog.
+  const catalog = Array.isArray(activities) ? activities : [];
 
   const [search, setSearch]                   = useState("");
   const [year, setYear]                       = useState(YEARS[0]);
@@ -533,9 +514,7 @@ export const Frame03_ActivityTable: React.FC<{
   const [isMobile, setIsMobile]               = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [participantSearch, setParticipantSearch] = useState("");
-  const [participantIds, setParticipantIds]   = useState<Set<string>>(
-    new Set(["2024001", "2024003", "2024005", "2024007", "2024009", "2024011"])
-  );
+  const [participantIds, setParticipantIds]   = useState<Set<string>>(new Set());
 
   // Roster panel tabs & paste flow
   const [rosterTab, setRosterTab]           = useState<"add" | "roles">("add");
@@ -880,7 +859,16 @@ export const Frame03_ActivityTable: React.FC<{
               </div>
               {paginated.length === 0 ? (
                 <div style={{ padding: "40px", textAlign: "center", color: ERP.colors.textMuted, fontSize: "14px" }}>
-                  沒有符合條件的活動
+                  <div style={{ fontWeight: 700, color: ERP.colors.textPrimary, marginBottom: 6 }}>
+                    {catalog.length === 0 ? "目前暫無活動資料" : "沒有符合條件的活動"}
+                  </div>
+                  {catalog.length === 0 && (
+                    <a href="/admin/data-import?module=activities" style={{
+                      display: "inline-flex", marginTop: 12, padding: "8px 14px",
+                      borderRadius: ERP.radius.md, background: ERP.colors.accent, color: "#fff",
+                      fontWeight: 700, fontSize: 12, textDecoration: "none",
+                    }}>前往數據匯入</a>
+                  )}
                 </div>
               ) : paginated.map((act) => {
                 const isSelected = selectedIds.has(act.id);
@@ -1007,7 +995,16 @@ export const Frame03_ActivityTable: React.FC<{
                 {paginated.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: ERP.colors.textMuted, fontSize: "14px" }}>
-                      沒有符合條件的活動
+                      <div style={{ fontWeight: 700, color: ERP.colors.textPrimary, marginBottom: 6 }}>
+                        {catalog.length === 0 ? "目前暫無活動資料" : "沒有符合條件的活動"}
+                      </div>
+                      {catalog.length === 0 && (
+                        <a href="/admin/data-import?module=activities" style={{
+                          display: "inline-flex", marginTop: 12, padding: "8px 14px",
+                          borderRadius: ERP.radius.md, background: ERP.colors.accent, color: "#fff",
+                          fontWeight: 700, fontSize: 12, textDecoration: "none",
+                        }}>前往數據匯入</a>
+                      )}
                     </td>
                   </tr>
                 ) : paginated.map((act) => {

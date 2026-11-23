@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile } from "./erpResponsive";
+import { FileDropZone } from "./FileDropZone";
+import { WizardActionBar, WizardStepper, wizardPrimaryBtn } from "./ImportWizardChrome";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -263,14 +265,15 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={card}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>簡易有日期活動 CSV（舊版 flat 路徑）</div>
-            <label style={{
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 24,
-              border: `2px dashed ${C.border}`, borderRadius: ERP.radius.lg, background: "#F8FAFC", cursor: "pointer",
-            }}>
-              <UploadCloud size={24} color={C.primary} />
-              <span style={{ fontSize: 13, fontWeight: 700 }}>{file ? file.name : "上傳含 activity_date 的 CSV"}</span>
-              <input type="file" accept=".csv,.xlsx,.xls" hidden onChange={(e) => void onFlatParse(e.target.files?.[0] || null)} />
-            </label>
+            <FileDropZone
+              accept=".csv,.xlsx,.xls"
+              busy={busy}
+              label={file ? file.name : "上傳含 activity_date 的 CSV"}
+              hint="支援 .csv · .xls · .xlsx"
+              icon={<UploadCloud size={24} color={C.accent} />}
+              style={{ padding: 24 }}
+              onFiles={(picked) => void onFlatParse(picked[0] || null)}
+            />
             {flatSummary && (
               <div style={{ marginTop: 12, fontSize: 12 }}>
                 <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(flatSummary, null, 2)}</pre>
@@ -286,19 +289,17 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
 
       {mode === "eclass" && (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {[1, 2, 3, 4].map((n) => (
-              <div key={n} style={{
-                display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px",
-                borderRadius: 999, fontSize: 11, fontWeight: 700,
-                background: step === n ? C.primary : step > n ? "#DCFCE7" : "#F1F5F9",
-                color: step === n ? "#fff" : step > n ? "#15803D" : C.textMuted,
-              }}>
-                {step > n ? <CheckCircle2 size={12} /> : n}
-                {n === 1 ? "上傳與學年" : n === 2 ? "映射／ACORN" : n === 3 ? "預覽確認" : "完成報告"}
-              </div>
-            ))}
-          </div>
+          <WizardStepper
+            step={step}
+            maxReachable={step}
+            onJump={(n) => setStep(n)}
+            steps={[
+              { n: 1, label: "1 上傳與學年" },
+              { n: 2, label: "2 映射／ACORN" },
+              { n: 3, label: "3 預覽確認" },
+              { n: 4, label: "4 完成報告" },
+            ]}
+          />
 
           {showHistory && (
             <div style={card}>
@@ -346,16 +347,14 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={card}>
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>Step 1 · 上傳檔案與學年／同頁共存設定</div>
-                <label style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 28,
-                  border: `2px dashed ${C.border}`, borderRadius: ERP.radius.lg, background: "#F8FAFC", cursor: "pointer",
-                }}>
-                  <UploadCloud size={28} color={C.primary} />
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>
-                    {file ? file.name : "拖放或點擊上傳 activity_participant_list CSV"}
-                  </span>
-                  <input type="file" accept=".csv,.xlsx,.xls" hidden onChange={(e) => void onFile(e.target.files?.[0] || null)} />
-                </label>
+                <FileDropZone
+                  accept=".csv,.xlsx,.xls"
+                  busy={busy}
+                  label={file ? file.name : "拖放或點擊上傳 activity_participant_list CSV"}
+                  hint="支援 .csv · .xls · .xlsx"
+                  icon={<UploadCloud size={28} color={C.accent} />}
+                  onFiles={(picked) => void onFile(picked[0] || null)}
+                />
                 {busy && <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}><RefreshCw size={12} style={{ display: "inline" }} /> 分析中…</div>}
               </div>
 
@@ -403,14 +402,17 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
                 </div>
               )}
 
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button type="button" disabled={!stats} onClick={() => setStep(2)} style={{
-                  ...navBtn(true), background: stats ? C.primary : "#CBD5E1",
-                  cursor: stats ? "pointer" : "not-allowed",
-                }}>
-                  下一步 <ArrowRight size={14} />
-                </button>
-              </div>
+              {stats && (
+                <WizardActionBar
+                  onNext={() => setStep(2)}
+                  nextLabel="下一步：檢視預覽"
+                  nextDisabled={!stats}
+                  onConfirm={() => void onExecute()}
+                  confirmLabel="🚀 立即確認匯入"
+                  confirmBusy={busy}
+                  confirmDisabled={!stats || busy}
+                />
+              )}
             </div>
           )}
 
@@ -458,10 +460,15 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
                   範圍提示：*校外 {stats.scope_external_hints} · *校內 {stats.scope_internal_hints}
                 </div>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <button type="button" onClick={() => setStep(1)} style={navBtn(false)}><ArrowLeft size={14} /> 上一步</button>
-                <button type="button" onClick={() => setStep(3)} style={navBtn(true)}>下一步 <ArrowRight size={14} /></button>
-              </div>
+              <WizardActionBar
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+                nextLabel="下一步：預覽確認"
+                onConfirm={() => void onExecute()}
+                confirmLabel="🚀 立即確認匯入"
+                confirmBusy={busy}
+                confirmDisabled={busy}
+              />
             </div>
           )}
 
@@ -483,14 +490,13 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
               <div style={{ ...card, background: "#F0FDF4", borderColor: "#BBF7D0", fontSize: 12, color: "#166534" }}>
                 偵測到 {stats.duplicate_pairs} 組同活動同學生多筆成就（及 {stats.multiline_achievement_rows} 筆多行成就），將 100% 無損保留，不會互相覆蓋。
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <button type="button" onClick={() => setStep(2)} style={navBtn(false)}><ArrowLeft size={14} /> 上一步</button>
-                <button type="button" disabled={busy} onClick={() => void onExecute()} style={{
-                  ...navBtn(true), padding: "12px 18px", fontSize: 14, opacity: busy ? 0.7 : 1,
-                }}>
-                  🚀 確認匯入活動參與紀錄
-                </button>
-              </div>
+              <WizardActionBar
+                onBack={() => setStep(2)}
+                onConfirm={() => void onExecute()}
+                confirmLabel="🚀 確認寫入資料庫"
+                confirmBusy={busy}
+                confirmDisabled={busy}
+              />
             </div>
           )}
 
@@ -533,12 +539,14 @@ function modeBtn(on: boolean): React.CSSProperties {
 }
 
 function navBtn(primary: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 14px",
-    borderRadius: 8, border: primary ? "none" : `1px solid ${C.border}`,
-    background: primary ? C.primary : "#fff", color: primary ? "#fff" : C.textSecondary,
-    fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: F,
-  };
+  return primary
+    ? wizardPrimaryBtn(false)
+    : {
+        display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 14px",
+        borderRadius: 8, border: `1px solid ${C.border}`,
+        background: "#fff", color: C.textSecondary,
+        fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: F,
+      };
 }
 
 const linkBtn: React.CSSProperties = {

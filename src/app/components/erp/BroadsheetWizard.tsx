@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile, ResponsiveTableWrapper, rwdGrid } from "./erpResponsive";
+import { FileDropZone } from "./FileDropZone";
+import { WizardActionBar, WizardStepper } from "./ImportWizardChrome";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -230,18 +232,18 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 12 }}>
-        {["上傳與上下文", "欄位分類與滿分", "預覽確認", "對帳報告"].map((label, i) => {
-          const n = i + 1;
-          const active = step === n;
-          return (
-            <div key={label} style={{
-              padding: "8px 12px", borderRadius: 8, whiteSpace: "nowrap", fontSize: 12, fontWeight: 700,
-              background: active ? C.accent : C.pageBg, color: active ? "#fff" : C.textSecondary,
-              border: `1px solid ${active ? C.accent : C.border}`,
-            }}>Step {n} · {label}</div>
-          );
-        })}
+      <div style={{ marginBottom: 12 }}>
+        <WizardStepper
+          step={step}
+          maxReachable={step}
+          onJump={(n) => setStep(n)}
+          steps={[
+            { n: 1, label: "1 上傳與上下文" },
+            { n: 2, label: "2 欄位分類與滿分" },
+            { n: 3, label: "3 預覽確認" },
+            { n: 4, label: "4 對帳報告" },
+          ]}
+        />
       </div>
 
       {error && (
@@ -252,20 +254,15 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
 
       {step === 1 && (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) void onFile(f); }}
-            style={{
-              border: `2px dashed ${C.borderStrong}`, borderRadius: 12, padding: isMobile ? 20 : 28,
-              textAlign: "center", background: C.pageBg, marginBottom: 14,
-            }}
-          >
-            <UploadCloud size={28} color={C.accent} />
-            <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8 }}>拖放或選擇 eClass 大分紙 CSV / XLSX</div>
-            <input type="file" accept=".csv,.xlsx,.xls" style={{ marginTop: 10 }}
-              onChange={(e) => void onFile(e.target.files?.[0] || null)} />
-            {file && <div style={{ marginTop: 8, fontSize: 12, color: C.textSecondary }}>已選：{file.name}{busy ? " · 分析中…" : ""}</div>}
-          </div>
+          <FileDropZone
+            accept=".csv,.xlsx,.xls"
+            busy={busy}
+            label={file ? `已選：${file.name}` : "拖放或選擇 eClass 大分紙 CSV / XLSX"}
+            hint="支援 .csv · .xls · .xlsx"
+            icon={<UploadCloud size={28} color={C.accent} />}
+            style={{ marginBottom: 14, padding: isMobile ? 20 : 28 }}
+            onFiles={(picked) => { const f = picked[0]; if (f) void onFile(f); }}
+          />
 
           <div style={{ ...rwdGrid(isMobile, "1fr 1fr", "1fr", "10px", "10px") }}>
             <label style={{ fontSize: 12 }}>
@@ -307,12 +304,17 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
             </label>
           </div>
 
-          <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-            <button type="button" disabled={!file || columns.length === 0 || busy} style={{ ...btn, background: C.accent, color: "#fff", border: "none" }}
-              onClick={() => setStep(2)}>
-              下一步：欄位分類 <ArrowRight size={14} />
-            </button>
-          </div>
+          {(file && columns.length > 0) && (
+            <WizardActionBar
+              onNext={() => setStep(2)}
+              nextLabel="下一步：欄位分類"
+              nextDisabled={!file || columns.length === 0 || busy}
+              onConfirm={() => void onExecute()}
+              confirmLabel="🚀 立即確認匯入"
+              confirmBusy={busy}
+              confirmDisabled={!file || columns.length === 0 || busy}
+            />
+          )}
         </div>
       )}
 
@@ -369,12 +371,15 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
               </tbody>
             </table>
           </ResponsiveTableWrapper>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-            <button type="button" style={btn} onClick={() => setStep(1)}><ArrowLeft size={14} /> 上一步</button>
-            <button type="button" style={{ ...btn, background: C.accent, color: "#fff", border: "none" }} onClick={() => setStep(3)}>
-              下一步：預覽 <ArrowRight size={14} />
-            </button>
-          </div>
+          <WizardActionBar
+            onBack={() => setStep(1)}
+            onNext={() => setStep(3)}
+            nextLabel="下一步：預覽"
+            onConfirm={() => void onExecute()}
+            confirmLabel="🚀 立即確認匯入"
+            confirmBusy={busy}
+            confirmDisabled={busy}
+          />
         </div>
       )}
 
@@ -397,12 +402,13 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
             <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
             若相同學年/年級/考期已存在，覆寫更新此批次
           </label>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" style={btn} onClick={() => setStep(2)}><ArrowLeft size={14} /> 上一步</button>
-            <button type="button" disabled={busy} style={{ ...btn, background: "#0F172A", color: "#fff", border: "none" }} onClick={() => void onExecute()}>
-              <Zap size={14} /> {busy ? "匯入中…" : "確認匯入並執行自動對帳"}
-            </button>
-          </div>
+          <WizardActionBar
+            onBack={() => setStep(2)}
+            onConfirm={() => void onExecute()}
+            confirmLabel="🚀 確認寫入資料庫"
+            confirmBusy={busy}
+            confirmDisabled={busy}
+          />
         </div>
       )}
 

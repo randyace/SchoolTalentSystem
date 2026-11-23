@@ -938,8 +938,15 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
 
   const effectiveHolistic = liveHolistic ?? holistic;
   const liveYears = effectiveHolistic?.years && Object.keys(effectiveHolistic.years).length > 0 ? effectiveHolistic.years : null;
-  const ACORN_DATA: Record<string, AcornRecord> = liveYears ?? FALLBACK_ACORN_DATA;
-  const COMPARE_OPTIONS: Record<string, string[]> = effectiveHolistic?.compare_options ?? FALLBACK_COMPARE;
+  // DB is SSOT — never seed FALLBACK_ACORN_DATA (fake 陳大文 scores).
+  const EMPTY_ACORN: AcornRecord = {
+    label: "—",
+    labelEn: "No data",
+    scores: [0, 0, 0, 0, 0, 0],
+    summary: { pbl_count: 0, activity_count: 0, t3_leader_count: 0, total_autonomous_points: 0 },
+  };
+  const ACORN_DATA: Record<string, AcornRecord> = liveYears ?? {};
+  const COMPARE_OPTIONS: Record<string, string[]> = effectiveHolistic?.compare_options ?? {};
   const ACORN_AXES: AcornAxis[] = (effectiveHolistic?.axes && effectiveHolistic.axes.length >= 3)
     ? effectiveHolistic.axes.map(a => ({
         zh: a.zh, en: a.en, color: a.color, bg: a.bg, border: a.border,
@@ -950,7 +957,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
   const yearKeys = Object.keys(ACORN_DATA);
   const initialYear = (effectiveHolistic?.default_year && ACORN_DATA[effectiveHolistic.default_year])
     ? effectiveHolistic.default_year
-    : (yearKeys[0] ?? "2025/26");
+    : (yearKeys[0] ?? "");
 
   const [viewYear, setViewYear] = useState(initialYear);
   const [cmpYear,  setCmpYear]  = useState((COMPARE_OPTIONS[initialYear] ?? [])[0] ?? "");
@@ -963,7 +970,7 @@ export const Screen_StudentProfile: React.FC<StudentProfileProps> = ({
   const cmpOptions   = COMPARE_OPTIONS[viewYear] ?? [];
   const effectiveCmp = cmpOptions.includes(cmpYear) ? cmpYear : (cmpOptions[0] ?? "");
   const showCmp      = showYoY && effectiveCmp !== "";
-  const viewData     = ACORN_DATA[viewYear] ?? FALLBACK_ACORN_DATA["2025/26"];
+  const viewData     = ACORN_DATA[viewYear] ?? EMPTY_ACORN;
   const cmpData      = ACORN_DATA[effectiveCmp];
 
   // Reset comparison when primary view year changes

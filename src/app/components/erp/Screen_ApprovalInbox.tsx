@@ -792,7 +792,8 @@ export const Screen_ApprovalInbox: React.FC<ApprovalInboxProps> = ({
   csrfName,
   csrfHash,
 }) => {
-  const seeded = (itemsProp && itemsProp.length ? itemsProp : INITIAL_ITEMS).map(normalizeInboxItem);
+  // DB is SSOT — empty inbox stays empty (never fall back to Figma INITIAL_ITEMS).
+  const seeded = (Array.isArray(itemsProp) ? itemsProp : []).map(normalizeInboxItem);
   const [items, setItems]           = useState<InboxItem[]>(seeded);
   const [selectedId, setSelectedId] = useState<string>(seeded[0]?.id || "");
   const [activeFilter, setFilter]   = useState<"all" | CertCategory>("all");
@@ -832,7 +833,7 @@ export const Screen_ApprovalInbox: React.FC<ApprovalInboxProps> = ({
   }, []);
 
   useEffect(() => {
-    if (itemsProp && itemsProp.length) {
+    if (Array.isArray(itemsProp)) {
       setItems(itemsProp.map(normalizeInboxItem));
     } else {
       void refresh();

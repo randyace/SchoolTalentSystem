@@ -281,8 +281,8 @@ export const Screen_GroupProjects: React.FC<Props> = ({
   flashSuccess,
   flashError,
 }) => {
-  const live = Array.isArray(projectsProp);
-  const [projects, setProjects]   = useState<Project[]>(() => live ? (projectsProp || []) : MOCK_PROJECTS);
+  // DB is SSOT — empty [] stays empty (never fall back to Figma MOCK_PROJECTS).
+  const [projects, setProjects]   = useState<Project[]>(() => Array.isArray(projectsProp) ? (projectsProp || []) : []);
   const [modalOpen, setModalOpen] = useState(!!openForm || !!initialProject);
   const [editId,    setEditId]    = useState<string | null>(initialProject ? String(initialProject.id) : (projectId ? String(projectId) : null));
   const [isMobile,  setIsMobile]  = useState(false);
@@ -624,6 +624,15 @@ export const Screen_GroupProjects: React.FC<Props> = ({
                   {cols.length === 0 && (
                     <div style={{ textAlign: "center" as const, padding: "24px 0", color: ERP.colors.textMuted, fontSize: 12 }}>
                       暫無專題
+                      {projects.length === 0 && (
+                        <div style={{ marginTop: 10 }}>
+                          <a href="/admin/data-import" style={{
+                            display: "inline-flex", padding: "7px 12px",
+                            borderRadius: ERP.radius.md, background: ERP.colors.accent, color: "#fff",
+                            fontWeight: 700, fontSize: 11, textDecoration: "none",
+                          }}>前往數據匯入</a>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

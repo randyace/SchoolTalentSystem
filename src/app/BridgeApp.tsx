@@ -609,7 +609,13 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           groupAnalyzeUrl={(config as any).groupAnalyzeUrl || "/api/data-import/groups/analyze"}
           groupExecuteUrl={(config as any).groupExecuteUrl || "/api/data-import/groups/execute"}
           groupBatchesUrl={(config as any).groupBatchesUrl || "/api/data-import/groups/batches"}
-          initialModule={(config as any).initialModule || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("module") === "scores" ? "scores" : new URLSearchParams(window.location.search).get("module") === "clubs" ? "clubs" : new URLSearchParams(window.location.search).get("module") === "students" ? "students" : new URLSearchParams(window.location.search).get("module") === "classes" ? "classes" : undefined))}
+          activityAnalyzeUrl={(config as any).activityAnalyzeUrl || "/api/data-import/activities/analyze"}
+          activityExecuteUrl={(config as any).activityExecuteUrl || "/api/data-import/activities/execute"}
+          activityBatchesUrl={(config as any).activityBatchesUrl || "/api/data-import/activities/batches"}
+          systemResetPreviewUrl={(config as any).systemResetPreviewUrl || "/api/admin/system-reset/preview"}
+          systemResetExecuteUrl={(config as any).systemResetExecuteUrl || "/api/admin/system-reset/execute"}
+          currentUserRole={(config as any).currentUserRole || ""}
+          initialModule={(config as any).initialModule || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("module") === "scores" ? "scores" : new URLSearchParams(window.location.search).get("module") === "clubs" ? "clubs" : new URLSearchParams(window.location.search).get("module") === "students" ? "students" : new URLSearchParams(window.location.search).get("module") === "classes" ? "classes" : new URLSearchParams(window.location.search).get("module") === "activities" ? "activities" : undefined))}
         />
       ));
 

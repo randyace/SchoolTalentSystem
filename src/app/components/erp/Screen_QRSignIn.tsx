@@ -15,18 +15,13 @@ import {
 } from "lucide-react";
 
 // ── Demo data ─────────────────────────────────────────────────────────────────
-const TOTAL = 50;
-const INITIAL_SIGNED = 45;
-const EVENT_TITLE = "中一級科學環保專題";
+const TOTAL = 0;
+const INITIAL_SIGNED = 0;
+const EVENT_TITLE = "活動簽到";
 const EVENT_SUBTITLE = "集合點名";
 
-const DEMO_QUEUE = [
-  { name: "陳大文", classLabel: "F1A-01", id: "2025-F1A-001" },
-  { name: "林詩雅", classLabel: "F1A-02", id: "2025-F1A-002" },
-  { name: "黃志豪", classLabel: "F1B-03", id: "2025-F1B-003" },
-  { name: "鄭美琪", classLabel: "F1A-04", id: "2025-F1A-004" },
-  { name: "李建國", classLabel: "F1B-05", id: "2025-F1B-005" },
-];
+/** Kept for type only — auto-demo disabled so empty DB never invents check-ins. */
+const DEMO_QUEUE: Array<{ name: string; classLabel: string; id: string }> = [];
 
 type ScanPhase = "idle" | "scanning" | "success";
 
@@ -80,26 +75,8 @@ export const Screen_QRSignIn: React.FC<{ onBack: () => void }> = ({ onBack }) =>
   const [demoIdx, setDemoIdx] = useState(0);
   const [successPulse, setSuccessPulse] = useState(false);
 
-  // ── Auto-demo: cycles through DEMO_QUEUE ────────────────────────────────────
-  useEffect(() => {
-    if (demoIdx >= DEMO_QUEUE.length) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    timers.push(setTimeout(() => setPhase("scanning"), 500));
-    timers.push(setTimeout(() => {
-      setPhase("success");
-      setSuccessPulse(true);
-      const student = DEMO_QUEUE[demoIdx];
-      setToastStudent(student);
-      setToastVisible(true);
-      setSignedCount(c => c + 1);
-    }, 1700));
-    timers.push(setTimeout(() => { setPhase("idle"); setSuccessPulse(false); }, 2300));
-    timers.push(setTimeout(() => setToastVisible(false), 3400));
-    timers.push(setTimeout(() => setDemoIdx(i => i + 1), 2700));
-
-    return () => timers.forEach(clearTimeout);
-  }, [demoIdx]);
+  // Auto-demo disabled — wait for real QR / manual entry (no DEMO_QUEUE invents).
+  useEffect(() => { /* no fake check-in cycle */ }, [demoIdx]);
 
   // ── Manual entry confirm ─────────────────────────────────────────────────────
   const handleNumpad = (key: string) => {

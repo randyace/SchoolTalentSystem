@@ -896,9 +896,8 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
   });
 
   const seedCerts = useMemo(
-    () => (isLive
-      ? (initialCerts || []).map(mapIncomingCert)
-      : (initialCerts && initialCerts.length ? initialCerts.map(mapIncomingCert) : BATCH_CERTS)),
+    // DB/bridge is SSOT — never seed BATCH_CERTS Figma mock certificates.
+    () => (Array.isArray(initialCerts) ? initialCerts : []).map(mapIncomingCert),
     // Re-map whenever bridge props arrive / change (page refresh hydration).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isLive, initialCerts],
@@ -958,7 +957,7 @@ export const Screen_BatchOCR: React.FC<ScreenBatchOCRProps> = ({
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const eventChoices = activities.length
     ? ["（未關聯活動）— No linked event", ...activities.map(a => a.label)]
-    : MOCK_EVENTS;
+    : ["（未關聯活動）— No linked event"];
   const [linkedEvent,  setLinkedEvent]  = useState(
     activityLabel && activityLabel !== "—" ? activityLabel : eventChoices[0],
   );

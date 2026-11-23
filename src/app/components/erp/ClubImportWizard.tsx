@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile } from "./erpResponsive";
+import { FileDropZone } from "./FileDropZone";
+import { WizardActionBar, WizardStepper, wizardPrimaryBtn } from "./ImportWizardChrome";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -171,17 +173,17 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: F }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        {[1, 2, 3, 4].map((n) => (
-          <div key={n} style={{
-            display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px",
-            borderRadius: 999, fontSize: 11, fontWeight: 700,
-            background: step === n ? C.primary : step > n ? "#DCFCE7" : "#F1F5F9",
-            color: step === n ? "#fff" : step > n ? "#15803D" : C.textMuted,
-          }}>
-            {step > n ? <CheckCircle2 size={12} /> : n}
-            {n === 1 ? "上傳與上下文" : n === 2 ? "欄位與層級" : n === 3 ? "預覽確認" : "完成報告"}
-          </div>
-        ))}
+        <WizardStepper
+          step={step}
+          maxReachable={step}
+          onJump={(n) => setStep(n)}
+          steps={[
+            { n: 1, label: "1 上傳與上下文" },
+            { n: 2, label: "2 欄位與層級" },
+            { n: 3, label: "3 預覽確認" },
+            { n: 4, label: "4 完成報告" },
+          ]}
+        />
         <button type="button" onClick={() => setShowHistory((v) => !v)} style={{
           marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6,
           border: `1px solid ${C.border}`, background: "#fff", borderRadius: 8, padding: "6px 10px",
@@ -244,15 +246,14 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={card}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>Step 1 · 上傳檔案與匯入上下文</div>
-            <label style={{
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 8, padding: 28, border: `2px dashed ${C.border}`, borderRadius: ERP.radius.lg,
-              background: "#F8FAFC", cursor: "pointer",
-            }}>
-              <UploadCloud size={28} color={C.primary} />
-              <span style={{ fontSize: 13, fontWeight: 700 }}>{file ? file.name : "拖放或點擊上傳 club_member_list.csv"}</span>
-              <input type="file" accept=".csv,.xlsx,.xls" hidden onChange={(e) => void onFile(e.target.files?.[0] || null)} />
-            </label>
+            <FileDropZone
+              accept=".csv,.xlsx,.xls"
+              busy={busy}
+              label={file ? file.name : "拖放或點擊上傳 club_member_list.csv"}
+              hint="支援 .csv · .xls · .xlsx"
+              icon={<UploadCloud size={28} color={C.accent} />}
+              onFiles={(picked) => void onFile(picked[0] || null)}
+            />
             {busy && <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}><RefreshCw size={12} style={{ display: "inline" }} /> 分析中…</div>}
           </div>
 
@@ -322,15 +323,17 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
             </>
           )}
 
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button type="button" disabled={!stats} onClick={() => setStep(2)} style={{
-              display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 16px",
-              borderRadius: 8, border: "none", background: stats ? C.primary : "#CBD5E1",
-              color: "#fff", fontWeight: 800, fontSize: 13, cursor: stats ? "pointer" : "not-allowed",
-            }}>
-              下一步 <ArrowRight size={14} />
-            </button>
-          </div>
+          {stats && (
+            <WizardActionBar
+              onNext={() => setStep(2)}
+              nextLabel="下一步：檢視預覽"
+              nextDisabled={!stats}
+              onConfirm={() => void onExecute()}
+              confirmLabel="🚀 立即確認匯入"
+              confirmBusy={busy}
+              confirmDisabled={!stats || busy}
+            />
+          )}
         </div>
       )}
 
@@ -363,10 +366,15 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
               })}
             </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <button type="button" onClick={() => setStep(1)} style={navBtn(false)}><ArrowLeft size={14} /> 上一步</button>
-            <button type="button" onClick={() => setStep(3)} style={navBtn(true)}>下一步 <ArrowRight size={14} /></button>
-          </div>
+          <WizardActionBar
+            onBack={() => setStep(1)}
+            onNext={() => setStep(3)}
+            nextLabel="下一步：預覽確認"
+            onConfirm={() => void onExecute()}
+            confirmLabel="🚀 立即確認匯入"
+            confirmBusy={busy}
+            confirmDisabled={busy}
+          />
         </div>
       )}
 
@@ -390,15 +398,13 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
               偵測到 {stats.multi_row_students} 位學生擁有多筆紀錄 — 全部明細列將完整保留於 <code>club_import_rows</code>，不會因唯一鍵衝突遺失。
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <button type="button" onClick={() => setStep(2)} style={navBtn(false)}><ArrowLeft size={14} /> 上一步</button>
-            <button type="button" disabled={busy} onClick={() => void onExecute()} style={{
-              ...navBtn(true), padding: "12px 18px", fontSize: 14,
-              opacity: busy ? 0.7 : 1,
-            }}>
-              🚀 確認匯入學會紀錄
-            </button>
-          </div>
+          <WizardActionBar
+            onBack={() => setStep(2)}
+            onConfirm={() => void onExecute()}
+            confirmLabel="🚀 確認寫入資料庫"
+            confirmBusy={busy}
+            confirmDisabled={busy}
+          />
         </div>
       )}
 
@@ -428,12 +434,14 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
 };
 
 function navBtn(primary: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 14px",
-    borderRadius: 8, border: primary ? "none" : `1px solid ${C.border}`,
-    background: primary ? C.primary : "#fff", color: primary ? "#fff" : C.textSecondary,
-    fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: F,
-  };
+  return primary
+    ? wizardPrimaryBtn(false)
+    : {
+        display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 14px",
+        borderRadius: 8, border: `1px solid ${C.border}`,
+        background: "#fff", color: C.textSecondary,
+        fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: F,
+      };
 }
 
 const linkBtn: React.CSSProperties = {

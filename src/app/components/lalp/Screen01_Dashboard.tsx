@@ -701,10 +701,15 @@ export const Screen01_Dashboard: React.FC<Screen01DashboardProps> = (props) => {
     return () => window.clearTimeout(t);
   }, [toast]);
 
-  const engagementData = props.engagementData ?? overview?.engagementData ?? MOCK_ENGAGEMENT_DATA;
-  const classOverview  = props.classOverview ?? overview?.classOverview ?? MOCK_CLASS_OVERVIEW;
-  const stats          = props.stats ?? overview?.stats ?? bootstrap?.stats ?? MOCK_DASHBOARD_STATS;
-  const activities     = props.activities ?? overview?.activities ?? bootstrap?.activities ?? MOCK_ACTIVITIES;
+  // Prefer live API/bootstrap; never substitute Figma MOCK_* when API returns empty.
+  const engagementData = props.engagementData ?? overview?.engagementData ?? {
+    labels: [] as string[],
+    current: [] as number[],
+    previous: [] as number[],
+  };
+  const classOverview  = props.classOverview ?? overview?.classOverview ?? [];
+  const stats          = props.stats ?? overview?.stats ?? bootstrap?.stats ?? [];
+  const activities     = props.activities ?? overview?.activities ?? bootstrap?.activities ?? [];
   const insights       = overview?.insights ?? bootstrap?.insights;
   const riskAlerts     = overview?.risk_alerts ?? bootstrap?.risk_alerts;
   const calendarDots   = overview?.calendar_dots ?? [];
