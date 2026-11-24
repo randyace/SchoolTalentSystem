@@ -79,7 +79,7 @@ const MOCK: StudentRow[] = [
   { id:"2025-F2B-001", chName:"余志遠",  enName:"Yu Chi Yuen",    form:"F2", classCode:"F2B", classNum:1,  status:"active",    isRepeat:false, pendingAwards:0, aiAlert:"none"       },
 ];
 
-const AY_OPTS     = ["2025/26", "2024/25", "2023/24"];
+const AY_OPTS_FALLBACK = ["2026/27", "2025/26", "2024/25", "2023/24"];
 const FORM_OPTS_FALLBACK = ["全部", "F1", "F2", "F3", "F4", "F5", "F6"];
 const CLASS_OPTS_FALLBACK = ["全部", "F1A", "F1B", "F1C", "F2A", "F2B", "F2C", "F3A", "F3B", "F3C", "F4A", "F4B", "F4C"];
 
@@ -545,6 +545,7 @@ interface Props {
   classCatalog?: ClassCatalogItem[];
   flashSuccess?: string;
   academicYear?: string;
+  academicYears?: string[];
   initialClassFilter?: string;
 }
 
@@ -556,10 +557,12 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
   classCatalog: catalogProp,
   flashSuccess,
   academicYear: yearProp,
+  academicYears: yearsProp,
   initialClassFilter,
 }) => {
   // DB is SSOT — empty [] must stay empty (never fall back to Figma MOCK rows).
   const roster = Array.isArray(studentsProp) ? studentsProp : [];
+  const AY_OPTS = (yearsProp && yearsProp.length > 0) ? yearsProp : AY_OPTS_FALLBACK;
 
   // Prefer CI4-injected catalog; fall back to deriving from roster rows
   const classCatalog: ClassCatalogItem[] = React.useMemo(() => {
@@ -591,17 +594,45 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
   const [revealedCells, setRevealedCells] = useState<Set<string>>(new Set());
 
   const [searchQ,      setSearchQ]      = useState("");
-  const [filterAY,     setFilterAY]     = useState(yearProp || "2025/26");
+  const [filterAY,     setFilterAY]     = useState(() => yearProp || AY_OPTS[0] || "2026/27");
   const [filterForm,   setFilterForm]   = useState(() => {
     if (initialClassFilter && /^F(\d)/i.test(initialClassFilter)) {
       return "F" + initialClassFilter.match(/^F(\d)/i)![1];
     }
+    // Also accept bare class names like "1A"
+    if (initialClassFilter && /^(\d)/.test(initialClassFilter)) {
+      return "F" + initialClassFilter.charAt(0);
+    }
     return "全部";
   });
-  const [filterClass,  setFilterClass]  = useState(initialClassFilter && initialClassFilter !== "全部" ? initialClassFilter : "全部");
+  const [filterClass,  setFilterClass]  = useState(() => {
+    if (!initialClassFilter || initialClassFilter === "全部") return "全部";
+    // Normalize 1A → F1A for roster classCode convention
+    if (/^[1-6][A-Z]$/i.test(initialClassFilter)) return "F" + initialClassFilter.toUpperCase();
+    return initialClassFilter;
+  });
   const [filterStatus, setFilterStatus] = useState("全部");
   const [page,         setPage]         = useState(1);
   const [isMobile,     setIsMobile]     = useState(false);
+
+  // Persist + server-reload when AY changes (roster is year-scoped server-side).
+  const navigateYear = (ay: string) => {
+    setFilterAY(ay);
+    try { localStorage.setItem("sts.preferredAcademicYear", ay); } catch { /* ignore */ }
+    const params = new URLSearchParams();
+    params.set("academic_year", ay);
+    if (filterClass && filterClass !== "全部") {
+      // Pass bare class name (1A) preferred by CI4 class filter
+      params.set("class", filterClass.replace(/^F/i, ""));
+    }
+    window.location.href = `/students?${params.toString()}`;
+  };
+
+  React.useEffect(() => {
+    if (yearProp) {
+      try { localStorage.setItem("sts.preferredAcademicYear", yearProp); } catch { /* ignore */ }
+    }
+  }, [yearProp]);
 
   // Cascading: Class options depend on selected Form
   const CLASS_OPTS = React.useMemo(() => {
@@ -946,7 +977,7 @@ export const Screen_StudentsbyYear: React.FC<Props> = ({
           gap: isMobile ? 8 : 12,
           alignItems: "end",
         }}>
-          <FilterSelect label="學年 AY"        value={filterAY}     options={AY_OPTS}     onChange={v => { setFilterAY(v);     setPage(1); }} width={isMobile ? "100%" : 108} />
+          <FilterSelect label="學年 AY"        value={filterAY}     options={AY_OPTS}     onChange={v => navigateYear(v)} width={isMobile ? "100%" : 108} />
           <FilterSelect label="年級 Form"      value={filterForm}   options={FORM_OPTS}   onChange={onFormChange} width={isMobile ? "100%" : 100} />
           <FilterSelect label="班別 Class"     value={filterClass}  options={CLASS_OPTS}  onChange={onClassChange} width={isMobile ? "100%" : 100} />
           <FilterSelect label="狀態 Status"    value={filterStatus} options={STATUS_OPTS} onChange={v => { setFilterStatus(v); setPage(1); }} width={isMobile ? "100%" : 108} />

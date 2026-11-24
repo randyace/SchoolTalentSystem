@@ -717,7 +717,7 @@ export const Screen_ClassList: React.FC<Props> = ({
   classes: classesProp,
   forms: formsProp,
   academicYears: yearsProp,
-  academicYear: yearProp = "2025/26",
+  academicYear: yearProp = "2026/27",
   filterForm: formProp = "全部",
 }) => {
   // DB is SSOT — empty [] must stay empty (never fall back to Figma CLASSES mock).
@@ -726,17 +726,24 @@ export const Screen_ClassList: React.FC<Props> = ({
   const [isMobile, setIsMobile] = useState(false);
   const F = ERP.font.family;
 
-  const ayOpts = (yearsProp && yearsProp.length > 0) ? yearsProp : ["2025/26", "2024/25", "2023/24"];
+  const ayOpts = (yearsProp && yearsProp.length > 0) ? yearsProp : ["2026/27", "2025/26", "2024/25", "2023/24"];
   const formOpts = ["全部", ...((formsProp && formsProp.length > 0)
     ? formsProp
     : Array.from(new Set(classList.map(c => c.form).filter(Boolean))).sort())];
 
   const navigateFilters = (ay: string, form: string) => {
+    try { localStorage.setItem("sts.preferredAcademicYear", ay); } catch { /* ignore */ }
     const params = new URLSearchParams();
     params.set("academic_year", ay);
     if (form && form !== "全部") params.set("form", form);
     window.location.href = `/classes?${params.toString()}`;
   };
+
+  useEffect(() => {
+    if (yearProp) {
+      try { localStorage.setItem("sts.preferredAcademicYear", yearProp); } catch { /* ignore */ }
+    }
+  }, [yearProp]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -841,7 +848,9 @@ export const Screen_ClassList: React.FC<Props> = ({
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
         {classList.map(cls => {
           const ay = cls.academic_year || yearProp;
-          const rosterHref = `/classes/details/${cls.id}?academic_year=${encodeURIComponent(ay)}`;
+          // Open year-scoped student roster with class pre-selected (1A, not F1A).
+          const bareClass = (cls.name || cls.classCode || "").replace(/^F/i, "");
+          const rosterHref = `/students?academic_year=${encodeURIComponent(ay)}&class=${encodeURIComponent(bareClass)}`;
           return (
             <ClassCard
               key={cls.id}

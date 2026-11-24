@@ -474,8 +474,17 @@ function shell(navId: string, children: React.ReactNode, config?: StsBridgeConfi
   const role = (user?.role || "").toLowerCase();
   const schoolName = config?.schoolName || bridge?.schoolName || bridge?.schoolDisplayName || "香港神託會培敦中學";
   const schoolNameEn = config?.schoolNameEn || bridge?.schoolNameEn || "Stewards Pooi Tun Secondary School";
-  // FIXME: prefer a dedicated activeAcademicYear from global settings when available
-  const academicYear = config?.academicYear || bridge?.academicYear || "2025/26";
+  // Prefer server-resolved year; fall back to last user choice (never invent empty 2025/26 when DB has 2026/27).
+  let academicYear = config?.academicYear || bridge?.academicYear || "";
+  if (!academicYear && typeof window !== "undefined") {
+    try {
+      academicYear = localStorage.getItem("sts.preferredAcademicYear") || "";
+    } catch { /* ignore */ }
+  }
+  if (!academicYear) academicYear = "2025/26";
+  if (academicYear && academicYear !== "all" && typeof window !== "undefined") {
+    try { localStorage.setItem("sts.preferredAcademicYear", academicYear); } catch { /* ignore */ }
+  }
   return (
     <Frame02_AppShell
       activeNavId={navId}
@@ -530,6 +539,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           classCatalog={config.classCatalog}
           flashSuccess={config.flashSuccess}
           academicYear={config.academicYear}
+          academicYears={config.academicYears}
           initialClassFilter={config.filterClass}
           onViewStudent={(id) => go(`/students/details/${encodeURIComponent(id)}`)}
         />
@@ -554,7 +564,7 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           classes={config.classes}
           forms={config.forms}
           academicYears={config.academicYears}
-          academicYear={config.academicYear || "2025/26"}
+          academicYear={config.academicYear || ""}
           filterForm={config.filterForm || "全部"}
           onViewStudent={(id) => go(`/students/details/${encodeURIComponent(id)}`)}
         />
