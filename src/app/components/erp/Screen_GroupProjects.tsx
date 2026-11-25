@@ -282,6 +282,8 @@ export const Screen_GroupProjects: React.FC<Props> = ({
   flashError,
 }) => {
   // DB is SSOT — empty [] stays empty (never fall back to Figma MOCK_PROJECTS).
+  // Live backend mode when store/list endpoints are wired (always true in CI4 bridge).
+  const live = !!storeUrl;
   const [projects, setProjects]   = useState<Project[]>(() => Array.isArray(projectsProp) ? (projectsProp || []) : []);
   const [modalOpen, setModalOpen] = useState(!!openForm || !!initialProject);
   const [editId,    setEditId]    = useState<string | null>(initialProject ? String(initialProject.id) : (projectId ? String(projectId) : null));

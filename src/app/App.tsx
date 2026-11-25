@@ -6,7 +6,12 @@
 import React from "react";
 import { RouterProvider } from "react-router";
 import { router } from "./routes";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <ErrorBoundary title="School Talent System · 路由錯誤">
+      <RouterProvider router={router} />
+    </ErrorBoundary>
+  );
 }

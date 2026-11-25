@@ -15,6 +15,19 @@ import { StudentNamelistWizard } from "./StudentNamelistWizard";
 import { GroupImportWizard } from "./GroupImportWizard";
 import { ActivityImportWizard } from "./ActivityImportWizard";
 import { FileDropZone } from "./FileDropZone";
+import { ContinueImportButton, SessionImportLedger } from "./ImportBatchExtras";
+import {
+  appendSessionLedger,
+  loadSessionLedger,
+  MODULE_LABELS,
+  readImportUrlState,
+  writeImportUrlState,
+  wrongModuleHint,
+  type ImportModuleId,
+  type SessionImportEntry,
+  type WrongModuleHint,
+} from "./importUxShared";
+import { WrongModuleBanner } from "./ImportBatchExtras";
 
 const F = ERP.font.family;
 const C = ERP.colors;
@@ -212,10 +225,48 @@ export const Screen_DataImport: React.FC<Props> = ({
   systemResetExecuteUrl = "/api/admin/system-reset/execute",
   currentUserRole = "",
   initialModule,
+  academicYear: academicYearProp,
 }) => {
+  const boot = typeof window !== "undefined" ? readImportUrlState() : { module: null, mode: null, year: null };
   const [modules, setModules] = useState<ModuleCard[]>(modulesProp?.length ? modulesProp : FALLBACK_MODULES);
-  const [activeModule, setActiveModule] = useState<ModuleId>(initialModule || "students");
+  const [activeModule, setActiveModule] = useState<ModuleId>(
+    (boot.module as ModuleId) || initialModule || "students",
+  );
+  const [sharedYear, setSharedYear] = useState<string>(
+    boot.year || academicYearProp || "2026/27",
+  );
+  const [sharedMode, setSharedMode] = useState<string | null>(boot.mode);
+  const [transferFiles, setTransferFiles] = useState<File[]>([]);
+  const [transferNonce, setTransferNonce] = useState(0);
+  const [ledger, setLedger] = useState<SessionImportEntry[]>(() =>
+    typeof window !== "undefined" ? loadSessionLedger() : [],
+  );
+  const [projectsWrong, setProjectsWrong] = useState<WrongModuleHint | null>(null);
+  const [projectsWrongFiles, setProjectsWrongFiles] = useState<File[]>([]);
   const [step, setStep] = useState(1);
+
+  // Persist module / mode / year to URL query + sessionStorage (survives refresh).
+  useEffect(() => {
+    writeImportUrlState({
+      module: activeModule as ImportModuleId,
+      mode: sharedMode,
+      year: sharedYear,
+    });
+  }, [activeModule, sharedMode, sharedYear]);
+
+  const onModuleTransfer = useCallback((target: ModuleId, files: File[]) => {
+    setActiveModule(target);
+    setTransferFiles(files);
+    setTransferNonce((n) => n + 1);
+  }, []);
+
+  const onSeedConsumed = useCallback(() => {
+    setTransferFiles([]);
+  }, []);
+
+  const onImportLogged = useCallback((entry: Omit<SessionImportEntry, "id" | "at">) => {
+    setLedger(appendSessionLedger(entry));
+  }, []);
   const [resetPreview, setResetPreview] = useState<ResetPreview | null>(null);
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [keepOnlyAdmins, setKeepOnlyAdmins] = useState(true);
@@ -353,6 +404,9 @@ export const Screen_DataImport: React.FC<Props> = ({
     // Keep each module's upload/analysis state — never wipe on tab switch.
     setActiveModule(id);
   };
+
+  const seedFor = (id: ModuleId) =>
+    transferFiles.length && activeModule === id ? transferFiles : undefined;
 
   const parseFile = useCallback(async (f: File) => {
     setParsing(true);
@@ -739,6 +793,16 @@ export const Screen_DataImport: React.FC<Props> = ({
             parseUrl={parseUrl}
             validateUrl={validateUrl}
             flatExecuteUrl={executeUrl}
+            academicYear={sharedYear}
+            onAcademicYearChange={setSharedYear}
+            subMode={sharedMode}
+            onSubModeChange={setSharedMode}
+            seedFiles={seedFor("students")}
+            seedNonce={transferNonce}
+            onSeedConsumed={onSeedConsumed}
+            onRequestTransfer={onModuleTransfer}
+            onImportLogged={onImportLogged}
+            ledger={ledger}
           />
         </div>
 
@@ -750,6 +814,16 @@ export const Screen_DataImport: React.FC<Props> = ({
             parseUrl={parseUrl}
             validateUrl={validateUrl}
             flatExecuteUrl={executeUrl}
+            academicYear={sharedYear}
+            onAcademicYearChange={setSharedYear}
+            subMode={sharedMode}
+            onSubModeChange={setSharedMode}
+            seedFiles={seedFor("classes")}
+            seedNonce={transferNonce}
+            onSeedConsumed={onSeedConsumed}
+            onRequestTransfer={onModuleTransfer}
+            onImportLogged={onImportLogged}
+            ledger={ledger}
           />
         </div>
 
@@ -758,6 +832,14 @@ export const Screen_DataImport: React.FC<Props> = ({
             analyzeUrl={broadsheetAnalyzeUrl}
             executeUrl={broadsheetExecuteUrl}
             batchesUrl={broadsheetBatchesUrl}
+            academicYear={sharedYear}
+            onAcademicYearChange={setSharedYear}
+            seedFiles={seedFor("scores")}
+            seedNonce={transferNonce}
+            onSeedConsumed={onSeedConsumed}
+            onRequestTransfer={onModuleTransfer}
+            onImportLogged={onImportLogged}
+            ledger={ledger}
           />
         </div>
 
@@ -769,6 +851,16 @@ export const Screen_DataImport: React.FC<Props> = ({
             parseUrl={parseUrl}
             validateUrl={validateUrl}
             flatExecuteUrl={executeUrl}
+            academicYear={sharedYear}
+            onAcademicYearChange={setSharedYear}
+            subMode={sharedMode}
+            onSubModeChange={setSharedMode}
+            seedFiles={seedFor("activities")}
+            seedNonce={transferNonce}
+            onSeedConsumed={onSeedConsumed}
+            onRequestTransfer={onModuleTransfer}
+            onImportLogged={onImportLogged}
+            ledger={ledger}
           />
         </div>
 
@@ -777,6 +869,14 @@ export const Screen_DataImport: React.FC<Props> = ({
             analyzeUrl={clubAnalyzeUrl}
             executeUrl={clubExecuteUrl}
             batchesUrl={clubBatchesUrl}
+            academicYear={sharedYear}
+            onAcademicYearChange={setSharedYear}
+            seedFiles={seedFor("clubs")}
+            seedNonce={transferNonce}
+            onSeedConsumed={onSeedConsumed}
+            onRequestTransfer={onModuleTransfer}
+            onImportLogged={onImportLogged}
+            ledger={ledger}
           />
         </div>
 
@@ -874,14 +974,40 @@ export const Screen_DataImport: React.FC<Props> = ({
                   </div>
 
             <SectionCard step="02" zh="檔案上傳區" en="Upload Zone" icon={<UploadCloud size={14} />}>
+              {projectsWrong && (
+                <div style={{ marginBottom: 12 }}>
+                  <WrongModuleBanner
+                    hint={projectsWrong}
+                    onTransfer={() => {
+                      onModuleTransfer(projectsWrong.target as ModuleId, projectsWrongFiles);
+                      setProjectsWrong(null);
+                      setProjectsWrongFiles([]);
+                    }}
+                    onDismiss={() => setProjectsWrong(null)}
+                  />
+                </div>
+              )}
               <FileDropZone
                 accept=".csv,.xls,.xlsx"
+                multiple
                 busy={parsing}
                 label={parsing ? "解析中…" : (fileName || "拖放 CSV / XLSX 至此，或點擊選取檔案")}
-                hint="支援 .csv · .xls · .xlsx · WebSAMS 大分紙"
+                hint="支援多檔 · .csv · .xls · .xlsx"
                 icon={<Upload size={28} color={C.accent} />}
                 style={{ padding: "28px 16px", background: "#FAFBFC" }}
-                onFiles={(picked) => { const f = picked[0]; if (f) void parseFile(f); }}
+                onFiles={(picked) => {
+                  const f = picked[0];
+                  if (!f) return;
+                  const hint = wrongModuleHint("projects", f.name);
+                  if (hint) {
+                    setProjectsWrong(hint);
+                    setProjectsWrongFiles(picked);
+                  } else {
+                    setProjectsWrong(null);
+                    setProjectsWrongFiles([]);
+                  }
+                  void parseFile(f);
+                }}
               />
               {fileName && (
                 <div style={{
@@ -1098,6 +1224,19 @@ export const Screen_DataImport: React.FC<Props> = ({
               }}>
                 前往對應模組查看數據 <ExternalLink size={14} />
               </a>
+              <ContinueImportButton
+                moduleLabel={MODULE_LABELS.projects}
+                onClick={() => {
+                  onImportLogged({
+                    filename: fileName || "projects.csv",
+                    module: "projects",
+                    moduleLabel: MODULE_LABELS.projects,
+                    academicYear: sharedYear,
+                    summary: `新增 ${execResult.inserted} · 更新 ${execResult.updated}`,
+                  });
+                  resetFlow();
+                }}
+              />
               <button type="button" onClick={resetFlow} style={{
                 display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 14px",
                 borderRadius: R.md, border: `1px solid ${C.border}`, background: C.surface,
@@ -1106,11 +1245,13 @@ export const Screen_DataImport: React.FC<Props> = ({
                 繼續匯入其他模組
               </button>
             </div>
+            <SessionImportLedger entries={ledger} moduleFilter="projects" />
           </SectionCard>
           )}
         </div>
       </div>
       <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
         @media (max-width: 800px) {
           /* stack guide panel */
         }

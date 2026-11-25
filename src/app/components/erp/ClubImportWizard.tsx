@@ -1,16 +1,31 @@
 // 4-Step eClass Club Membership Import Wizard
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  UploadCloud, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft,
+  UploadCloud, CheckCircle2, AlertTriangle,
   RefreshCw, History, Shield, Users, Award, Layers,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile } from "./erpResponsive";
 import { FileDropZone } from "./FileDropZone";
 import { WizardActionBar, WizardStepper, wizardPrimaryBtn } from "./ImportWizardChrome";
+import {
+  ContinueImportButton,
+  ImportBatchQueuePanel,
+  SessionImportLedger,
+  WrongModuleBanner,
+} from "./ImportBatchExtras";
+import {
+  MODULE_LABELS,
+  parseFetchJson,
+  type ImportModuleId,
+  type SessionImportEntry,
+} from "./importUxShared";
+import { useImportBatchQueue } from "./useImportBatchQueue";
 
 const F = ERP.font.family;
 const C = ERP.colors;
+const MODULE: ImportModuleId = "clubs";
+const MODULE_LABEL = MODULE_LABELS.clubs;
 
 type RolePreview = { role_raw: string; tier_code: string; count: number };
 type Stats = {
@@ -32,19 +47,34 @@ export type ClubImportWizardProps = {
   analyzeUrl?: string;
   executeUrl?: string;
   batchesUrl?: string;
+  academicYear?: string;
+  onAcademicYearChange?: (y: string) => void;
+  seedFiles?: File[];
+  seedNonce?: number;
+  onSeedConsumed?: () => void;
+  onRequestTransfer?: (target: ImportModuleId, files: File[]) => void;
+  onImportLogged?: (entry: Omit<SessionImportEntry, "id" | "at">) => void;
+  ledger?: SessionImportEntry[];
 };
 
 export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
   analyzeUrl = "/api/data-import/clubs/analyze",
   executeUrl = "/api/data-import/clubs/execute",
   batchesUrl = "/api/data-import/clubs/batches",
+  academicYear,
+  onAcademicYearChange,
+  seedFiles,
+  seedNonce,
+  onSeedConsumed,
+  onRequestTransfer,
+  onImportLogged,
+  ledger = [],
 }) => {
   const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [year, setYear] = useState("2024/25");
+  const [year, setYear] = useState(academicYear || "2024/25");
   const [strategy, setStrategy] = useState<"stage_unassigned" | "assign_single_club" | "skip_blank">("stage_unassigned");
   const [targetClubId, setTargetClubId] = useState<number | "">("");
   const [newClubName, setNewClubName] = useState("");
@@ -61,83 +91,143 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
   const [assignClubId, setAssignClubId] = useState<number | "">("");
   const [assignBatchId, setAssignBatchId] = useState<number | null>(null);
 
+  useEffect(() => {
+    if (academicYear && academicYear !== year) setYear(academicYear);
+  }, [academicYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setYearBoth = (y: string) => {
+    setYear(y);
+    onAcademicYearChange?.(y);
+  };
+
+  const applyPreview = useCallback((json: Record<string, unknown>) => {
+    setStats((json.stats_preview as Stats) || null);
+    setRoles((json.role_preview as RolePreview[]) || []);
+    setMapping((json.mapping as Mapping) || {});
+    setHeaders((json.headers as string[]) || []);
+    setClubs((json.clubs as ClubOpt[]) || []);
+    if (json.suggest_stage_unassigned) setStrategy("stage_unassigned");
+  }, []);
+
+  const analyzeFile = useCallback(async (f: File) => {
+    const fd = new FormData();
+    fd.append("file", f);
+    const res = await fetch(analyzeUrl, { method: "POST", credentials: "include", body: fd });
+    return parseFetchJson(res);
+  }, [analyzeUrl]);
+
+  const executeImport = useCallback(async () => {
+    const body: Record<string, unknown> = {
+      academic_year: year,
+      club_strategy: strategy,
+      auto_create_students: autoCreate,
+      sync_merits: syncMerits,
+    };
+    if (strategy === "assign_single_club") {
+      if (targetClubId !== "") body.target_club_id = targetClubId;
+      if (newClubName.trim()) body.new_club_name = newClubName.trim();
+    }
+    const res = await fetch(executeUrl, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    return parseFetchJson(res);
+  }, [executeUrl, year, strategy, autoCreate, syncMerits, targetClubId, newClubName]);
+
+  const batch = useImportBatchQueue({
+    module: MODULE,
+    moduleLabel: MODULE_LABEL,
+    academicYear: year,
+    analyze: analyzeFile,
+    execute: executeImport,
+    summarize: (json) => {
+      const sp = (json.stats_preview || json.summary || {}) as Record<string, unknown>;
+      const rows = sp.total_rows ?? sp.staged_rows_written ?? "";
+      return rows !== "" ? `${Number(rows).toLocaleString()} 筆` : "就緒";
+    },
+    applyPreview,
+    onImportLogged,
+    seedFiles,
+    seedNonce,
+    onSeedConsumed,
+  });
+
+  const busy = batch.busy;
+
   const loadBatches = useCallback(async () => {
     try {
       const res = await fetch(batchesUrl, { credentials: "include", headers: { Accept: "application/json" } });
-      const json = await res.json();
-      if (json?.ok) setBatches(json.batches || []);
+      const json = await parseFetchJson(res);
+      if (json?.ok) setBatches((json.batches as Array<Record<string, unknown>>) || []);
     } catch { /* ignore */ }
   }, [batchesUrl]);
 
   useEffect(() => { void loadBatches(); }, [loadBatches]);
 
-  const onFile = async (f: File | null) => {
-    if (!f) return;
-    setFile(f);
-    setError(null);
-    setBusy(true);
-    setResult(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch(analyzeUrl, { method: "POST", credentials: "include", body: fd });
-      const json = await res.json();
-      if (!json?.ok) {
-        setError(json?.message || "分析失敗");
-        return;
-      }
-      setStats(json.stats_preview || null);
-      setRoles(json.role_preview || []);
-      setMapping(json.mapping || {});
-      setHeaders(json.headers || []);
-      setClubs(json.clubs || []);
-      if (json.suggest_stage_unassigned) setStrategy("stage_unassigned");
-      setStep(1);
-    } catch (e: any) {
-      setError(String(e?.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  useEffect(() => {
+    if (batch.queue.length === 1) setFile(batch.queue[0].file);
+  }, [batch.queue]);
 
   const onExecute = async () => {
-    setBusy(true);
     setError(null);
-    try {
-      const body: Record<string, unknown> = {
-        academic_year: year,
-        club_strategy: strategy,
-        auto_create_students: autoCreate,
-        sync_merits: syncMerits,
-      };
-      if (strategy === "assign_single_club") {
-        if (targetClubId !== "") body.target_club_id = targetClubId;
-        if (newClubName.trim()) body.new_club_name = newClubName.trim();
+    if (batch.queue.length > 1) {
+      const last = await batch.importSequential();
+      if (last) {
+        setResult(last);
+        setStep(4);
+        void loadBatches();
       }
-      const res = await fetch(executeUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
+      return;
+    }
+    batch.setBusy(true);
+    try {
+      if (batch.queue[0]) {
+        const analyzed = await analyzeFile(batch.queue[0].file);
+        if (!analyzed?.ok) {
+          setError(String(analyzed?.message || "分析失敗"));
+          return;
+        }
+        applyPreview(analyzed);
+      }
+      const json = await executeImport();
       if (!json?.ok) {
-        setError(json?.message || "匯入失敗");
+        setError(String(json?.message || "匯入失敗"));
         return;
       }
       setResult(json);
       setStep(4);
       void loadBatches();
+      if (batch.queue[0]) {
+        onImportLogged?.({
+          filename: batch.queue[0].file.name,
+          module: MODULE,
+          moduleLabel: MODULE_LABEL,
+          academicYear: year,
+          batchId: json.batch_id as string | number | undefined,
+          summary: `${(json.summary as any)?.staged_rows_written ?? stats?.total_rows ?? "?"} 筆`,
+        });
+      }
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
+  };
+
+  const continueImporting = () => {
+    batch.clearQueue();
+    setFile(null);
+    setStats(null);
+    setResult(null);
+    setError(null);
+    setStep(1);
   };
 
   const onAssignClub = async () => {
     if (!assignBatchId || assignClubId === "") return;
-    setBusy(true);
+    batch.setBusy(true);
     try {
       const res = await fetch(`${batchesUrl}/${assignBatchId}/assign-club`, {
         method: "POST",
@@ -145,9 +235,9 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ club_id: assignClubId }),
       });
-      const json = await res.json();
+      const json = await parseFetchJson(res);
       if (!json?.ok) {
-        setError(json?.message || "指派失敗");
+        setError(String(json?.message || "指派失敗"));
         return;
       }
       void loadBatches();
@@ -155,7 +245,7 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
   };
 
@@ -175,7 +265,7 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <WizardStepper
           step={step}
-          maxReachable={step}
+          maxReachable={Math.max(step, 1)}
           onJump={(n) => setStep(n)}
           steps={[
             { n: 1, label: "1 上傳與上下文" },
@@ -197,6 +287,17 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
         <div style={{ ...card, background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C", fontSize: 13, display: "flex", gap: 8, alignItems: "flex-start" }}>
           <AlertTriangle size={16} /> <span>{error}</span>
         </div>
+      )}
+
+      {batch.wrongHint && (
+        <WrongModuleBanner
+          hint={batch.wrongHint}
+          onTransfer={() => {
+            onRequestTransfer?.(batch.wrongHint!.target, batch.pendingWrongFiles);
+            batch.clearQueue();
+          }}
+          onDismiss={batch.dismissWrong}
+        />
       )}
 
       {showHistory && (
@@ -248,14 +349,34 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
             <div style={{ fontWeight: 800, marginBottom: 8 }}>Step 1 · 上傳檔案與匯入上下文</div>
             <FileDropZone
               accept=".csv,.xlsx,.xls"
+              multiple
               busy={busy}
-              label={file ? file.name : "拖放或點擊上傳 club_member_list.csv"}
-              hint="支援 .csv · .xls · .xlsx"
+              label={batch.queue.length ? `已選 ${batch.queue.length} 個檔案（可繼續追加）` : "拖放或點擊上傳 club_member_list"}
+              hint="支援多檔 · .csv · .xls · .xlsx · 每檔獨立 Batch ID"
               icon={<UploadCloud size={28} color={C.accent} />}
-              onFiles={(picked) => void onFile(picked[0] || null)}
+              onFiles={(picked) => {
+                setResult(null);
+                setError(null);
+                setStep(1);
+                batch.enqueueFiles(picked);
+              }}
             />
-            {busy && <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}><RefreshCw size={12} style={{ display: "inline" }} /> 分析中…</div>}
+            <ImportBatchQueuePanel
+              items={batch.queue}
+              busy={busy}
+              progressLabel={batch.progressLabel}
+              progressPct={batch.progressPct}
+              onRemove={(id) => batch.setQueue((prev) => prev.filter((q) => q.id !== id))}
+              onPreviewAll={batch.queue.length > 0 ? () => void batch.previewAll() : undefined}
+              onImportAll={batch.queue.length > 0 ? () => void onExecute() : undefined}
+              onRetry={(id) => void batch.importSequential([id]).then((last) => {
+                if (last) { setResult(last); setStep(4); void loadBatches(); }
+              })}
+            />
+            {busy && !batch.progressLabel && <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}><RefreshCw size={12} style={{ display: "inline" }} /> 分析中…</div>}
           </div>
+
+          <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
 
           <div style={{ ...card, background: "#EFF6FF", borderColor: "#BFDBFE" }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 800, fontSize: 13, color: "#1D4ED8" }}>
@@ -263,10 +384,11 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
             </div>
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <label style={{ fontSize: 12, fontWeight: 700 }}>目標學年</label>
-              <select value={year} onChange={(e) => setYear(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 13 }}>
+              <select value={year} onChange={(e) => setYearBoth(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 13 }}>
                 <option value="2023/24">2023/24</option>
                 <option value="2024/25">2024/25</option>
                 <option value="2025/26">2025/26（慎用 · Demo）</option>
+                <option value="2026/27">2026/27</option>
               </select>
             </div>
           </div>
@@ -421,12 +543,11 @@ export const ClubImportWizard: React.FC<ClubImportWizardProps> = ({
             </div>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <ContinueImportButton moduleLabel={MODULE_LABEL} onClick={continueImporting} />
             <a href="/clubs" style={linkBtn}>前往學會管理</a>
             <a href="/students" style={linkBtn}>前往學生名冊後補資料</a>
-            <button type="button" onClick={() => { setStep(1); setFile(null); setStats(null); setResult(null); }} style={navBtn(false)}>
-              📂 繼續匯入
-            </button>
           </div>
+          <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
         </div>
       )}
     </div>

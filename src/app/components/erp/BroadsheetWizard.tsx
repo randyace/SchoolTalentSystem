@@ -1,16 +1,31 @@
 // 4-Step eClass 大分紙 Import Wizard + Footer Verification
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  UploadCloud, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft,
+  UploadCloud, CheckCircle2, AlertTriangle,
   Download, RefreshCw, History, Shield, Zap,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile, ResponsiveTableWrapper, rwdGrid } from "./erpResponsive";
 import { FileDropZone } from "./FileDropZone";
 import { WizardActionBar, WizardStepper } from "./ImportWizardChrome";
+import {
+  ContinueImportButton,
+  ImportBatchQueuePanel,
+  SessionImportLedger,
+  WrongModuleBanner,
+} from "./ImportBatchExtras";
+import {
+  MODULE_LABELS,
+  parseFetchJson,
+  type ImportModuleId,
+  type SessionImportEntry,
+} from "./importUxShared";
+import { useImportBatchQueue } from "./useImportBatchQueue";
 
 const F = ERP.font.family;
 const C = ERP.colors;
+const MODULE: ImportModuleId = "scores";
+const MODULE_LABEL = MODULE_LABELS.scores;
 
 type ColRole = "identity" | "subject_total" | "subpaper" | "student_summary" | "ignore";
 type Column = {
@@ -41,19 +56,34 @@ export type BroadsheetWizardProps = {
   analyzeUrl?: string;
   executeUrl?: string;
   batchesUrl?: string;
+  academicYear?: string;
+  onAcademicYearChange?: (y: string) => void;
+  seedFiles?: File[];
+  seedNonce?: number;
+  onSeedConsumed?: () => void;
+  onRequestTransfer?: (target: ImportModuleId, files: File[]) => void;
+  onImportLogged?: (entry: Omit<SessionImportEntry, "id" | "at">) => void;
+  ledger?: SessionImportEntry[];
 };
 
 export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
   analyzeUrl = "/api/data-import/broadsheet/analyze",
   executeUrl = "/api/data-import/broadsheet/execute",
   batchesUrl = "/api/data-import/broadsheet/batches",
+  academicYear,
+  onAcademicYearChange,
+  seedFiles,
+  seedNonce,
+  onSeedConsumed,
+  onRequestTransfer,
+  onImportLogged,
+  ledger = [],
 }) => {
   const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [year, setYear] = useState("2023/24");
+  const [year, setYear] = useState(academicYear || "2023/24");
   const [form, setForm] = useState("F1");
   const [term, setTerm] = useState("Annual");
   const [batchLabel, setBatchLabel] = useState("");
@@ -68,101 +98,171 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
   const [batches, setBatches] = useState<Array<Record<string, unknown>>>([]);
   const [showHistory, setShowHistory] = useState(false);
 
+  useEffect(() => {
+    if (academicYear && academicYear !== year) setYear(academicYear);
+  }, [academicYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setYearBoth = (y: string) => {
+    setYear(y);
+    onAcademicYearChange?.(y);
+  };
+
+  const applyPreview = useCallback((json: Record<string, unknown>) => {
+    setColumns(((json.columns as Column[]) || []).map((c) => ({ ...c, role: (c.role as ColRole) || "subject_total" })));
+    setSubjects((json.subjects as Array<{ code: string; name_zh_hk: string }>) || []);
+    setPreviewStats((json.stats_preview as Record<string, number>) || null);
+    setFooterCaptured(!!json.footer_captured);
+    const ctx = json.context as Record<string, string> | undefined;
+    if (ctx) {
+      if (ctx.academic_year) setYearBoth(ctx.academic_year);
+      setForm(ctx.form || "F1");
+      setTerm(ctx.term || "Annual");
+      setTermNote(ctx.term_note || null);
+    }
+    if (json.suggest_auto_create_students) setAutoCreate(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const analyzeFile = useCallback(async (f: File) => {
+    const fd = new FormData();
+    fd.append("file", f);
+    const res = await fetch(analyzeUrl, { method: "POST", credentials: "include", body: fd });
+    return parseFetchJson(res);
+  }, [analyzeUrl]);
+
+  const executeImport = useCallback(async () => {
+    const res = await fetch(executeUrl, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        academic_year: year,
+        form,
+        term,
+        batch_label: batchLabel,
+        auto_create_students: autoCreate,
+        overwrite,
+        columns,
+      }),
+    });
+    return parseFetchJson(res);
+  }, [executeUrl, year, form, term, batchLabel, autoCreate, overwrite, columns]);
+
+  const batch = useImportBatchQueue({
+    module: MODULE,
+    moduleLabel: MODULE_LABEL,
+    academicYear: year,
+    analyze: analyzeFile,
+    execute: executeImport,
+    summarize: (json) => {
+      const sp = (json.stats_preview || {}) as Record<string, number>;
+      if (sp.student_rows) return `${sp.student_rows} 人 · ${(json.columns as any[])?.length || 0} 欄`;
+      const b = (json.batch as any)?.batch || json.batch;
+      return b?.id ? `Batch #${b.id}` : "就緒";
+    },
+    applyPreview,
+    onImportLogged,
+    seedFiles,
+    seedNonce,
+    onSeedConsumed,
+  });
+
+  const busy = batch.busy;
+
   const loadBatches = useCallback(async () => {
     try {
       const res = await fetch(batchesUrl, { credentials: "include", headers: { Accept: "application/json" } });
-      const json = await res.json();
-      if (json?.ok) setBatches(json.batches || []);
+      const json = await parseFetchJson(res);
+      if (json?.ok) setBatches((json.batches as Array<Record<string, unknown>>) || []);
     } catch { /* ignore */ }
   }, [batchesUrl]);
 
   useEffect(() => { void loadBatches(); }, [loadBatches]);
 
-  const onFile = async (f: File | null) => {
-    if (!f) return;
-    setFile(f);
-    setError(null);
-    setBusy(true);
-    setResult(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch(analyzeUrl, { method: "POST", credentials: "include", body: fd });
-      const json = await res.json();
-      if (!json?.ok) {
-        setError(json?.message || "分析失敗");
-        return;
-      }
-      setColumns((json.columns || []).map((c: Column) => ({ ...c, role: (c.role as ColRole) || "subject_total" })));
-      setSubjects(json.subjects || []);
-      setPreviewStats(json.stats_preview || null);
-      setFooterCaptured(!!json.footer_captured);
-      if (json.context) {
-        setYear(json.context.academic_year || "2023/24");
-        setForm(json.context.form || "F1");
-        setTerm(json.context.term || "Annual");
-        setTermNote(json.context.term_note || null);
-      }
-      if (json.suggest_auto_create_students) setAutoCreate(true);
-      setStep(1);
-    } catch (e: any) {
-      setError(String(e?.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  useEffect(() => {
+    if (batch.queue.length === 1) setFile(batch.queue[0].file);
+  }, [batch.queue]);
 
   const editableCols = useMemo(
     () => columns.filter((c) => c.role !== "identity"),
     [columns],
   );
 
+  const normalizeResult = (json: Record<string, unknown>): BatchDetail => ({
+    batch: ((json.batch as any)?.batch || json.batch || {}) as Record<string, unknown>,
+    footer_stats: ((json.batch as any)?.footer_stats || []) as FooterStat[],
+    verification: (json.verification || (json.batch as any)?.verification || { matched: 0, total: 0, status: "pending" }) as BatchDetail["verification"],
+  });
+
   const onExecute = async () => {
-    setBusy(true);
     setError(null);
+    if (batch.queue.length > 1) {
+      const last = await batch.importSequential();
+      if (last) {
+        if ((last as any).duplicate) {
+          setError(String(last.message || "重複批次"));
+          setOverwrite(true);
+          return;
+        }
+        setResult(normalizeResult(last));
+        setStep(4);
+        void loadBatches();
+      }
+      return;
+    }
+    batch.setBusy(true);
     try {
-      const res = await fetch(executeUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          academic_year: year,
-          form,
-          term,
-          batch_label: batchLabel,
-          auto_create_students: autoCreate,
-          overwrite,
-          columns,
-        }),
-      });
-      const json = await res.json();
-      if (json?.duplicate) {
-        setError(json.message);
+      if (batch.queue[0]) {
+        const analyzed = await analyzeFile(batch.queue[0].file);
+        if (!analyzed?.ok) {
+          setError(String(analyzed?.message || "分析失敗"));
+          return;
+        }
+        applyPreview(analyzed);
+      }
+      const json = await executeImport();
+      if ((json as any).duplicate) {
+        setError(String(json.message || "重複批次"));
         setOverwrite(true);
         return;
       }
       if (!json?.ok) {
-        setError(json?.message || "匯入失敗");
+        setError(String(json?.message || "匯入失敗"));
         return;
       }
-      setResult({
-        batch: json.batch?.batch || json.batch || {},
-        footer_stats: json.batch?.footer_stats || [],
-        verification: json.verification || json.batch?.verification || { matched: 0, total: 0, status: "pending" },
-      });
+      setResult(normalizeResult(json));
       setStep(4);
       void loadBatches();
+      if (batch.queue[0]) {
+        onImportLogged?.({
+          filename: batch.queue[0].file.name,
+          module: MODULE,
+          moduleLabel: MODULE_LABEL,
+          academicYear: year,
+          batchId: (json.batch as any)?.batch?.id || (json.batch as any)?.id,
+          summary: `${form} · ${term}`,
+        });
+      }
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
+  };
+
+  const continueImporting = () => {
+    batch.clearQueue();
+    setFile(null);
+    setColumns([]);
+    setPreviewStats(null);
+    setResult(null);
+    setError(null);
+    setStep(1);
   };
 
   const updateMax = async (header: string, max: number) => {
     const batchId = Number((result?.batch as any)?.id || 0);
     if (!batchId) return;
-    setBusy(true);
+    batch.setBusy(true);
     try {
       const res = await fetch(`${batchesUrl}/${batchId}/update-max-score`, {
         method: "POST",
@@ -170,31 +270,36 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ column_header: header, max_score: max }),
       });
-      const json = await res.json();
+      const json = await parseFetchJson(res);
       if (json?.ok && json.batch) {
+        const b = json.batch as any;
         setResult({
-          batch: json.batch.batch,
-          footer_stats: json.batch.footer_stats,
-          verification: json.batch.verification,
+          batch: b.batch,
+          footer_stats: b.footer_stats,
+          verification: b.verification,
         });
       }
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
   };
 
   const openBatch = async (id: number) => {
-    setBusy(true);
+    batch.setBusy(true);
     try {
       const res = await fetch(`${batchesUrl}/${id}`, { credentials: "include" });
-      const json = await res.json();
+      const json = await parseFetchJson(res);
       if (json?.ok) {
-        setResult({ batch: json.batch, footer_stats: json.footer_stats, verification: json.verification });
+        setResult({
+          batch: json.batch as Record<string, unknown>,
+          footer_stats: json.footer_stats as FooterStat[],
+          verification: json.verification as BatchDetail["verification"],
+        });
         setStep(4);
         setShowHistory(false);
       }
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
   };
 
@@ -235,7 +340,7 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
       <div style={{ marginBottom: 12 }}>
         <WizardStepper
           step={step}
-          maxReachable={step}
+          maxReachable={Math.max(step, 1)}
           onJump={(n) => setStep(n)}
           steps={[
             { n: 1, label: "1 上傳與上下文" },
@@ -252,23 +357,55 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
         </div>
       )}
 
+      {batch.wrongHint && (
+        <div style={{ marginBottom: 10 }}>
+          <WrongModuleBanner
+            hint={batch.wrongHint}
+            onTransfer={() => {
+              onRequestTransfer?.(batch.wrongHint!.target, batch.pendingWrongFiles);
+              batch.clearQueue();
+            }}
+            onDismiss={batch.dismissWrong}
+          />
+        </div>
+      )}
+
       {step === 1 && (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
           <FileDropZone
             accept=".csv,.xlsx,.xls"
+            multiple
             busy={busy}
-            label={file ? `已選：${file.name}` : "拖放或選擇 eClass 大分紙 CSV / XLSX"}
-            hint="支援 .csv · .xls · .xlsx"
+            label={batch.queue.length ? `已選 ${batch.queue.length} 個檔案（可繼續追加）` : "拖放或選擇 eClass 大分紙 CSV / XLSX"}
+            hint="支援多檔 · .csv · .xls · .xlsx · 每檔獨立 Batch ID"
             icon={<UploadCloud size={28} color={C.accent} />}
             style={{ marginBottom: 14, padding: isMobile ? 20 : 28 }}
-            onFiles={(picked) => { const f = picked[0]; if (f) void onFile(f); }}
+            onFiles={(picked) => {
+              setResult(null);
+              setError(null);
+              setStep(1);
+              batch.enqueueFiles(picked);
+            }}
           />
+          <ImportBatchQueuePanel
+            items={batch.queue}
+            busy={busy}
+            progressLabel={batch.progressLabel}
+            progressPct={batch.progressPct}
+            onRemove={(id) => batch.setQueue((prev) => prev.filter((q) => q.id !== id))}
+            onPreviewAll={batch.queue.length > 0 ? () => void batch.previewAll() : undefined}
+            onImportAll={batch.queue.length > 0 ? () => void onExecute() : undefined}
+            onRetry={(id) => void batch.importSequential([id]).then((last) => {
+              if (last) { setResult(normalizeResult(last)); setStep(4); void loadBatches(); }
+            })}
+          />
+          <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
 
-          <div style={{ ...rwdGrid(isMobile, "1fr 1fr", "1fr", "10px", "10px") }}>
+          <div style={{ ...rwdGrid(isMobile, "1fr 1fr", "1fr", "10px", "10px"), marginTop: 12 }}>
             <label style={{ fontSize: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>學年 Academic Year</div>
-              <select value={year} onChange={(e) => setYear(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: `1px solid ${C.border}` }}>
-                {["2023/24", "2024/25", "2025/26"].map((y) => <option key={y} value={y}>{y}</option>)}
+              <select value={year} onChange={(e) => setYearBoth(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: `1px solid ${C.border}` }}>
+                {["2023/24", "2024/25", "2025/26", "2026/27"].map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
               <div style={{ fontSize: 10, color: "#15803D", marginTop: 4 }}>🔒 歷史學年將與 2025/26 現行資料完全隔離</div>
             </label>
@@ -425,14 +562,13 @@ export const BroadsheetWizard: React.FC<BroadsheetWizardProps> = ({
               {v?.status === "verified" ? " 100% 吻合" : " 部分需檢查"}（STDEV.S 樣本標準差基準）
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              <ContinueImportButton moduleLabel={MODULE_LABEL} onClick={continueImporting} />
               <a href={`${batchesUrl}/${(result.batch as any).id}/export-verification`} style={{ ...btn, textDecoration: "none" }}>
                 <Download size={14} /> 匯出對帳驗證報告 CSV
               </a>
-              <button type="button" style={btn} onClick={() => { setStep(1); setFile(null); setColumns([]); setResult(null); }}>
-                <RefreshCw size={14} /> 繼續匯入下一份大分紙
-              </button>
             </div>
           </div>
+          <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
 
           <ResponsiveTableWrapper>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 900 }}>

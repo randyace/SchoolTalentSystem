@@ -1,16 +1,31 @@
 // 4-Step eClass Activity Participant Import Wizard (Step 4)
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  UploadCloud, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft,
+  UploadCloud, CheckCircle2, AlertTriangle,
   RefreshCw, History, Shield, Users, Award, Layers, ExternalLink,
 } from "lucide-react";
 import { ERP } from "./erpTokens";
 import { useIsMobile } from "./erpResponsive";
 import { FileDropZone } from "./FileDropZone";
 import { WizardActionBar, WizardStepper, wizardPrimaryBtn } from "./ImportWizardChrome";
+import {
+  ContinueImportButton,
+  ImportBatchQueuePanel,
+  SessionImportLedger,
+  WrongModuleBanner,
+} from "./ImportBatchExtras";
+import {
+  MODULE_LABELS,
+  parseFetchJson,
+  type ImportModuleId,
+  type SessionImportEntry,
+} from "./importUxShared";
+import { useImportBatchQueue } from "./useImportBatchQueue";
 
 const F = ERP.font.family;
 const C = ERP.colors;
+const MODULE: ImportModuleId = "activities";
+const MODULE_LABEL = MODULE_LABELS.activities;
 
 type BelongPreview = { tag: string; category: string; acorn_emphasis: string; count: number };
 type Stats = {
@@ -32,6 +47,16 @@ export type ActivityImportWizardProps = {
   validateUrl?: string;
   flatExecuteUrl?: string;
   activitiesUrl?: string;
+  academicYear?: string;
+  onAcademicYearChange?: (y: string) => void;
+  subMode?: string | null;
+  onSubModeChange?: (m: string) => void;
+  seedFiles?: File[];
+  seedNonce?: number;
+  onSeedConsumed?: () => void;
+  onRequestTransfer?: (target: ImportModuleId, files: File[]) => void;
+  onImportLogged?: (entry: Omit<SessionImportEntry, "id" | "at">) => void;
+  ledger?: SessionImportEntry[];
 };
 
 export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
@@ -42,14 +67,25 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
   validateUrl = "/admin/data-import/validate",
   flatExecuteUrl = "/admin/data-import/execute",
   activitiesUrl = "/activities",
+  academicYear,
+  onAcademicYearChange,
+  subMode,
+  onSubModeChange,
+  seedFiles,
+  seedNonce,
+  onSeedConsumed,
+  onRequestTransfer,
+  onImportLogged,
+  ledger = [],
 }) => {
   const isMobile = useIsMobile();
-  const [mode, setMode] = useState<"eclass" | "flat">("eclass");
+  const [mode, setMode] = useState<"eclass" | "flat">(
+    subMode === "csv" || subMode === "flat" ? "flat" : "eclass",
+  );
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [year, setYear] = useState("2025/26");
+  const [year, setYear] = useState(academicYear || "2025/26");
   const [autoCreate, setAutoCreate] = useState(true);
   const [syncMerits, setSyncMerits] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -67,82 +103,159 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
   const [flatSummary, setFlatSummary] = useState<Record<string, unknown> | null>(null);
   const [flatDone, setFlatDone] = useState<Record<string, unknown> | null>(null);
 
+  useEffect(() => {
+    if (academicYear && academicYear !== year) setYear(academicYear);
+  }, [academicYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!subMode) return;
+    if (subMode === "csv" || subMode === "flat") setMode("flat");
+    if (subMode === "xlsx" || subMode === "eclass") setMode("eclass");
+  }, [subMode]);
+
+  const setYearBoth = (y: string) => {
+    setYear(y);
+    onAcademicYearChange?.(y);
+  };
+  const setModeBoth = (m: "eclass" | "flat") => {
+    setMode(m);
+    onSubModeChange?.(m === "eclass" ? "xlsx" : "csv");
+  };
+
+  const applyPreview = useCallback((json: Record<string, unknown>) => {
+    if (json.is_eclass === false) setModeBoth("flat");
+    else setModeBoth("eclass");
+    setStats((json.stats_preview as Stats) || null);
+    setBelong((json.belong_preview as BelongPreview[]) || []);
+    setMapping((json.mapping as Mapping) || {});
+    setHeaders((json.headers as string[]) || []);
+    setHasDateCol(!!json.has_date_column);
+    if (json.academic_year_hint) setYearBoth(String(json.academic_year_hint));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const analyzeFile = useCallback(async (f: File) => {
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("academic_year", year);
+    const res = await fetch(analyzeUrl, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      body: fd,
+    });
+    return parseFetchJson(res);
+  }, [analyzeUrl, year]);
+
+  const executeImport = useCallback(async () => {
+    const res = await fetch(executeUrl, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        academic_year: year,
+        auto_create_students: autoCreate,
+        sync_merits: syncMerits,
+      }),
+    });
+    return parseFetchJson(res);
+  }, [executeUrl, year, autoCreate, syncMerits]);
+
+  const batch = useImportBatchQueue({
+    module: MODULE,
+    moduleLabel: MODULE_LABEL,
+    academicYear: year,
+    analyze: analyzeFile,
+    execute: executeImport,
+    summarize: (json) => {
+      const sp = (json.stats_preview || json.summary || {}) as Record<string, unknown>;
+      const rows = sp.total_rows ?? sp.enrollments_written ?? "";
+      return rows !== "" ? `${Number(rows).toLocaleString()} 筆` : "就緒";
+    },
+    applyPreview,
+    onImportLogged,
+    seedFiles,
+    seedNonce,
+    onSeedConsumed,
+  });
+
   const loadBatches = useCallback(async () => {
     try {
       const res = await fetch(batchesUrl, { credentials: "include", headers: { Accept: "application/json" } });
-      const json = await res.json();
-      if (json?.ok) setBatches(json.batches || []);
+      const json = await parseFetchJson(res);
+      if (json?.ok) setBatches((json.batches as Array<Record<string, unknown>>) || []);
     } catch { /* ignore */ }
   }, [batchesUrl]);
 
   useEffect(() => { void loadBatches(); }, [loadBatches]);
+
+  // Keep legacy `file` in sync with single-file queue for flat labels
+  useEffect(() => {
+    if (batch.queue.length === 1) setFile(batch.queue[0].file);
+  }, [batch.queue]);
 
   const card: React.CSSProperties = {
     background: "#fff", border: `1px solid ${C.border}`, borderRadius: ERP.radius.lg,
     padding: isMobile ? 14 : 18, fontFamily: F,
   };
 
-  const onFile = async (f: File | null) => {
-    if (!f) return;
-    setFile(f);
-    setError(null);
-    setBusy(true);
-    setResult(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch(analyzeUrl, { method: "POST", credentials: "include", body: fd });
-      const json = await res.json();
-      if (!json?.ok) {
-        setError(json?.message || "分析失敗");
-        return;
-      }
-      if (json.is_eclass === false) {
-        setMode("flat");
-      } else {
-        setMode("eclass");
-      }
-      setStats(json.stats_preview || null);
-      setBelong(json.belong_preview || []);
-      setMapping(json.mapping || {});
-      setHeaders(json.headers || []);
-      setHasDateCol(!!json.has_date_column);
-      if (json.academic_year_hint) setYear(String(json.academic_year_hint));
-      setStep(1);
-    } catch (e: any) {
-      setError(String(e?.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const busy = batch.busy;
 
   const onExecute = async () => {
-    setBusy(true);
     setError(null);
+    if (batch.queue.length > 1) {
+      const last = await batch.importSequential();
+      if (last) {
+        setResult(last);
+        setStep(4);
+        void loadBatches();
+      }
+      return;
+    }
+    batch.setBusy(true);
     try {
-      const res = await fetch(executeUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          academic_year: year,
-          auto_create_students: autoCreate,
-          sync_merits: syncMerits,
-        }),
-      });
-      const json = await res.json();
+      if (batch.queue[0]) {
+        const analyzed = await analyzeFile(batch.queue[0].file);
+        if (!analyzed?.ok) {
+          setError(String(analyzed?.message || "分析失敗"));
+          return;
+        }
+        applyPreview(analyzed);
+      }
+      const json = await executeImport();
       if (!json?.ok) {
-        setError(json?.message || "匯入失敗");
+        setError(String(json?.message || "匯入失敗"));
         return;
       }
       setResult(json);
       setStep(4);
       void loadBatches();
+      if (batch.queue[0]) {
+        onImportLogged?.({
+          filename: batch.queue[0].file.name,
+          module: MODULE,
+          moduleLabel: MODULE_LABEL,
+          academicYear: year,
+          batchId: json.batch_id as string | number | undefined,
+          summary: `${(json.summary as any)?.enrollments_written ?? stats?.total_rows ?? "?"} 筆`,
+        });
+      }
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
+  };
+
+  const continueImporting = () => {
+    batch.clearQueue();
+    setFile(null);
+    setStats(null);
+    setBelong([]);
+    setMapping({});
+    setHeaders([]);
+    setResult(null);
+    setError(null);
+    setStep(1);
   };
 
   const onRollback = async (batchId: number) => {
@@ -157,9 +270,9 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
         credentials: "include",
         headers: { Accept: "application/json" },
       });
-      const json = await res.json();
+      const json = await parseFetchJson(res);
       if (!json?.ok) {
-        setError(json?.message || "回滾失敗");
+        setError(String(json?.message || "回滾失敗"));
         return;
       }
       void loadBatches();
@@ -173,24 +286,23 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
   const onFlatParse = async (f: File | null) => {
     if (!f) return;
     setFile(f);
-    setBusy(true);
+    batch.setBusy(true);
     setError(null);
     try {
       const fd = new FormData();
       fd.append("module", "activities");
       fd.append("file", f);
-      const res = await fetch(parseUrl, { method: "POST", credentials: "include", body: fd });
-      const json = await res.json();
+      const res = await fetch(parseUrl, { method: "POST", credentials: "include", headers: { Accept: "application/json" }, body: fd });
+      const json = await parseFetchJson(res);
       if (!json?.ok) {
-        setError(json?.message || "解析失敗");
+        setError(String(json?.message || "解析失敗"));
         return;
       }
-      const maps = (json.mapping || []).map((m: any) => ({
+      const maps = ((json.mapping as any[]) || []).map((m: any) => ({
         csvHeader: m.csvHeader || m.header || "",
         targetField: m.targetField || m.target || "",
       }));
       setFlatMappings(maps);
-      const vfd = new FormData();
       // validate via JSON
       const vres = await fetch(validateUrl, {
         method: "POST",
@@ -198,17 +310,17 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ module: "activities", mapping: maps }),
       });
-      const vjson = await vres.json();
-      setFlatSummary(vjson?.summary || vjson || null);
+      const vjson = await parseFetchJson(vres);
+      setFlatSummary((vjson?.summary as Record<string, unknown>) || vjson || null);
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
   };
 
   const onFlatExecute = async () => {
-    setBusy(true);
+    batch.setBusy(true);
     try {
       const res = await fetch(flatExecuteUrl, {
         method: "POST",
@@ -216,16 +328,16 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ module: "activities" }),
       });
-      const json = await res.json();
+      const json = await parseFetchJson(res);
       if (!json?.ok) {
-        setError(json?.message || "匯入失敗");
+        setError(String(json?.message || "匯入失敗"));
         return;
       }
       setFlatDone(json);
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
-      setBusy(false);
+      batch.setBusy(false);
     }
   };
 
@@ -238,10 +350,10 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: F }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" onClick={() => setMode("eclass")} style={modeBtn(mode === "eclass")}>
+        <button type="button" onClick={() => setModeBoth("eclass")} style={modeBtn(mode === "eclass")}>
           eClass 活動參與匯入
         </button>
-        <button type="button" onClick={() => setMode("flat")} style={modeBtn(mode === "flat")}>
+        <button type="button" onClick={() => setModeBoth("flat")} style={modeBtn(mode === "flat")}>
           簡易有日期 CSV
         </button>
         {mode === "eclass" && (
@@ -259,6 +371,17 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
         <div style={{ ...card, background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C", fontSize: 13, display: "flex", gap: 8 }}>
           <AlertTriangle size={16} /> <span>{error}</span>
         </div>
+      )}
+
+      {batch.wrongHint && (
+        <WrongModuleBanner
+          hint={batch.wrongHint}
+          onTransfer={() => {
+            onRequestTransfer?.(batch.wrongHint!.target, batch.pendingWrongFiles);
+            batch.clearQueue();
+          }}
+          onDismiss={batch.dismissWrong}
+        />
       )}
 
       {mode === "flat" && (
@@ -291,7 +414,7 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
         <>
           <WizardStepper
             step={step}
-            maxReachable={step}
+            maxReachable={Math.max(step, 1)}
             onJump={(n) => setStep(n)}
             steps={[
               { n: 1, label: "1 上傳與學年" },
@@ -349,14 +472,34 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>Step 1 · 上傳檔案與學年／同頁共存設定</div>
                 <FileDropZone
                   accept=".csv,.xlsx,.xls"
+                  multiple
                   busy={busy}
-                  label={file ? file.name : "拖放或點擊上傳 activity_participant_list CSV"}
-                  hint="支援 .csv · .xls · .xlsx"
+                  label={batch.queue.length ? `已選 ${batch.queue.length} 個檔案（可繼續追加）` : "拖放或點擊上傳 activity_participant_list"}
+                  hint="支援多檔 · .csv · .xls · .xlsx · 每檔獨立 Batch ID"
                   icon={<UploadCloud size={28} color={C.accent} />}
-                  onFiles={(picked) => void onFile(picked[0] || null)}
+                  onFiles={(picked) => {
+                    setResult(null);
+                    setError(null);
+                    setStep(1);
+                    batch.enqueueFiles(picked);
+                  }}
                 />
-                {busy && <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}><RefreshCw size={12} style={{ display: "inline" }} /> 分析中…</div>}
+                <ImportBatchQueuePanel
+                  items={batch.queue}
+                  busy={busy}
+                  progressLabel={batch.progressLabel}
+                  progressPct={batch.progressPct}
+                  onRemove={(id) => batch.setQueue((prev) => prev.filter((q) => q.id !== id))}
+                  onPreviewAll={batch.queue.length > 0 ? () => void batch.previewAll() : undefined}
+                  onImportAll={batch.queue.length > 0 ? () => void onExecute() : undefined}
+                  onRetry={(id) => void batch.importSequential([id]).then((last) => {
+                    if (last) { setResult(last); setStep(4); void loadBatches(); }
+                  })}
+                />
+                {busy && !batch.progressLabel && <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}><RefreshCw size={12} style={{ display: "inline" }} /> 分析中…</div>}
               </div>
+
+              <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
 
               <div style={{ ...card, background: "#FFFBEB", borderColor: "#FDE68A" }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "#92400E", fontWeight: 700 }}>
@@ -365,7 +508,7 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
                 </div>
                 <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
                   <label style={{ fontSize: 12, fontWeight: 700 }}>目標學年</label>
-                  <select value={year} onChange={(e) => setYear(e.target.value)}
+                  <select value={year} onChange={(e) => setYearBoth(e.target.value)}
                     style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 13 }}>
                     <option value="2024/25">2024/25</option>
                     <option value="2025/26">2025/26（與示範同頁共存）</option>
@@ -513,14 +656,13 @@ export const ActivityImportWizard: React.FC<ActivityImportWizardProps> = ({
                 </div>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <ContinueImportButton moduleLabel={MODULE_LABEL} onClick={continueImporting} />
                 <a href={activitiesUrl} style={linkBtn}><ExternalLink size={12} /> 前往活動名單</a>
-                <button type="button" onClick={() => { setStep(1); setFile(null); setStats(null); setResult(null); setBelong([]); }} style={navBtn(false)}>
-                  📂 繼續匯入
-                </button>
                 <button type="button" onClick={() => setShowHistory(true)} style={navBtn(false)}>
                   <History size={14} /> 歷史批次／回滾
                 </button>
               </div>
+              <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
             </div>
           )}
         </>

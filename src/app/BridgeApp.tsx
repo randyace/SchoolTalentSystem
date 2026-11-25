@@ -39,6 +39,7 @@ import { Screen_ScoreEntry } from "./components/erp/Screen_ScoreEntry";
 import { Screen_Assessments } from "./components/erp/Screen_Assessments";
 import { Screen_TermWeightings } from "./components/erp/Screen_TermWeightings";
 import { Screen01_Dashboard } from "./components/lalp/Screen01_Dashboard";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Screen_StudentBatchCreate } from "./components/erp/Screen_StudentBatchCreate";
 import { Screen_ClassDetails } from "./components/erp/Screen_ClassDetails";
 import { Screen_Staff } from "./components/erp/Screen_Staff";
@@ -496,7 +497,7 @@ function shell(navId: string, children: React.ReactNode, config?: StsBridgeConfi
       schoolNameEn={schoolNameEn}
       academicYear={academicYear}
     >
-      {children}
+      <ErrorBoundary title="畫面載入錯誤">{children}</ErrorBoundary>
     </Frame02_AppShell>
   );
 }
@@ -625,7 +626,19 @@ export const BridgeApp: React.FC<{ config: StsBridgeConfig }> = ({ config }) => 
           systemResetPreviewUrl={(config as any).systemResetPreviewUrl || "/api/admin/system-reset/preview"}
           systemResetExecuteUrl={(config as any).systemResetExecuteUrl || "/api/admin/system-reset/execute"}
           currentUserRole={(config as any).currentUserRole || ""}
-          initialModule={(config as any).initialModule || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("module") === "scores" ? "scores" : new URLSearchParams(window.location.search).get("module") === "clubs" ? "clubs" : new URLSearchParams(window.location.search).get("module") === "students" ? "students" : new URLSearchParams(window.location.search).get("module") === "classes" ? "classes" : new URLSearchParams(window.location.search).get("module") === "activities" ? "activities" : undefined))}
+          initialModule={(() => {
+            const fromConfig = (config as any).initialModule as string | undefined;
+            if (fromConfig) return fromConfig as any;
+            if (typeof window === "undefined") return undefined;
+            const raw = (new URLSearchParams(window.location.search).get("module") || "").toLowerCase();
+            if (raw === "students" || raw === "student") return "students";
+            if (raw === "groups" || raw === "classes" || raw === "group" || raw === "class") return "classes";
+            if (raw === "scores" || raw === "score" || raw === "broadsheet") return "scores";
+            if (raw === "activities" || raw === "activity") return "activities";
+            if (raw === "clubs" || raw === "club") return "clubs";
+            if (raw === "pbl" || raw === "projects" || raw === "project") return "projects";
+            return undefined;
+          })()}
         />
       ));
 

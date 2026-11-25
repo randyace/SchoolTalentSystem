@@ -729,14 +729,14 @@ const Screen1_MorningBrief: React.FC<Screen1Props> = ({ acornData, engagement, s
                 </div>
               </div>
               <div style={{ flex: 1 }}>
-                {engagement.breakdown.map(b => (
+                {(Array.isArray(engagement?.breakdown) ? engagement.breakdown : []).map(b => (
                   <div key={b.label} style={{ marginBottom: "8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                       <span style={{ fontSize: "11px", color: DS.colors.textSecondary, fontFamily: DS.font.family }}>{b.label}</span>
                       <span style={{ fontSize: "11px", fontWeight: 700, color: DS.colors.textPrimary, fontFamily: DS.font.family }}>{b.pts}</span>
                     </div>
                     <div style={{ height: "5px", background: DS.colors.background, borderRadius: DS.radius.full }}>
-                      <div style={{ height: "100%", width: `${b.pct*100}%`, background: b.color, borderRadius: DS.radius.full }} />
+                      <div style={{ height: "100%", width: `${(b.pct || 0) * 100}%`, background: b.color, borderRadius: DS.radius.full }} />
                     </div>
                   </div>
                 ))}

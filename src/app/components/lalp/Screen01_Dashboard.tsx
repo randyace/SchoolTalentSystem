@@ -167,10 +167,14 @@ export interface RiskAlertGroup {
 
 export interface DashboardOverviewPayload {
   period?: string;
+  academic_year?: string;
   generated_at?: string;
   stats?: DashboardStatItem[];
   insights?: StsDashboardBootstrap["insights"];
   engagementData?: EngagementData;
+  /** Snake alias from API */
+  engagement_index?: EngagementData;
+  breakdown?: EngagementBreakdown[];
   classOverview?: ClassOverviewItem[];
   activities?: ActivityItem[];
   risk_alerts?: RiskAlertGroup[];
@@ -462,7 +466,7 @@ const RiskAlertsWidget: React.FC<{
   alerts?: StsDashboardBootstrap["risk_alerts"];
   onOpen?: (alert?: RiskAlertGroup | null) => void;
 }> = ({ isMobile = false, alerts, onOpen }) => {
-  const items = alerts && alerts.length > 0 ? alerts : RISK_ALERTS;
+  const items = Array.isArray(alerts) && alerts.length > 0 ? alerts : RISK_ALERTS;
   return (
   <Card style={{ padding: isMobile ? "16px" : "20px" }}>
     <SectionHeader
@@ -529,36 +533,68 @@ const RiskAlertsWidget: React.FC<{
   );
 };
 
+/** Normalize API / bootstrap engagement payloads so .breakdown.map never crashes. */
+function normalizeEngagementData(raw: unknown): EngagementData {
+  const d = (raw && typeof raw === "object" ? raw : {}) as Partial<EngagementData> & Record<string, unknown>;
+  const breakdownSrc = Array.isArray(d.breakdown)
+    ? d.breakdown
+    : Array.isArray((d as { engagement_index?: { breakdown?: unknown } }).engagement_index?.breakdown)
+      ? ((d as { engagement_index: { breakdown: EngagementBreakdown[] } }).engagement_index.breakdown)
+      : [];
+  const breakdown: EngagementBreakdown[] = breakdownSrc.map((item, i) => {
+    const row = (item && typeof item === "object" ? item : {}) as Partial<EngagementBreakdown>;
+    return {
+      label: String(row.label ?? `Item ${i + 1}`),
+      pts: Number(row.pts ?? 0) || 0,
+      color: String(row.color ?? DS.colors.primary),
+      pct: Number(row.pct ?? 0) || 0,
+    };
+  });
+  return {
+    totalPts: Number(d.totalPts ?? 0) || 0,
+    maxPts: Math.max(1, Number(d.maxPts ?? 1000) || 1000),
+    subtitle: String(d.subtitle ?? "School-wide"),
+    breakdown,
+  };
+}
+
+const EMPTY_ENGAGEMENT: EngagementData = normalizeEngagementData(null);
+
 // ─── EngagementIndexWidget ────────────────────────────────────────────────────
 const EngagementIndexWidget: React.FC<{ data: EngagementData; isMobile?: boolean }> = ({
   data, isMobile = false,
 }) => {
+  const safe = normalizeEngagementData(data);
+  const breakdown = Array.isArray(safe.breakdown) ? safe.breakdown : [];
   const ringSize = isMobile ? 90 : 110;
   return (
     <Card style={{ padding: isMobile ? "16px" : "20px" }}>
-      <SectionHeader title="Engagement Index" subtitle={data.subtitle} />
+      <SectionHeader title="Engagement Index" subtitle={safe.subtitle} />
       <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "14px" : "20px", marginBottom: "16px" }}>
         <div style={{ position: "relative", flexShrink: 0 }}>
-          <CircularRing value={data.totalPts} max={data.maxPts} size={ringSize} color={DS.colors.primary} />
+          <CircularRing value={safe.totalPts} max={safe.maxPts} size={ringSize} color={DS.colors.primary} />
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
             <span style={{ fontSize: isMobile ? "16px" : "20px", fontWeight: 800, color: DS.colors.textPrimary, fontFamily: DS.font.family }}>
-              {data.totalPts}
+              {safe.totalPts}
             </span>
             <span style={{ fontSize: "11px", color: DS.colors.textMuted, fontFamily: DS.font.family }}>pts</span>
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {data.breakdown.map((item) => (
+          {breakdown.map((item) => (
             <div key={item.label} style={{ marginBottom: "10px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                 <span style={{ fontSize: "12px", color: DS.colors.textSecondary, fontFamily: DS.font.family }}>{item.label}</span>
                 <span style={{ fontSize: "12px", fontWeight: 700, color: DS.colors.textPrimary, fontFamily: DS.font.family }}>{item.pts} pts</span>
               </div>
               <div style={{ height: "6px", background: DS.colors.background, borderRadius: DS.radius.full }}>
-                <div style={{ height: "100%", width: `${item.pct * 100}%`, background: item.color, borderRadius: DS.radius.full }} />
+                <div style={{ height: "100%", width: `${(item.pct || 0) * 100}%`, background: item.color, borderRadius: DS.radius.full }} />
               </div>
             </div>
           ))}
+          {breakdown.length === 0 && (
+            <div style={{ fontSize: 12, color: DS.colors.textMuted, fontFamily: DS.font.family }}>暫無參與指數資料</div>
+          )}
         </div>
       </div>
     </Card>
@@ -576,7 +612,7 @@ const SchoolSnapshotWidget: React.FC<{ items: ClassOverviewItem[]; isMobile?: bo
       gridTemplateColumns: isMobile ? "repeat(3, minmax(0, 1fr))" : "1fr 1fr 1fr",
       gap: isMobile ? "6px" : "10px",
     }}>
-      {items.map((item) => (
+      {(Array.isArray(items) ? items : []).map((item) => (
         <div
           key={item.label}
           style={{
@@ -613,7 +649,7 @@ const RecentActivityWidget: React.FC<{ items: ActivityItem[]; isMobile?: boolean
   <Card style={{ padding: isMobile ? "16px" : "20px" }}>
     <SectionHeader title="Recent Activity" subtitle="Last 30 minutes" />
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? "10px" : "12px" }}>
-      {items.map((item, i) => (
+      {(Array.isArray(items) ? items : []).map((item, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={{
             width: "34px", height: "34px", borderRadius: DS.radius.full,
@@ -702,17 +738,26 @@ export const Screen01_Dashboard: React.FC<Screen01DashboardProps> = (props) => {
   }, [toast]);
 
   // Prefer live API/bootstrap; never substitute Figma MOCK_* when API returns empty.
-  const engagementData = props.engagementData ?? overview?.engagementData ?? {
-    labels: [] as string[],
-    current: [] as number[],
-    previous: [] as number[],
-  };
-  const classOverview  = props.classOverview ?? overview?.classOverview ?? [];
-  const stats          = props.stats ?? overview?.stats ?? bootstrap?.stats ?? [];
-  const activities     = props.activities ?? overview?.activities ?? bootstrap?.activities ?? [];
+  // CRITICAL: fallback MUST include breakdown:[] — previous labels/current/previous shape crashed .map().
+  const engagementData = normalizeEngagementData(
+    props.engagementData ?? overview?.engagementData ?? overview?.engagement_index ?? EMPTY_ENGAGEMENT
+  );
+  const classOverview  = Array.isArray(props.classOverview)
+    ? props.classOverview
+    : Array.isArray(overview?.classOverview) ? overview!.classOverview! : [];
+  const stats          = Array.isArray(props.stats)
+    ? props.stats
+    : Array.isArray(overview?.stats) ? overview!.stats!
+    : Array.isArray(bootstrap?.stats) ? bootstrap!.stats! : [];
+  const activities     = Array.isArray(props.activities)
+    ? props.activities
+    : Array.isArray(overview?.activities) ? overview!.activities!
+    : Array.isArray(bootstrap?.activities) ? bootstrap!.activities! : [];
   const insights       = overview?.insights ?? bootstrap?.insights;
-  const riskAlerts     = overview?.risk_alerts ?? bootstrap?.risk_alerts;
-  const calendarDots   = overview?.calendar_dots ?? [];
+  const riskAlerts     = Array.isArray(overview?.risk_alerts)
+    ? overview!.risk_alerts!
+    : Array.isArray(bootstrap?.risk_alerts) ? bootstrap!.risk_alerts! : [];
+  const calendarDots   = Array.isArray(overview?.calendar_dots) ? overview!.calendar_dots! : [];
   const isMobile = useIsMobile(768);
 
   const runExport = () => {

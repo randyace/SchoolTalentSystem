@@ -1421,6 +1421,8 @@ export const Screen_ClubManagement: React.FC<{
   const F = ERP.font.family;
   // DB is SSOT — empty [] stays empty (never fall back to Figma CLUBS mock).
   const clubs = Array.isArray(clubsProp) ? clubsProp : [];
+  // Live backend mode when create/store endpoint is wired (always true in CI4 bridge).
+  const live = !!storeUrl;
   const [search,     setSearch]     = useState("");
   const [catFilter,  setCatFilter]  = useState<string>("全部");
   const [isMobile,   setIsMobile]   = useState(false);

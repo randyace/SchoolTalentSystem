@@ -9,9 +9,27 @@ import { ERP } from "./erpTokens";
 import { useIsMobile } from "./erpResponsive";
 import { FileDropZone } from "./FileDropZone";
 import { WizardActionBar, WizardStepper } from "./ImportWizardChrome";
+import {
+  ContinueImportButton,
+  ImportBatchQueuePanel,
+  SessionImportLedger,
+  WrongModuleBanner,
+} from "./ImportBatchExtras";
+import {
+  makeQueuedFiles,
+  MODULE_LABELS,
+  parseFetchJson,
+  wrongModuleHint,
+  type ImportModuleId,
+  type QueuedImportFile,
+  type SessionImportEntry,
+  type WrongModuleHint,
+} from "./importUxShared";
 
 const F = ERP.font.family;
 const C = ERP.colors;
+const MODULE: ImportModuleId = "students";
+const MODULE_LABEL = MODULE_LABELS.students;
 
 type SheetOverview = {
   sheet_name: string; class_name: string; room: string;
@@ -46,6 +64,16 @@ export type StudentNamelistWizardProps = {
   parseUrl?: string;
   validateUrl?: string;
   flatExecuteUrl?: string;
+  academicYear?: string;
+  onAcademicYearChange?: (y: string) => void;
+  subMode?: string | null;
+  onSubModeChange?: (m: string) => void;
+  seedFiles?: File[];
+  seedNonce?: number;
+  onSeedConsumed?: () => void;
+  onRequestTransfer?: (target: ImportModuleId, files: File[]) => void;
+  onImportLogged?: (entry: Omit<SessionImportEntry, "id" | "at">) => void;
+  ledger?: SessionImportEntry[];
 };
 
 function normalizeCode(raw: string): string {
@@ -76,15 +104,48 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
   parseUrl = "/admin/data-import/parse-preview",
   validateUrl = "/admin/data-import/validate",
   flatExecuteUrl = "/admin/data-import/execute",
+  academicYear,
+  onAcademicYearChange,
+  subMode,
+  onSubModeChange,
+  seedFiles,
+  seedNonce = 0,
+  onSeedConsumed,
+  onRequestTransfer,
+  onImportLogged,
+  ledger = [],
 }) => {
   const isMobile = useIsMobile();
-  const [mode, setMode] = useState<"idle" | "mark_sheet" | "flat">("idle");
+  const [mode, setMode] = useState<"idle" | "mark_sheet" | "flat">(
+    subMode === "csv" || subMode === "flat" ? "flat" : subMode === "xlsx" || subMode === "mark_sheet" ? "mark_sheet" : "idle",
+  );
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [year, setYear] = useState("2026/27");
+  const [year, setYear] = useState(academicYear || "2026/27");
+  const [queue, setQueue] = useState<QueuedImportFile[]>([]);
+  const [wrongHint, setWrongHint] = useState<WrongModuleHint | null>(null);
+  const [pendingWrongFiles, setPendingWrongFiles] = useState<File[]>([]);
+  const [progressLabel, setProgressLabel] = useState<string | null>(null);
+  const [progressPct, setProgressPct] = useState(0);
+  const seedSeen = useRef(-1);
+
+  useEffect(() => {
+    if (academicYear && academicYear !== year) setYear(academicYear);
+  }, [academicYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setYearBoth = (y: string) => {
+    setYear(y);
+    onAcademicYearChange?.(y);
+  };
+
+  const setModeBoth = (m: "idle" | "mark_sheet" | "flat") => {
+    setMode(m);
+    if (m === "mark_sheet") onSubModeChange?.("xlsx");
+    if (m === "flat") onSubModeChange?.("csv");
+  };
   const [sheets, setSheets] = useState<SheetOverview[]>([]);
   const [stats, setStats] = useState<{
     total_sheets: number; total_seats: number; blank_names: number;
@@ -361,9 +422,35 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
     }
   };
 
+  const analyzeMarksheetFile = async (f: File) => {
+    const fd = new FormData();
+    fd.append("file", f);
+    const res = await fetch(analyzeUrl, { method: "POST", credentials: "include", body: fd });
+    return parseFetchJson(res);
+  };
+
+  const applyMarksheetPreview = (json: Record<string, unknown>) => {
+    setModeBoth("mark_sheet");
+    setSheets((json.sheets as SheetOverview[]) || []);
+    setStats({
+      total_sheets: Number(json.total_sheets || 0),
+      total_seats: Number(json.total_seats || 0),
+      blank_names: Number(json.blank_names || 0),
+      gender_m: Number(json.gender_m || 0),
+      gender_f: Number(json.gender_f || 0),
+    });
+    if (json.academic_year) setYearBoth(String(json.academic_year));
+  };
+
   const onFile = async (f: File | null) => {
     if (!f) return;
+    const hint = wrongModuleHint(MODULE, f.name);
+    if (hint) {
+      setWrongHint(hint);
+      setPendingWrongFiles([f]);
+    }
     setFile(f);
+    setQueue(makeQueuedFiles([f], MODULE, year));
     setError(null);
     setBusy(true);
     setResult(null);
@@ -372,45 +459,41 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
     try {
       const ext = f.name.split(".").pop()?.toLowerCase() || "";
       if (ext === "xlsx" || ext === "xls") {
-        const fd = new FormData();
-        fd.append("file", f);
-        const res = await fetch(analyzeUrl, { method: "POST", credentials: "include", body: fd });
-        const json = await res.json();
+        const json = await analyzeMarksheetFile(f);
         if (!json?.ok) {
-          setError(json?.message || "分析失敗");
+          setError(String(json?.message || "分析失敗"));
+          setQueue((prev) => prev.map((q) => ({ ...q, status: "error", error: String(json?.message || "分析失敗") })));
           return;
         }
         if (json.is_mark_sheet) {
-          setMode("mark_sheet");
-          setSheets(json.sheets || []);
-          setStats({
-            total_sheets: json.total_sheets || 0,
-            total_seats: json.total_seats || 0,
-            blank_names: json.blank_names || 0,
-            gender_m: json.gender_m || 0,
-            gender_f: json.gender_f || 0,
-          });
-          if (json.academic_year) setYear(json.academic_year);
+          applyMarksheetPreview(json);
+          setQueue((prev) => prev.map((q) => ({
+            ...q,
+            status: "ready",
+            summary: `${json.total_sheets || 0} 班 · ${json.total_seats || 0} 座位`,
+            previewData: json,
+          })));
           setStep(1);
           return;
         }
       }
       // Flat roster path
-      setMode("flat");
+      setModeBoth("flat");
       const fd = new FormData();
       fd.append("file", f);
       fd.append("module", "students");
       const res = await fetch(parseUrl, { method: "POST", credentials: "include", body: fd });
-      const json = await res.json();
+      const json = await parseFetchJson(res);
       if (!json?.ok) {
-        setError(json?.message || "解析失敗");
+        setError(String(json?.message || "解析失敗"));
         return;
       }
-      const maps = (json.mapping || json.mappings || []).map((m: any) => ({
+      const maps = ((json.mapping as any[]) || (json.mappings as any[]) || []).map((m: any) => ({
         csvHeader: m.csvHeader || m.header || "",
         targetField: m.targetField || m.target || "ignore",
       }));
       setFlatMappings(maps);
+      setQueue((prev) => prev.map((q) => ({ ...q, status: "ready", summary: "標準名冊" })));
       setStep(1);
     } catch (e: any) {
       setError(String(e?.message || e));
@@ -419,7 +502,119 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
     }
   };
 
+  const onFilesPicked = (picked: File[]) => {
+    if (!picked.length) return;
+    const hint = wrongModuleHint(MODULE, picked[0].name);
+    if (hint) {
+      setWrongHint(hint);
+      setPendingWrongFiles(picked);
+    } else {
+      setWrongHint(null);
+      setPendingWrongFiles([]);
+    }
+    if (picked.length === 1) {
+      void onFile(picked[0]);
+      return;
+    }
+    // Multi-file: queue then sequential mark-sheet import
+    setQueue((prev) => {
+      const next = makeQueuedFiles(picked, MODULE, year);
+      const names = new Set(prev.map((p) => p.file.name));
+      return [...prev, ...next.filter((n) => !names.has(n.file.name))];
+    });
+    setResult(null);
+    setError(null);
+    setStep(1);
+  };
+
+  useEffect(() => {
+    if (!seedFiles?.length || seedNonce === seedSeen.current) return;
+    seedSeen.current = seedNonce;
+    onFilesPicked(seedFiles);
+    onSeedConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedFiles, seedNonce]);
+
+  const importSequentialStudents = async () => {
+    const targets = queue.filter((q) => q.status === "pending" || q.status === "ready" || q.status === "error");
+    if (!targets.length) return;
+    setBusy(true);
+    setError(null);
+    let last: Record<string, unknown> | null = null;
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const item = targets[i];
+        setProgressLabel(`正在匯入第 ${i + 1} / ${targets.length} 個檔案：${item.file.name}…`);
+        setProgressPct(Math.round((i / targets.length) * 100));
+        setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, status: "importing", error: undefined } : q)));
+        try {
+          const analyzed = await analyzeMarksheetFile(item.file);
+          if (!analyzed?.ok || !analyzed.is_mark_sheet) {
+            setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, status: "error", error: String(analyzed?.message || "非 Mark Sheet") } : q)));
+            continue;
+          }
+          applyMarksheetPreview(analyzed);
+          const res = await fetch(executeUrl, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ academic_year: year }),
+          });
+          const json = await parseFetchJson(res);
+          if (!json?.ok) {
+            setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, status: "error", error: String(json?.message || "匯入失敗") } : q)));
+            continue;
+          }
+          const summary = `${(json.summary as any)?.total_seats ?? analyzed.total_seats ?? "?"} 座位`;
+          setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, status: "done", result: json, summary } : q)));
+          last = json;
+          onImportLogged?.({
+            filename: item.file.name,
+            module: MODULE,
+            moduleLabel: MODULE_LABEL,
+            academicYear: year,
+            batchId: json.batch_id as string | number | undefined,
+            summary,
+          });
+        } catch (e: any) {
+          setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, status: "error", error: String(e?.message || e) } : q)));
+        }
+      }
+      setProgressPct(100);
+      setProgressLabel(null);
+      if (last) {
+        setResult(last);
+        setStep(4);
+        void loadBatches();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const continueImporting = () => {
+    setQueue([]);
+    setFile(null);
+    setSheets([]);
+    setStats(null);
+    setResult(null);
+    setFlatMappings([]);
+    setFlatSummary(null);
+    setFlatDone(null);
+    setError(null);
+    setWrongHint(null);
+    setPendingWrongFiles([]);
+    setProgressLabel(null);
+    setProgressPct(0);
+    setModeBoth("idle");
+    setStep(1);
+  };
+
   const onExecuteMarksheet = async () => {
+    if (queue.length > 1) {
+      await importSequentialStudents();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -429,14 +624,22 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ academic_year: year }),
       });
-      const json = await res.json();
+      const json = await parseFetchJson(res);
       if (!json?.ok) {
-        setError(json?.message || "匯入失敗");
+        setError(String(json?.message || "匯入失敗"));
         return;
       }
       setResult(json);
       setStep(4);
       void loadBatches();
+      onImportLogged?.({
+        filename: file?.name || "marksheet.xlsx",
+        module: MODULE,
+        moduleLabel: MODULE_LABEL,
+        academicYear: year,
+        batchId: json.batch_id as string | number | undefined,
+        summary: `${(json.summary as any)?.total_seats ?? "?"} 座位`,
+      });
       if (json.batch_id) {
         await openPairing(Number(json.batch_id));
       }
@@ -559,6 +762,19 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
           <AlertTriangle size={16} /> <span>{error}</span>
         </div>
       )}
+      {wrongHint && (
+        <WrongModuleBanner
+          hint={wrongHint}
+          onTransfer={() => {
+            onRequestTransfer?.(wrongHint.target, pendingWrongFiles);
+            setWrongHint(null);
+            setPendingWrongFiles([]);
+            setQueue([]);
+            setFile(null);
+          }}
+          onDismiss={() => setWrongHint(null)}
+        />
+      )}
       {toast && (
         <div style={{ ...card, background: "#F0FDF4", borderColor: "#BBF7D0", color: "#15803D", fontSize: 13 }}>
           {toast}
@@ -608,25 +824,44 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
             </div>
             <FileDropZone
               accept=".csv,.xlsx,.xls"
+              multiple
               busy={busy}
-              label={file ? file.name : "拖放或點擊上傳學生名冊"}
-              hint="支援 .csv · .xls · .xlsx"
+              label={queue.length ? `已選 ${queue.length} 個檔案（可繼續追加）` : "拖放或點擊上傳學生名冊"}
+              hint="支援多檔 · .csv · .xls · .xlsx · 每檔獨立 Batch ID"
               icon={<UploadCloud size={28} color={C.accent} />}
-              onFiles={(files) => void onFile(files[0] || null)}
+              onFiles={onFilesPicked}
             />
-            {busy && (
+            <ImportBatchQueuePanel
+              items={queue}
+              busy={busy}
+              progressLabel={progressLabel}
+              progressPct={progressPct}
+              onRemove={(id) => setQueue((prev) => prev.filter((q) => q.id !== id))}
+              onPreviewAll={queue.length > 1 ? () => {
+                // Preview first pending only via existing single-file path
+                const pending = queue.find((q) => q.status === "pending");
+                if (pending) void onFile(pending.file);
+              } : undefined}
+              onImportAll={queue.length > 1 ? () => void importSequentialStudents() : undefined}
+              onRetry={(id) => {
+                const item = queue.find((q) => q.id === id);
+                if (item) void onFile(item.file);
+              }}
+            />
+            {busy && !progressLabel && (
               <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}>
                 <RefreshCw size={12} style={{ display: "inline" }} /> 分析中…
               </div>
             )}
           </div>
+          <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
           <div style={{ ...card, background: "#EFF6FF", borderColor: "#BFDBFE" }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 800, fontSize: 13, color: "#1D4ED8" }}>
               <Shield size={16} /> 目標學年（與 2025/26 Demo 隔離）
             </div>
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <label style={{ fontSize: 12, fontWeight: 700 }}>目標學年</label>
-              <select value={year} onChange={(e) => setYear(e.target.value)}
+              <select value={year} onChange={(e) => setYearBoth(e.target.value)}
                 style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 13 }}>
                 <option value="2023/24">2023/24</option>
                 <option value="2024/25">2024/25</option>
@@ -731,14 +966,18 @@ export const StudentNamelistWizard: React.FC<StudentNamelistWizardProps> = ({
                 {String((result.summary as any)?.total_seats ?? "")} 座位 ·{" "}
                 新建班別 {String((result.summary as any)?.new_classes_created ?? 0)}
               </div>
-              <button type="button" onClick={() => result.batch_id && void openPairing(Number(result.batch_id))}
-                style={{
-                  marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6,
-                  padding: "8px 14px", borderRadius: 8, border: "none",
-                  background: C.primary, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
-                }}>
-                開啟學號配對工作台
-              </button>
+              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <ContinueImportButton moduleLabel={MODULE_LABEL} onClick={continueImporting} />
+                <button type="button" onClick={() => result.batch_id && void openPairing(Number(result.batch_id))}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "8px 14px", borderRadius: 8, border: "none",
+                    background: C.primary, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
+                  }}>
+                  開啟學號配對工作台
+                </button>
+              </div>
+              <SessionImportLedger entries={ledger} moduleFilter={MODULE} />
             </div>
           )}
         </>
